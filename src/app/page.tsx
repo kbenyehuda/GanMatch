@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
 import { SearchResultsPanel } from "@/components/layout/SearchResultsPanel";
 import { GanDetail } from "@/components/gan/GanDetail";
+import { GanClusterList } from "@/components/gan/GanClusterList";
 import { fetchAllGanim } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
 import { Baby } from "lucide-react";
@@ -11,6 +12,9 @@ import { Baby } from "lucide-react";
 export default function HomePage() {
   const [ganim, setGanim] = useState<Gan[]>([]);
   const [selectedGan, setSelectedGan] = useState<Gan | null>(null);
+  const [selectedClusterGanim, setSelectedClusterGanim] = useState<Gan[] | null>(
+    null
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [canViewReviews] = useState(false); // TODO: Wire to auth + contribution check
@@ -51,7 +55,14 @@ export default function HomePage() {
         <MapContainer
           ganim={filteredGanim}
           selectedGanId={selectedGan?.id ?? null}
-          onSelectGan={setSelectedGan}
+          onSelectGan={(g) => {
+            setSelectedClusterGanim(null);
+            setSelectedGan(g);
+          }}
+          onSelectCluster={(list) => {
+            setSelectedClusterGanim(list);
+            setSelectedGan(null);
+          }}
           onBoundsChange={onBoundsChange}
         />
       </div>
@@ -62,6 +73,7 @@ export default function HomePage() {
           ganim={filteredGanim}
           selectedGanId={selectedGan?.id ?? null}
           onSelectGan={(g) => {
+            setSelectedClusterGanim(null);
             setSelectedGan(g);
             setMobilePanelOpen(false);
           }}
@@ -72,17 +84,37 @@ export default function HomePage() {
         />
       </div>
 
-      {/* Gan detail overlay - appears when a pin is selected */}
-      {selectedGan && (
+      {/* Right-side overlay: either cluster list or gan detail */}
+      {(selectedGan || selectedClusterGanim) && (
         <div className="absolute bottom-4 start-4 end-4 top-14 md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
-          <GanDetail
-            gan={selectedGan}
-            onClose={() => setSelectedGan(null)}
-            canViewReviews={canViewReviews}
-            onRequestLogin={() => {
-              // TODO: Open auth modal
-            }}
-          />
+          {selectedGan ? (
+            <GanDetail
+              gan={selectedGan}
+              onBack={
+                selectedClusterGanim
+                  ? () => {
+                      setSelectedGan(null);
+                    }
+                  : undefined
+              }
+              onClose={() => {
+                setSelectedGan(null);
+                setSelectedClusterGanim(null);
+              }}
+              canViewReviews={canViewReviews}
+              onRequestLogin={() => {
+                // TODO: Open auth modal
+              }}
+            />
+          ) : selectedClusterGanim ? (
+            <GanClusterList
+              ganim={selectedClusterGanim}
+              onClose={() => setSelectedClusterGanim(null)}
+              onSelectGan={(g) => {
+                setSelectedGan(g);
+              }}
+            />
+          ) : null}
         </div>
       )}
 

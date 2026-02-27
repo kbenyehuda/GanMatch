@@ -35,6 +35,7 @@ interface MapContainerProps {
   ganim: Gan[];
   selectedGanId: string | null;
   onSelectGan: (gan: Gan | null) => void;
+  onSelectCluster?: (ganim: Gan[]) => void;
   onBoundsChange: (bounds: Bounds) => void;
 }
 
@@ -42,6 +43,7 @@ export function MapContainer({
   ganim,
   selectedGanId,
   onSelectGan,
+  onSelectCluster,
   onBoundsChange,
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
@@ -102,6 +104,49 @@ export function MapContainer({
       viewport.zoom
     );
   }, [index, viewport]);
+
+  const getClusterId = useCallback((clusterObj: unknown): number | null => {
+    const c: any = clusterObj as any;
+    const clusterId =
+      c?.properties?.cluster_id ??
+      (typeof c?.id === "number" ? c.id : undefined) ??
+      (typeof c?.properties?.clusterId === "number" ? c.properties.clusterId : undefined);
+    return typeof clusterId === "number" ? clusterId : null;
+  }, []);
+
+  const getClusterGanim = useCallback(
+    (clusterObj: unknown, limit = 50): Gan[] => {
+      const clusterId = getClusterId(clusterObj);
+      if (clusterId === null) return [];
+      try {
+        return (index.getLeaves(clusterId, limit, 0) as any[])
+          .map((f) => f?.properties?.gan)
+          .filter(Boolean) as Gan[];
+      } catch {
+        return [];
+      }
+    },
+    [getClusterId, index]
+  );
+
+  const zoomToCluster = useCallback(
+    (clusterObj: unknown, center: { lon: number; lat: number }) => {
+      const clusterId = getClusterId(clusterObj);
+      const map = mapRef.current;
+      if (!map || clusterId === null) return;
+      try {
+        const expansionZoom = index.getClusterExpansionZoom(clusterId);
+        map.easeTo({
+          center: [center.lon, center.lat],
+          zoom: expansionZoom,
+          duration: 450,
+        });
+      } catch {
+        // ignore
+      }
+    },
+    [getClusterId, index]
+  );
 
   const handleMapClick = useCallback(
     (e: MapLayerMouseEvent) => {
@@ -177,6 +222,13 @@ export function MapContainer({
         const isCluster = cluster.properties?.cluster;
         if (isCluster) {
           const count = cluster.properties?.point_count ?? 0;
+          const leafNames = getClusterGanim(cluster, 10).map((g) => g.name_he).filter(Boolean);
+          const tooltip =
+            leafNames.length > 0
+              ? `${count} גנים\n` +
+                leafNames.join("\n") +
+                (count > leafNames.length ? `\n+${count - leafNames.length} עוד...` : "")
+              : `${count} גנים`;
           return (
             <Marker
               key={`cluster-${cluster.id}`}
@@ -185,12 +237,15 @@ export function MapContainer({
               anchor="center"
               onClick={(e) => {
                 e.originalEvent.stopPropagation();
+                zoomToCluster(cluster, { lon, lat });
+                const ganList = getClusterGanim(cluster, 50);
+                if (ganList.length > 0) onSelectCluster?.(ganList);
               }}
-              className="cursor-default"
+              className="cursor-pointer"
             >
               <div
-                title={`${count} גנים`}
-                className="flex items-center justify-center rounded-full bg-gan-secondary text-white font-hebrew font-semibold text-sm min-w-[28px] h-7 px-2 shadow-md border-2 border-white"
+                title={tooltip}
+                className="flex items-center justify-center rounded-full bg-gan-secondary text-white font-hebrew font-semibold text-sm min-w-[28px] h-7 px-2 shadow-md border-2 border-white hover:brightness-95"
               >
                 {count}
               </div>
