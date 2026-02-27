@@ -24,8 +24,8 @@ export function SearchResultsPanel({
   onCloseMobile,
 }: SearchResultsPanelProps) {
   const content = (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gan-accent/30">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="p-4 border-b border-gan-accent/30 shrink-0">
         <div className="relative">
           <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-gray-400" />
           <input
@@ -37,7 +37,7 @@ export function SearchResultsPanel({
           />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-8 space-y-3">
         {ganim.length === 0 ? (
           <p className="text-center text-gray-500 py-8 font-hebrew">
             לא נמצאו גנים באזור. נסה להזיז את המפה או להרחיב את החיפוש.
@@ -76,11 +76,13 @@ export function SearchResultsPanel({
   return (
     <>
       {/* Desktop: Side panel */}
-      <div className="hidden md:flex md:w-96 md:flex-shrink-0 bg-white/95 backdrop-blur shadow-lg flex-col overflow-hidden">
-        <div className="px-4 py-3 border-b border-gan-accent/30">
+      <div className="hidden md:flex md:w-96 md:flex-shrink-0 md:h-full bg-white/95 backdrop-blur shadow-lg flex-col overflow-hidden min-h-0">
+        <div className="px-4 py-3 border-b border-gan-accent/30 shrink-0">
           <h2 className="font-hebrew font-semibold text-gan-dark">חיפוש גנים</h2>
         </div>
-        {content}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {content}
+        </div>
       </div>
 
       {/* Mobile: Bottom sheet */}
@@ -92,11 +94,13 @@ export function SearchResultsPanel({
         <div className="flex justify-center pt-2 pb-1">
           <div className="w-12 h-1 rounded-full bg-gray-300" />
         </div>
-        <div className="h-[60vh] overflow-hidden flex flex-col">
-          <div className="px-4 py-2 border-b">
+        <div className="h-[60vh] overflow-hidden flex flex-col min-h-0">
+          <div className="px-4 py-2 border-b shrink-0">
             <h2 className="font-hebrew font-semibold text-gan-dark">חיפוש גנים</h2>
           </div>
-          {content}
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            {content}
+          </div>
         </div>
       </div>
     </>

@@ -1,0 +1,4 @@
+name_he,name_en,address,city,type,license_status,has_cctv,phone
+גן ויצמן,Witzmann Gan,רחוב ויצמן 15,גבעתיים,Supervised,Permanent,false,03-7321234
+מעון רימון,Rimon Maon,רחוב הבנים 8,גבעתיים,Maon,Permanent,true,03-7315678
+גן הדסה,Hadassa Gan,רחוב סוקולוב 22,תל אביב,Private,Permanent,true,03-6965432

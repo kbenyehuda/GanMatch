@@ -4,36 +4,24 @@ import { useCallback, useEffect, useState } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
 import { SearchResultsPanel } from "@/components/layout/SearchResultsPanel";
 import { GanDetail } from "@/components/gan/GanDetail";
-import { fetchGanimInBounds, type Bounds } from "@/lib/ganim-api";
+import { fetchAllGanim } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
 import { Baby } from "lucide-react";
 
-// Tel Aviv default viewport bounds (zoom 12) - used for initial fetch before map loads
-const DEFAULT_BOUNDS: Bounds = {
-  minLon: 34.72,
-  minLat: 32.04,
-  maxLon: 34.85,
-  maxLat: 32.14,
-};
-
 export default function HomePage() {
   const [ganim, setGanim] = useState<Gan[]>([]);
-  const [bounds, setBounds] = useState<Bounds | null>(DEFAULT_BOUNDS);
   const [selectedGan, setSelectedGan] = useState<Gan | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [canViewReviews] = useState(false); // TODO: Wire to auth + contribution check
 
-  const onBoundsChange = useCallback((newBounds: Bounds) => {
-    setBounds(newBounds);
-  }, []);
+  const onBoundsChange = useCallback(() => {}, []);
 
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!bounds) return;
     setFetchError(null);
-    fetchGanimInBounds(bounds)
+    fetchAllGanim()
       .then((data) => {
         setGanim(data);
         setFetchError(null);
@@ -43,7 +31,7 @@ export default function HomePage() {
         setGanim([]);
         setFetchError(err instanceof Error ? err.message : "שגיאה בטעינת גנים");
       });
-  }, [bounds]);
+  }, []);
 
   // Filter ganim by search (client-side for now)
   const filteredGanim = searchQuery
@@ -57,7 +45,7 @@ export default function HomePage() {
     : ganim;
 
   return (
-    <div className="relative w-full h-screen overflow-hidden" dir="rtl">
+    <div className="relative w-full h-screen min-h-[100dvh] overflow-hidden" dir="rtl">
       {/* Map background - full screen */}
       <div className="absolute inset-0">
         <MapContainer
@@ -86,7 +74,7 @@ export default function HomePage() {
 
       {/* Gan detail overlay - appears when a pin is selected */}
       {selectedGan && (
-        <div className="absolute bottom-4 start-4 end-4 md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:w-96 z-20">
+        <div className="absolute bottom-4 start-4 end-4 top-14 md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
           <GanDetail
             gan={selectedGan}
             onClose={() => setSelectedGan(null)}

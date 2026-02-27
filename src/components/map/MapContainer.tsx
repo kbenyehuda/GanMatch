@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Map, {
   Marker,
   NavigationControl,
   MapLayerMouseEvent,
 } from "react-map-gl";
 import type { MapRef } from "react-map-gl";
+import Supercluster from "supercluster";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MapPin } from "lucide-react";
 import type { Gan } from "@/types/ganim";
@@ -16,11 +17,11 @@ const MAPBOX_TOKEN =
     ? process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN.trim()
     : undefined;
 
-// Default: Tel Aviv center
+// Default: Tel Aviv + Givatayim area
 const DEFAULT_VIEW = {
-  longitude: 34.7818,
-  latitude: 32.0853,
-  zoom: 12,
+  longitude: 34.79,
+  latitude: 32.08,
+  zoom: 11,
 };
 
 export interface Bounds {
@@ -44,35 +45,63 @@ export function MapContainer({
   onBoundsChange,
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
+  const [viewport, setViewport] = useState({
+    bounds: [34.69, 32.03, 34.88, 32.16] as [number, number, number, number],
+    zoom: 11,
+  });
 
-  const handleMapLoad = useCallback(
-    (e: { target: { getBounds: () => { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number } } }) => {
-      const b = e.target.getBounds();
-      if (b) {
-        onBoundsChange({
-          minLon: b.getWest(),
-          minLat: b.getSouth(),
-          maxLon: b.getEast(),
-          maxLat: b.getNorth(),
-        });
-      }
-    },
-    [onBoundsChange]
-  );
-
-  const handleMoveEnd = useCallback(() => {
+  const updateViewport = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
     const b = map.getBounds();
     if (b) {
-      onBoundsChange({
+      const bounds: Bounds = {
         minLon: b.getWest(),
         minLat: b.getSouth(),
         maxLon: b.getEast(),
         maxLat: b.getNorth(),
+      };
+      onBoundsChange(bounds);
+      setViewport({
+        bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
+        zoom: Math.floor(map.getZoom() ?? 11),
       });
     }
   }, [onBoundsChange]);
+
+  const handleMapLoad = useCallback(() => {
+    updateViewport();
+  }, [updateViewport]);
+
+  const handleMoveEnd = useCallback(() => {
+    updateViewport();
+  }, [updateViewport]);
+
+  const index = useMemo(() => {
+    const sc = new Supercluster<Gan>({ radius: 60, maxZoom: 18 });
+    sc.load(
+      ganim
+        .filter((g) => typeof g.lat === "number" && typeof g.lon === "number")
+        .map((g) => ({
+          type: "Feature" as const,
+          properties: { cluster: false, gan: g },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [g.lon, g.lat],
+          },
+          id: g.id,
+        }))
+    );
+    return sc;
+  }, [ganim]);
+
+  const clusters = useMemo(() => {
+    const [west, south, east, north] = viewport.bounds;
+    return index.getClusters(
+      [west - 0.01, south - 0.01, east + 0.01, north + 0.01],
+      viewport.zoom
+    );
+  }, [index, viewport]);
 
   const handleMapClick = useCallback(
     (e: MapLayerMouseEvent) => {
@@ -143,29 +172,58 @@ export function MapContainer({
       onClick={handleMapClick}
     >
       <NavigationControl position="bottom-right" />
-      {ganim.map((gan) => (
-        <Marker
-          key={gan.id}
-          longitude={gan.lon}
-          latitude={gan.lat}
-          anchor="bottom"
-          onClick={(e) => {
-            e.originalEvent.stopPropagation();
-            onSelectGan(gan);
-          }}
-          className="cursor-pointer"
-        >
-          <div
-            className={`flex items-center justify-center rounded-full transition-transform hover:scale-110 ${
-              selectedGanId === gan.id
-                ? "bg-gan-primary text-white"
-                : "bg-gan-secondary text-white"
-            }`}
+      {clusters.map((cluster) => {
+        const [lon, lat] = cluster.geometry.coordinates;
+        const isCluster = cluster.properties?.cluster;
+        if (isCluster) {
+          const count = cluster.properties?.point_count ?? 0;
+          return (
+            <Marker
+              key={`cluster-${cluster.id}`}
+              longitude={lon}
+              latitude={lat}
+              anchor="center"
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+              }}
+              className="cursor-default"
+            >
+              <div
+                title={`${count} גנים`}
+                className="flex items-center justify-center rounded-full bg-gan-secondary text-white font-hebrew font-semibold text-sm min-w-[28px] h-7 px-2 shadow-md border-2 border-white"
+              >
+                {count}
+              </div>
+            </Marker>
+          );
+        }
+        const gan = cluster.properties?.gan;
+        if (!gan) return null;
+        return (
+          <Marker
+            key={gan.id}
+            longitude={lon}
+            latitude={lat}
+            anchor="bottom"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              onSelectGan(gan);
+            }}
+            className="cursor-pointer"
           >
-            <MapPin className="w-5 h-5" />
-          </div>
-        </Marker>
-      ))}
+            <div
+              title={gan.name_he}
+              className={`flex items-center justify-center rounded-full transition-all duration-150 hover:scale-110 ${
+                selectedGanId === gan.id
+                  ? "bg-gan-primary text-white ring-4 ring-gan-primary/40 shadow-lg scale-125"
+                  : "bg-gan-secondary text-white"
+              }`}
+            >
+              <MapPin className="w-5 h-5" />
+            </div>
+          </Marker>
+        );
+      })}
     </Map>
   );
 }

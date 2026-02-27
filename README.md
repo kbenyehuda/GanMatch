@@ -90,8 +90,28 @@ src/
 - **Gan detail view** – Government licensing data, address, phones; Give-to-Get blurred reviews
 - **Darga calculator** – Estimated subsidy from Ministry of Labor 2025–2026 tables (placeholder brackets)
 
+## Populating real data (Tel Aviv / Givatayim)
+
+A Python scraper lives in `scripts/scraper/`:
+
+```bash
+cd scripts/scraper
+pip install -r requirements.txt
+playwright install chromium
+# Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env
+# Run insert_gan RPC migration in Supabase
+python scrape_tel_aviv_givatayim.py
+```
+
+If the municipal pages don't match the scraper's structure, use manual CSV import:
+
+```bash
+python import_from_csv.py your_data.csv
+```
+
+See `scripts/scraper/README.md` for full details.
+
 ## Next steps
 
-1. **Populate data** – Use a Python/Playwright scraper to import data from the [Ministry of Education daycare portal](https://www.gov.il/en/service/registration_for_day_care_centers_and_nurseries1)
-2. **Auth** – Supabase Auth for login; wire `canViewReviews` to contribution check
-3. **Darga tables** – Replace placeholder brackets in `src/lib/darga-calculator.ts` with official 2026 tables from [daycaresimulatordocuments.labor.gov.il](https://daycaresimulatordocuments.labor.gov.il) or Ministry of Labor docs
+1. **Auth** – Supabase Auth for login; wire `canViewReviews` to contribution check
+2. **Darga tables** – Replace placeholder brackets in `src/lib/darga-calculator.ts` with official 2026 tables

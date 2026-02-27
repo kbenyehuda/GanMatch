@@ -3,7 +3,6 @@
 import { Shield, Phone, X, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DargaCalculator } from "./DargaCalculator";
 import type { Gan } from "@/types/ganim";
 
 interface GanDetailProps {
@@ -102,9 +101,6 @@ export function GanDetail({
             </div>
           )}
         </div>
-
-        {/* Darga subsidy calculator */}
-        <DargaCalculator />
       </CardContent>
     </Card>
   );
