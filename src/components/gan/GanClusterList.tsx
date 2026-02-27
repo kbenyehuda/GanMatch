@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StarRating } from "@/components/ui/StarRating";
 import type { Gan } from "@/types/ganim";
 
 interface GanClusterListProps {
@@ -49,6 +50,14 @@ export function GanClusterList({ ganim, onClose, onSelectGan }: GanClusterListPr
                 <div className="text-[11px] text-gray-500 whitespace-nowrap">
                   {g.type}
                 </div>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <StarRating value={g.avg_rating} count={g.recommendation_count} showValue />
+                {!g.is_verified ? (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
+                    לא מאומת
+                  </span>
+                ) : null}
               </div>
               <div className="mt-1 text-sm text-gray-600 font-hebrew truncate">
                 {g.address || g.city || "—"}

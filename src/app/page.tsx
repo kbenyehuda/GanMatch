@@ -5,6 +5,8 @@ import { MapContainer } from "@/components/map/MapContainer";
 import { SearchResultsPanel } from "@/components/layout/SearchResultsPanel";
 import { GanDetail } from "@/components/gan/GanDetail";
 import { GanClusterList } from "@/components/gan/GanClusterList";
+import { SuggestGanModal } from "@/components/gan/SuggestGanModal";
+import { AuthButton } from "@/components/auth/AuthButton";
 import { fetchAllGanim } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
 import { Baby } from "lucide-react";
@@ -15,6 +17,11 @@ export default function HomePage() {
   const [selectedClusterGanim, setSelectedClusterGanim] = useState<Gan[] | null>(
     null
   );
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestPin, setSuggestPin] = useState<{ lon: number; lat: number } | null>(
+    null
+  );
+  const [pickingPin, setPickingPin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [canViewReviews] = useState(false); // TODO: Wire to auth + contribution check
@@ -64,6 +71,15 @@ export default function HomePage() {
             setSelectedGan(null);
           }}
           onBoundsChange={onBoundsChange}
+          onMapClick={
+            pickingPin
+              ? (pos) => {
+                  setSuggestPin(pos);
+                  setPickingPin(false);
+                }
+              : undefined
+          }
+          pendingPin={suggestOpen ? suggestPin : null}
         />
       </div>
 
@@ -118,6 +134,53 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Suggest gan overlay */}
+      {suggestOpen && (
+        <div className="absolute bottom-4 start-4 end-4 top-14 md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-30 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
+          <SuggestGanModal
+            pin={suggestPin}
+            onPinChange={setSuggestPin}
+            onRequestPin={() => {
+              setSelectedGan(null);
+              setSelectedClusterGanim(null);
+              setPickingPin(true);
+            }}
+            onClose={() => {
+              setSuggestOpen(false);
+              setPickingPin(false);
+            }}
+            onSuggested={(r) => {
+              const newGan: Gan = {
+                id: r.id,
+                name_he: r.name_he,
+                name_en: null,
+                address: r.address,
+                city: r.city,
+                type: "Supervised",
+                license_status: "Temporary",
+                has_cctv: false,
+                metadata: { source: "user_suggestion" },
+                is_verified: false,
+                avg_rating: null,
+                avg_cleanliness: null,
+                avg_staff: null,
+                avg_communication: null,
+                avg_food: null,
+                avg_location: null,
+                recommendation_count: 0,
+                lat: r.lat,
+                lon: r.lon,
+              };
+              setGanim((prev) => [newGan, ...prev]);
+              setSelectedGan(newGan);
+              setSelectedClusterGanim(null);
+              setSuggestOpen(false);
+              setPickingPin(false);
+            }}
+          />
+        </div>
+      )}
+
       {/* Fetch error banner */}
       {fetchError && (
         <div className="absolute top-14 start-4 end-4 md:end-[calc(24rem+1rem)] z-10 bg-amber-100 border border-amber-400 text-amber-900 px-4 py-2 rounded-lg text-sm font-hebrew">
@@ -137,6 +200,20 @@ export default function HomePage() {
           <span className="font-hebrew font-bold text-gan-dark">GanMatch</span>
           <span className="text-sm text-gray-500 font-hebrew">גן מתאים</span>
         </div>
+        <div className="flex items-center gap-2">
+          <AuthButton />
+          <button
+            type="button"
+            className="hidden md:inline-flex bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg font-hebrew text-sm border border-gan-accent/30 hover:bg-white"
+            onClick={() => {
+              setSuggestOpen(true);
+              setSuggestPin(null);
+              setPickingPin(false);
+            }}
+            title="הוסף גן (לא מאומת)"
+          >
+            הוסף גן
+          </button>
         <button
           type="button"
           className="md:hidden bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg font-hebrew text-sm"
@@ -144,6 +221,7 @@ export default function HomePage() {
         >
           {mobilePanelOpen ? "הסתר" : "חיפוש"}
         </button>
+        </div>
       </div>
     </div>
   );

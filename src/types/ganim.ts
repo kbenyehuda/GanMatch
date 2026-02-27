@@ -19,6 +19,14 @@ export interface Gan {
   license_status: LicenseStatus;
   has_cctv: boolean;
   metadata: GanMetadata;
+  is_verified: boolean;
+  avg_rating: number | null;
+  avg_cleanliness?: number | null;
+  avg_staff?: number | null;
+  avg_communication?: number | null;
+  avg_food?: number | null;
+  avg_location?: number | null;
+  recommendation_count: number;
   lat: number;
   lon: number;
 }
@@ -28,6 +36,12 @@ export interface Review {
   user_id: string;
   gan_id: string;
   rating: number;
+  is_anonymous?: boolean;
+  cleanliness_rating?: number | null;
+  staff_rating?: number | null;
+  communication_rating?: number | null;
+  food_rating?: number | null;
+  location_rating?: number | null;
   pros_text: string | null;
   cons_text: string | null;
   advice_to_parents_text: string | null;

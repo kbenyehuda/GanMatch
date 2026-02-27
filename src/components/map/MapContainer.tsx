@@ -37,6 +37,8 @@ interface MapContainerProps {
   onSelectGan: (gan: Gan | null) => void;
   onSelectCluster?: (ganim: Gan[]) => void;
   onBoundsChange: (bounds: Bounds) => void;
+  onMapClick?: (pos: { lon: number; lat: number }) => void;
+  pendingPin?: { lon: number; lat: number } | null;
 }
 
 export function MapContainer({
@@ -45,6 +47,8 @@ export function MapContainer({
   onSelectGan,
   onSelectCluster,
   onBoundsChange,
+  onMapClick,
+  pendingPin,
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [viewport, setViewport] = useState({
@@ -153,9 +157,13 @@ export function MapContainer({
       // Prevent selecting nothing when clicking the map background
       const target = e.originalEvent.target as HTMLElement;
       if (target.closest(".mapboxgl-marker")) return;
+      if (onMapClick) {
+        onMapClick({ lon: e.lngLat.lng, lat: e.lngLat.lat });
+        return;
+      }
       onSelectGan(null);
     },
-    [onSelectGan]
+    [onMapClick, onSelectGan]
   );
 
   if (!MAPBOX_TOKEN) {
@@ -217,6 +225,22 @@ export function MapContainer({
       onClick={handleMapClick}
     >
       <NavigationControl position="bottom-right" />
+      {pendingPin ? (
+        <Marker
+          key="pending-pin"
+          longitude={pendingPin.lon}
+          latitude={pendingPin.lat}
+          anchor="bottom"
+          onClick={(e) => {
+            e.originalEvent.stopPropagation();
+          }}
+          className="cursor-default"
+        >
+          <div className="flex items-center justify-center rounded-full bg-amber-500 text-white shadow-lg ring-4 ring-amber-500/30">
+            <MapPin className="w-6 h-6" />
+          </div>
+        </Marker>
+      ) : null}
       {clusters.map((cluster) => {
         const [lon, lat] = cluster.geometry.coordinates;
         const isCluster = cluster.properties?.cluster;

@@ -2,6 +2,7 @@
 
 import { Search, MapPin } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { StarRating } from "@/components/ui/StarRating";
 import type { Gan } from "@/types/ganim";
 
 interface SearchResultsPanelProps {
@@ -52,7 +53,17 @@ export function SearchResultsPanel({
               onClick={() => onSelectGan(gan)}
             >
               <CardContent className="p-4">
-                <h3 className="font-semibold text-gan-dark font-hebrew">{gan.name_he}</h3>
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-semibold text-gan-dark font-hebrew">{gan.name_he}</h3>
+                  {!gan.is_verified ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
+                      לא מאומת
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-1">
+                  <StarRating value={gan.avg_rating} count={gan.recommendation_count} />
+                </div>
                 <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
                   <MapPin className="w-3.5 h-3.5 shrink-0" />
                   <span>{gan.address || gan.city || "—"}</span>

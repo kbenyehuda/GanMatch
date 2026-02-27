@@ -29,6 +29,24 @@ export async function fetchAllGanim(): Promise<Gan[]> {
     license_status: row.license_status as Gan["license_status"],
     has_cctv: (row.has_cctv as boolean) ?? false,
     metadata: (row.metadata as Gan["metadata"]) || {},
+    is_verified: (row.is_verified as boolean) ?? true,
+    avg_rating:
+      typeof row.avg_rating === "number"
+        ? (row.avg_rating as number)
+        : row.avg_rating == null
+          ? null
+          : Number(row.avg_rating),
+    avg_cleanliness:
+      row.avg_cleanliness == null ? null : Number(row.avg_cleanliness),
+    avg_staff: row.avg_staff == null ? null : Number(row.avg_staff),
+    avg_communication:
+      row.avg_communication == null ? null : Number(row.avg_communication),
+    avg_food: row.avg_food == null ? null : Number(row.avg_food),
+    avg_location: row.avg_location == null ? null : Number(row.avg_location),
+    recommendation_count:
+      typeof row.recommendation_count === "number"
+        ? (row.recommendation_count as number)
+        : Number(row.recommendation_count ?? 0),
     lat: row.lat as number,
     lon: row.lon as number,
   }));
@@ -59,6 +77,24 @@ export async function fetchGanimInBounds(bounds: Bounds): Promise<Gan[]> {
     license_status: row.license_status as Gan["license_status"],
     has_cctv: (row.has_cctv as boolean) ?? false,
     metadata: (row.metadata as Gan["metadata"]) || {},
+    is_verified: (row.is_verified as boolean) ?? true,
+    avg_rating:
+      typeof row.avg_rating === "number"
+        ? (row.avg_rating as number)
+        : row.avg_rating == null
+          ? null
+          : Number(row.avg_rating),
+    avg_cleanliness:
+      row.avg_cleanliness == null ? null : Number(row.avg_cleanliness),
+    avg_staff: row.avg_staff == null ? null : Number(row.avg_staff),
+    avg_communication:
+      row.avg_communication == null ? null : Number(row.avg_communication),
+    avg_food: row.avg_food == null ? null : Number(row.avg_food),
+    avg_location: row.avg_location == null ? null : Number(row.avg_location),
+    recommendation_count:
+      typeof row.recommendation_count === "number"
+        ? (row.recommendation_count as number)
+        : Number(row.recommendation_count ?? 0),
     lat: row.lat as number,
     lon: row.lon as number,
   }));
