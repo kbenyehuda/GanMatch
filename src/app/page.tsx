@@ -8,9 +8,17 @@ import { fetchGanimInBounds, type Bounds } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
 import { Baby } from "lucide-react";
 
+// Tel Aviv default viewport bounds (zoom 12) - used for initial fetch before map loads
+const DEFAULT_BOUNDS: Bounds = {
+  minLon: 34.72,
+  minLat: 32.04,
+  maxLon: 34.85,
+  maxLat: 32.14,
+};
+
 export default function HomePage() {
   const [ganim, setGanim] = useState<Gan[]>([]);
-  const [bounds, setBounds] = useState<Bounds | null>(null);
+  const [bounds, setBounds] = useState<Bounds | null>(DEFAULT_BOUNDS);
   const [selectedGan, setSelectedGan] = useState<Gan | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -20,9 +28,21 @@ export default function HomePage() {
     setBounds(newBounds);
   }, []);
 
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!bounds) return;
-    fetchGanimInBounds(bounds).then(setGanim);
+    setFetchError(null);
+    fetchGanimInBounds(bounds)
+      .then((data) => {
+        setGanim(data);
+        setFetchError(null);
+      })
+      .catch((err) => {
+        console.error("[GanMatch] Failed to fetch ganim:", err);
+        setGanim([]);
+        setFetchError(err instanceof Error ? err.message : "שגיאה בטעינת גנים");
+      });
   }, [bounds]);
 
   // Filter ganim by search (client-side for now)
@@ -75,6 +95,18 @@ export default function HomePage() {
               // TODO: Open auth modal
             }}
           />
+        </div>
+      )}
+
+      {/* Fetch error banner */}
+      {fetchError && (
+        <div className="absolute top-14 start-4 end-4 md:end-[calc(24rem+1rem)] z-10 bg-amber-100 border border-amber-400 text-amber-900 px-4 py-2 rounded-lg text-sm font-hebrew">
+          {fetchError}
+          {fetchError.includes("Supabase") && (
+            <span className="block mt-1 text-xs">
+              הגדר NEXT_PUBLIC_SUPABASE_URL ו-NEXT_PUBLIC_SUPABASE_ANON_KEY
+            </span>
+          )}
         </div>
       )}
 

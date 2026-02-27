@@ -1,4 +1,3 @@
-import { supabase } from "./supabase";
 import type { Gan } from "@/types/ganim";
 
 export interface Bounds {
@@ -9,21 +8,20 @@ export interface Bounds {
 }
 
 export async function fetchGanimInBounds(bounds: Bounds): Promise<Gan[]> {
-  if (!supabase) return [];
-
-  const { data, error } = await supabase.rpc("get_ganim_in_bbox", {
-    min_lon: bounds.minLon,
-    min_lat: bounds.minLat,
-    max_lon: bounds.maxLon,
-    max_lat: bounds.maxLat,
-    p_limit: 100,
+  const params = new URLSearchParams({
+    minLon: String(bounds.minLon),
+    minLat: String(bounds.minLat),
+    maxLon: String(bounds.maxLon),
+    maxLat: String(bounds.maxLat),
   });
-
-  if (error) {
-    console.error("Error fetching ganim:", error);
-    return [];
+  const res = await fetch(`/api/ganim?${params}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error("[GanMatch] API error:", res.status, err);
+    const msg = typeof err?.error === "string" ? err.error : err?.error?.message ?? `Failed to load ganim (${res.status})`;
+    throw new Error(msg);
   }
-
+  const data = await res.json();
   return (data || []).map((row: Record<string, unknown>) => ({
     id: row.id as string,
     name_he: row.name_he as string,

@@ -45,10 +45,9 @@ export function MapContainer({
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
 
-  const handleMapLoad = useCallback(() => {
-    const map = mapRef.current;
-    if (map) {
-      const b = map.getBounds();
+  const handleMapLoad = useCallback(
+    (e: { target: { getBounds: () => { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number } } }) => {
+      const b = e.target.getBounds();
       if (b) {
         onBoundsChange({
           minLon: b.getWest(),
@@ -57,8 +56,9 @@ export function MapContainer({
           maxLat: b.getNorth(),
         });
       }
-    }
-  }, [onBoundsChange]);
+    },
+    [onBoundsChange]
+  );
 
   const handleMoveEnd = useCallback(() => {
     const map = mapRef.current;
@@ -101,18 +101,22 @@ export function MapContainer({
         <div className="rounded-lg bg-white p-6 shadow-lg text-center max-w-md">
           <h3 className="font-semibold text-gan-dark mb-2">Mapbox Token Required</h3>
           <p className="text-sm text-gray-600 mb-4">
-            Add <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> to{" "}
-            <code className="bg-gray-100 px-1 rounded">.env.local</code> in the project root.
+            Set <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> in .env.local or system environment variables.
           </p>
           <div className="text-left text-xs text-gray-500 mb-4 p-3 bg-gray-50 rounded space-y-1 font-mono">
-            <p>Debug: present={String(debug.hasRawValue)} type={debug.rawType} length={debug.rawLength}</p>
-            {debug.isPlaceholder && (
+            {debug.rawLength === 0 ? (
+              <>
+                <p className="text-amber-600 font-medium">
+                  Variable exists but value is empty. Ensure the token (starts with pk.) is set correctly.
+                </p>
+                <p className="mt-1">
+                  If using system env vars: open a new terminal (or restart Cursor) so the process sees the updated variables, then run npm run dev.
+                </p>
+              </>
+            ) : debug.isPlaceholder ? (
               <p className="text-amber-600">Replace the example placeholder with your real token.</p>
-            )}
-            <p className="text-amber-600 mt-1">
-              Variable must be exactly NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN (NEXT_PUBLIC_ prefix is required).
-            </p>
-            <p>Restart dev server after editing .env.local.</p>
+            ) : null}
+            <p>Example: <code>NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.eyJ1...</code></p>
           </div>
           <a
             href="https://account.mapbox.com/"

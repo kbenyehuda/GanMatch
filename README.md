@@ -21,7 +21,7 @@ npm install
 
 ### 2. Environment variables
 
-Copy `.env.local.example` to `.env.local` and fill in:
+Set these in `.env.local` (project root) or in your system environment variables:
 
 ```env
 # Mapbox - Get a free token at https://account.mapbox.com/
@@ -32,12 +32,15 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 ```
 
+**If using system env vars on Windows:** Open a new terminal (or restart your IDE) after setting them—the running process won't see changes until it restarts. Then run `npm run dev`.
+
 ### 3. Database setup
 
 Run the SQL migration in your Supabase project:
 
 1. Open Supabase Dashboard → SQL Editor
 2. Run the contents of `supabase/migrations/20260227000000_initial_schema.sql`
+3. (Optional) Run simulated data: `supabase/seed/seed_simulated_ganim.sql` (adds 7 fake daycares for dev/testing only)
 
 This creates:
 

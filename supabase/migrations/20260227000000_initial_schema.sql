@@ -163,8 +163,8 @@ BEGIN
     ST_X(g.location::geometry)::DOUBLE PRECISION AS lon
   FROM ganim g
   WHERE ST_Within(
-    g.location,
-    ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)::geography
+    g.location::geometry,
+    ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
   )
   LIMIT p_limit;
 END;
