@@ -8,7 +8,8 @@ import { StarRatingInput } from "@/components/ui/StarRatingInput";
 import type { Gan } from "@/types/ganim";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 
 interface GanDetailProps {
   gan: Gan;
@@ -16,6 +17,7 @@ interface GanDetailProps {
   onBack?: () => void;
   canViewReviews: boolean; // Give-to-Get: true if user has contributed
   onRequestLogin?: () => void;
+  onReviewSaved?: () => void;
 }
 
 export function GanDetail({
@@ -24,6 +26,7 @@ export function GanDetail({
   onBack,
   canViewReviews,
   onRequestLogin,
+  onReviewSaved,
 }: GanDetailProps) {
   const { user } = useSession();
   const [showFacets, setShowFacets] = useState(false);
@@ -31,6 +34,19 @@ export function GanDetail({
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<
+    Array<{
+      id: string;
+      user_id: string;
+      rating: number;
+      is_anonymous: boolean;
+      advice_to_parents_text: string | null;
+      created_at: string;
+    }>
+  >([]);
+  const [contactReviewId, setContactReviewId] = useState<string | null>(null);
 
   const [rating, setRating] = useState(4.0);
   const [isAnonymous, setIsAnonymous] = useState(true);
@@ -40,6 +56,14 @@ export function GanDetail({
   const [communication, setCommunication] = useState<number | null>(null);
   const [food, setFood] = useState<number | null>(null);
   const [location, setLocation] = useState<number | null>(null);
+
+  const formatReviewDate = useMemo(() => {
+    return (iso: string) => {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString("he-IL", { year: "numeric", month: "2-digit", day: "2-digit" });
+    };
+  }, []);
 
   const phones = Array.isArray(gan.metadata?.phone)
     ? gan.metadata.phone
@@ -95,12 +119,72 @@ export function GanDetail({
         .upsert(payload, { onConflict: "user_id,gan_id" });
       if (error) throw error;
       setSubmitted(true);
+      onReviewSaved?.();
     } catch (e: any) {
-      setSubmitError(typeof e?.message === "string" ? e.message : "שגיאה בפרסום המלצה");
+      const msg = typeof e?.message === "string" ? e.message : "";
+      if (msg === "review_limit_reached") {
+        setSubmitError("אפשר לפרסם עד 10 המלצות בסך הכל.");
+      } else {
+        setSubmitError(msg || "שגיאה בפרסום המלצה");
+      }
     } finally {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!showRecommendForm) {
+      setSubmitted(false);
+      setSubmitError(null);
+    }
+  }, [showRecommendForm]);
+
+  useEffect(() => {
+    if (!canViewReviews || !supabase) return;
+    let cancelled = false;
+    setReviewsLoading(true);
+    setReviewsError(null);
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("reviews")
+          .select("id,user_id,rating,is_anonymous,advice_to_parents_text,created_at")
+          .eq("gan_id", gan.id)
+          .order("created_at", { ascending: false });
+
+        if (cancelled) return;
+        if (error) {
+          setReviewsError(error.message);
+          setReviews([]);
+          return;
+        }
+
+        setReviews(
+          (data ?? []).map((r: any) => ({
+            id: String(r.id),
+            user_id: String(r.user_id),
+            rating: Number(r.rating),
+            is_anonymous: Boolean(r.is_anonymous),
+            advice_to_parents_text:
+              typeof r.advice_to_parents_text === "string" ? r.advice_to_parents_text : null,
+            created_at: String(r.created_at),
+          }))
+        );
+      } catch (err) {
+        if (cancelled) return;
+        setReviewsError(err instanceof Error ? err.message : "שגיאה בטעינת ביקורות");
+        setReviews([]);
+      } finally {
+        if (cancelled) return;
+        setReviewsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewReviews, gan.id]);
 
   return (
     <Card className="overflow-hidden">
@@ -247,6 +331,7 @@ export function GanDetail({
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
                       rows={3}
+                      disabled={submitted}
                       className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew focus:outline-none focus:ring-2 focus:ring-gan-primary/40"
                       placeholder="מה היה טוב/פחות טוב? טיפים להורים?"
                     />
@@ -263,9 +348,11 @@ export function GanDetail({
                     </div>
                   )}
 
-                  <Button size="sm" onClick={submitRecommendation} disabled={saving}>
-                    {saving ? "שומר..." : "פרסם המלצה"}
-                  </Button>
+                  {!submitted ? (
+                    <Button size="sm" onClick={submitRecommendation} disabled={saving}>
+                      {saving ? "שומר..." : "פרסם המלצה"}
+                    </Button>
+                  ) : null}
                 </>
               )}
             </div>
@@ -333,9 +420,72 @@ export function GanDetail({
         <div>
           <h4 className="font-medium text-gan-dark mb-2">ביקורות הורים</h4>
           {canViewReviews ? (
-            <p className="text-sm text-gray-600">
-              כאן יוצגו ביקורות (קצוות, חסרונות, עצות להורים) לאחר שתבצע התחברות ותגש תרומה.
-            </p>
+            <div className="space-y-3">
+              {reviewsLoading ? (
+                <div className="text-sm text-gray-600 font-hebrew">טוען ביקורות…</div>
+              ) : reviewsError ? (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 font-hebrew">
+                  {reviewsError}
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="text-sm text-gray-600 font-hebrew">אין עדיין ביקורות.</div>
+              ) : (
+                <div className="space-y-2">
+                  {reviews.map((r) => (
+                    <div
+                      key={r.id}
+                      className="rounded-lg border border-gan-accent/30 bg-white p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <StarRating value={r.rating} showValue />
+                            <span className="text-[11px] text-gray-500 font-hebrew">
+                              {r.is_anonymous
+                                ? "אנונימי"
+                                : r.user_id === user?.id
+                                  ? (() => {
+                                      const fullName =
+                                        typeof (user as any)?.user_metadata?.full_name === "string"
+                                          ? String((user as any).user_metadata.full_name).trim()
+                                          : "";
+                                      const email = typeof user?.email === "string" ? user.email.trim() : "";
+                                      if (fullName && email && fullName !== email) return `${fullName} (${email})`;
+                                      return fullName || email || "לא אנונימי";
+                                    })()
+                                  : "לא אנונימי"}
+                            </span>
+                            <span className="text-[11px] text-gray-500 font-hebrew">
+                              {formatReviewDate(r.created_at)}
+                            </span>
+                          </div>
+                          {r.advice_to_parents_text ? (
+                            <div className="mt-2 text-sm text-gray-700 font-hebrew whitespace-pre-wrap">
+                              {r.advice_to_parents_text}
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-sm text-gray-500 font-hebrew">
+                              (ללא טקסט חופשי)
+                            </div>
+                          )}
+                        </div>
+
+                        {user && r.user_id !== user.id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="whitespace-nowrap"
+                            onClick={() => setContactReviewId(r.id)}
+                          >
+                            שלח שאלה
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             <div
               className="relative rounded-lg border border-gan-accent/50 p-4 bg-gan-muted/20"
@@ -360,6 +510,13 @@ export function GanDetail({
           )}
         </div>
       </CardContent>
+      {contactReviewId ? (
+        <ContactReviewerModal
+          reviewId={contactReviewId}
+          ganName={gan.name_he}
+          onClose={() => setContactReviewId(null)}
+        />
+      ) : null}
     </Card>
   );
 }

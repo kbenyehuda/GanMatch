@@ -10,8 +10,10 @@ import { AuthButton } from "@/components/auth/AuthButton";
 import { fetchAllGanim } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
 import { Baby } from "lucide-react";
+import { useSession } from "@/lib/useSession";
 
 export default function HomePage() {
+  const { user } = useSession();
   const [ganim, setGanim] = useState<Gan[]>([]);
   const [selectedGan, setSelectedGan] = useState<Gan | null>(null);
   const [selectedClusterGanim, setSelectedClusterGanim] = useState<Gan[] | null>(
@@ -24,25 +26,34 @@ export default function HomePage() {
   const [pickingPin, setPickingPin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
-  const [canViewReviews] = useState(false); // TODO: Wire to auth + contribution check
+  const canViewReviews = !!user; // TODO: Wire to contribution check (Give-to-Get)
 
   const onBoundsChange = useCallback(() => {}, []);
 
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reloadGanim = useCallback(async () => {
     setFetchError(null);
-    fetchAllGanim()
-      .then((data) => {
-        setGanim(data);
-        setFetchError(null);
-      })
-      .catch((err) => {
-        console.error("[GanMatch] Failed to fetch ganim:", err);
-        setGanim([]);
-        setFetchError(err instanceof Error ? err.message : "שגיאה בטעינת גנים");
-      });
+    try {
+      const data = await fetchAllGanim();
+      setGanim(data);
+      setSelectedGan((prev) => (prev ? data.find((g) => g.id === prev.id) ?? prev : prev));
+      setSelectedClusterGanim((prev) =>
+        prev
+          ? prev
+              .map((g) => data.find((x) => x.id === g.id) ?? g)
+              .filter(Boolean)
+          : prev
+      );
+    } catch (err) {
+      console.error("[GanMatch] Failed to fetch ganim:", err);
+      setFetchError(err instanceof Error ? err.message : "שגיאה בטעינת גנים");
+    }
   }, []);
+
+  useEffect(() => {
+    reloadGanim();
+  }, [reloadGanim]);
 
   // Filter ganim by search (client-side for now)
   const filteredGanim = searchQuery
@@ -118,9 +129,7 @@ export default function HomePage() {
                 setSelectedClusterGanim(null);
               }}
               canViewReviews={canViewReviews}
-              onRequestLogin={() => {
-                // TODO: Open auth modal
-              }}
+              onReviewSaved={reloadGanim}
             />
           ) : selectedClusterGanim ? (
             <GanClusterList

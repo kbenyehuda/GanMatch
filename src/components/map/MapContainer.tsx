@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, {
   Marker,
   NavigationControl,
@@ -11,11 +11,18 @@ import Supercluster from "supercluster";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MapPin } from "lucide-react";
 import type { Gan } from "@/types/ganim";
+import { publicEnv } from "@/lib/env/public";
 
-const MAPBOX_TOKEN =
-  typeof process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN === "string"
-    ? process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN.trim()
-    : undefined;
+type GanPointProps = { gan: Gan };
+type ClusterOrPoint =
+  | Supercluster.ClusterFeature<Supercluster.AnyProps>
+  | Supercluster.PointFeature<GanPointProps>;
+
+function isClusterFeature(f: ClusterOrPoint): f is Supercluster.ClusterFeature<Supercluster.AnyProps> {
+  return (f as any)?.properties?.cluster === true;
+}
+
+const MAPBOX_TOKEN = publicEnv.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? undefined;
 
 // Default: Tel Aviv + Givatayim area
 const DEFAULT_VIEW = {
@@ -51,10 +58,15 @@ export function MapContainer({
   pendingPin,
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
+  const [mounted, setMounted] = useState(false);
   const [viewport, setViewport] = useState({
     bounds: [34.69, 32.03, 34.88, 32.16] as [number, number, number, number],
     zoom: 11,
   });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const updateViewport = useCallback(() => {
     const map = mapRef.current;
@@ -84,13 +96,13 @@ export function MapContainer({
   }, [updateViewport]);
 
   const index = useMemo(() => {
-    const sc = new Supercluster<Gan>({ radius: 60, maxZoom: 18 });
+    const sc = new Supercluster<GanPointProps>({ radius: 60, maxZoom: 18 });
     sc.load(
       ganim
         .filter((g) => typeof g.lat === "number" && typeof g.lon === "number")
         .map((g) => ({
           type: "Feature" as const,
-          properties: { cluster: false, gan: g },
+          properties: { gan: g },
           geometry: {
             type: "Point" as const,
             coordinates: [g.lon, g.lat],
@@ -123,9 +135,10 @@ export function MapContainer({
       const clusterId = getClusterId(clusterObj);
       if (clusterId === null) return [];
       try {
-        return (index.getLeaves(clusterId, limit, 0) as any[])
-          .map((f) => f?.properties?.gan)
-          .filter(Boolean) as Gan[];
+        return index
+          .getLeaves(clusterId, limit, 0)
+          .map((f) => f.properties.gan)
+          .filter(Boolean);
       } catch {
         return [];
       }
@@ -166,8 +179,12 @@ export function MapContainer({
     [onMapClick, onSelectGan]
   );
 
+  if (!mounted) {
+    return <div className="absolute inset-0 bg-gan-muted/20" />;
+  }
+
   if (!MAPBOX_TOKEN) {
-    const rawValue = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    const rawValue = publicEnv.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? undefined;
     const debug = {
       hasRawValue: rawValue !== undefined,
       rawType: typeof rawValue,
@@ -241,11 +258,10 @@ export function MapContainer({
           </div>
         </Marker>
       ) : null}
-      {clusters.map((cluster) => {
+      {(clusters as ClusterOrPoint[]).map((cluster) => {
         const [lon, lat] = cluster.geometry.coordinates;
-        const isCluster = cluster.properties?.cluster;
-        if (isCluster) {
-          const count = cluster.properties?.point_count ?? 0;
+        if (isClusterFeature(cluster)) {
+          const count = cluster.properties.point_count ?? 0;
           const leafNames = getClusterGanim(cluster, 10).map((g) => g.name_he).filter(Boolean);
           const tooltip =
             leafNames.length > 0
