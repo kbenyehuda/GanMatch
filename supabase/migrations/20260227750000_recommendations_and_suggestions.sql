@@ -168,6 +168,11 @@ GRANT EXECUTE ON FUNCTION public.suggest_gan(TEXT, DOUBLE PRECISION, DOUBLE PREC
 -- =============================================================================
 -- RPC: ganim with rating aggregates
 -- =============================================================================
+-- Postgres cannot change OUT parameter row type via CREATE OR REPLACE.
+-- Drop the old signatures first so this migration is repeatable.
+DROP FUNCTION IF EXISTS public.get_all_ganim(INT);
+DROP FUNCTION IF EXISTS public.get_ganim_in_bbox(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, INT);
+
 CREATE OR REPLACE FUNCTION public.get_all_ganim(p_limit INT DEFAULT 1000)
 RETURNS TABLE (
   id UUID,
