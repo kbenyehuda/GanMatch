@@ -136,6 +136,7 @@ export default function HomePage() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           isMobileOpen={mobilePanelOpen}
+          onMobileOpenChange={setMobilePanelOpen}
           onCloseMobile={() => setMobilePanelOpen(false)}
         />
       </div>
@@ -221,7 +222,7 @@ export default function HomePage() {
 
       {/* Fetch error banner */}
       {fetchError && (
-        <div className="absolute top-[calc(3.5rem+env(safe-area-inset-top))] start-4 end-4 md:end-[calc(24rem+1rem)] z-10 bg-amber-100 border border-amber-400 text-amber-900 px-4 py-2 rounded-lg text-sm font-hebrew">
+        <div className="absolute top-[calc(3.5rem+env(safe-area-inset-top))] left-4 right-4 md:right-[calc(24rem+1rem)] z-10 bg-amber-100 border border-amber-400 text-amber-900 px-4 py-2 rounded-lg text-sm font-hebrew">
           {fetchError}
           {fetchError.includes("Supabase") && (
             <span className="block mt-1 text-xs">
@@ -232,13 +233,13 @@ export default function HomePage() {
       )}
 
       {/* Header branding */}
-      <div className="absolute top-[max(1rem,env(safe-area-inset-top))] start-4 end-4 md:end-[calc(24rem+1rem)] z-10 flex items-center justify-between">
+      <div className="absolute top-[max(1rem,env(safe-area-inset-top))] left-4 right-4 md:right-[calc(24rem+1rem)] z-10 flex flex-wrap items-center justify-between gap-y-2">
         <div className="flex items-center gap-2 bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg">
           <Baby className="w-6 h-6 text-gan-primary" />
           <span className="font-hebrew font-bold text-gan-dark">GanMatch</span>
           <span className="text-sm text-gray-500 font-hebrew">גן מתאים</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {!user && skipLogin && (
             <div className="hidden md:flex items-center gap-2 bg-amber-50/95 backdrop-blur px-3 py-2 rounded-full shadow-lg border border-amber-200 text-amber-900 font-hebrew text-xs">
               <TriangleAlert className="w-4 h-4" />

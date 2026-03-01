@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = "ganmatch-pwa-v1";
-const CORE_ASSETS = ["/", "/manifest.webmanifest"];
+const CACHE_NAME = "ganmatch-pwa-v2";
+const CORE_ASSETS = ["/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -34,12 +34,33 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
+      const accept = req.headers.get("accept") || "";
+      const isHtml = req.mode === "navigate" || accept.includes("text/html");
+
+      // HTML: network-first so new deploys show up immediately.
+      if (isHtml) {
+        try {
+          const res = await fetch(req);
+          if (res.ok && url.origin === self.location.origin) {
+            cache.put(req, res.clone()).catch(() => {});
+          }
+          return res;
+        } catch {
+          const cached = await cache.match(req);
+          if (cached) return cached;
+          return new Response("Offline", {
+            status: 503,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
+        }
+      }
+
+      // Non-HTML: cache-first.
       const cached = await cache.match(req);
       if (cached) return cached;
 
       try {
         const res = await fetch(req);
-        // Cache successful same-origin navigations + basic assets.
         if (res.ok && url.origin === self.location.origin) {
           cache.put(req, res.clone()).catch(() => {});
         }

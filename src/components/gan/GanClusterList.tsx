@@ -47,9 +47,6 @@ export function GanClusterList({ ganim, onClose, onSelectGan }: GanClusterListPr
                 <div className="font-hebrew font-semibold text-gan-dark truncate">
                   {g.name_he}
                 </div>
-                <div className="text-[11px] text-gray-500 whitespace-nowrap">
-                  {g.type}
-                </div>
               </div>
               <div className="mt-1 flex items-center justify-between gap-3">
                 <StarRating value={g.avg_rating} count={g.recommendation_count} showValue />
@@ -61,16 +58,6 @@ export function GanClusterList({ ganim, onClose, onSelectGan }: GanClusterListPr
               </div>
               <div className="mt-1 text-sm text-gray-600 font-hebrew truncate">
                 {g.address || g.city || "—"}
-              </div>
-              <div className="mt-1 flex flex-wrap gap-2">
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-gan-muted text-gan-dark">
-                  {g.license_status}
-                </span>
-                {g.has_cctv ? (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-gan-accent/30 text-gan-dark">
-                    CCTV
-                  </span>
-                ) : null}
               </div>
             </button>
           ))}
