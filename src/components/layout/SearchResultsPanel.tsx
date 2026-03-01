@@ -38,7 +38,7 @@ export function SearchResultsPanel({
           />
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-8 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] space-y-3">
         {ganim.length === 0 ? (
           <p className="text-center text-gray-500 py-8 font-hebrew">
             לא נמצאו גנים באזור. נסה להזיז את המפה או להרחיב את החיפוש.
@@ -98,6 +98,7 @@ export function SearchResultsPanel({
 
       {/* Mobile: Bottom sheet */}
       <div
+        id="mobile-search-panel"
         className={`md:hidden fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-2xl transition-transform duration-300 ${
           isMobileOpen ? "translate-y-0" : "translate-y-[calc(100%-56px)]"
         }`}
@@ -105,7 +106,7 @@ export function SearchResultsPanel({
         <div className="flex justify-center pt-2 pb-1">
           <div className="w-12 h-1 rounded-full bg-gray-300" />
         </div>
-        <div className="h-[60vh] overflow-hidden flex flex-col min-h-0">
+        <div className="h-[60vh] overflow-hidden flex flex-col min-h-0 pb-[env(safe-area-inset-bottom)]">
           <div className="px-4 py-2 border-b shrink-0">
             <h2 className="font-hebrew font-semibold text-gan-dark">חיפוש גנים</h2>
           </div>

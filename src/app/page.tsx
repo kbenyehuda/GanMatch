@@ -142,7 +142,7 @@ export default function HomePage() {
 
       {/* Right-side overlay: either cluster list or gan detail */}
       {(selectedGan || selectedClusterGanim) && (
-        <div className="absolute bottom-4 start-4 end-4 top-14 md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
+        <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] start-4 end-4 top-[calc(3.5rem+env(safe-area-inset-top))] md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
           {selectedGan ? (
             <GanDetail
               gan={selectedGan}
@@ -174,7 +174,7 @@ export default function HomePage() {
 
       {/* Suggest gan overlay */}
       {suggestOpen && (
-        <div className="absolute bottom-4 start-4 end-4 top-14 md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-30 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
+        <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] start-4 end-4 top-[calc(3.5rem+env(safe-area-inset-top))] md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-30 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
           <SuggestGanModal
             pin={suggestPin}
             onPinChange={setSuggestPin}
@@ -221,7 +221,7 @@ export default function HomePage() {
 
       {/* Fetch error banner */}
       {fetchError && (
-        <div className="absolute top-14 start-4 end-4 md:end-[calc(24rem+1rem)] z-10 bg-amber-100 border border-amber-400 text-amber-900 px-4 py-2 rounded-lg text-sm font-hebrew">
+        <div className="absolute top-[calc(3.5rem+env(safe-area-inset-top))] start-4 end-4 md:end-[calc(24rem+1rem)] z-10 bg-amber-100 border border-amber-400 text-amber-900 px-4 py-2 rounded-lg text-sm font-hebrew">
           {fetchError}
           {fetchError.includes("Supabase") && (
             <span className="block mt-1 text-xs">
@@ -232,7 +232,7 @@ export default function HomePage() {
       )}
 
       {/* Header branding */}
-      <div className="absolute top-4 start-4 end-4 md:end-[calc(24rem+1rem)] z-10 flex items-center justify-between">
+      <div className="absolute top-[max(1rem,env(safe-area-inset-top))] start-4 end-4 md:end-[calc(24rem+1rem)] z-10 flex items-center justify-between">
         <div className="flex items-center gap-2 bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg">
           <Baby className="w-6 h-6 text-gan-primary" />
           <span className="font-hebrew font-bold text-gan-dark">GanMatch</span>
@@ -258,19 +258,21 @@ export default function HomePage() {
           >
             הוסף גן
           </button>
-        <button
-          type="button"
-          className="md:hidden bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg font-hebrew text-sm"
-          onClick={() => setMobilePanelOpen(!mobilePanelOpen)}
-        >
-          {mobilePanelOpen ? "הסתר" : "חיפוש"}
-        </button>
+          <button
+            type="button"
+            className="md:hidden bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg font-hebrew text-sm"
+            onClick={() => setMobilePanelOpen(!mobilePanelOpen)}
+            aria-expanded={mobilePanelOpen}
+            aria-controls="mobile-search-panel"
+          >
+            {mobilePanelOpen ? "הסתר" : "חיפוש"}
+          </button>
         </div>
       </div>
 
       {/* Mobile guest notice */}
       {!user && skipLogin && (
-        <div className="absolute top-14 start-4 end-4 md:hidden z-10 bg-amber-50/95 backdrop-blur border border-amber-200 text-amber-900 px-4 py-2 rounded-lg text-xs font-hebrew flex items-center gap-2 shadow-lg">
+        <div className="absolute top-[calc(3.5rem+env(safe-area-inset-top))] start-4 end-4 md:hidden z-10 bg-amber-50/95 backdrop-blur border border-amber-200 text-amber-900 px-4 py-2 rounded-lg text-xs font-hebrew flex items-center gap-2 shadow-lg">
           <TriangleAlert className="w-4 h-4" />
           מצב אורח: חלק מהפעולות מוגבלות. התחברו כדי לפתוח הכל.
         </div>
