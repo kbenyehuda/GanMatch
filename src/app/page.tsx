@@ -7,13 +7,15 @@ import { GanDetail } from "@/components/gan/GanDetail";
 import { GanClusterList } from "@/components/gan/GanClusterList";
 import { SuggestGanModal } from "@/components/gan/SuggestGanModal";
 import { AuthButton } from "@/components/auth/AuthButton";
+import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
 import { fetchAllGanim } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
-import { Baby } from "lucide-react";
+import { Baby, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
 
 export default function HomePage() {
-  const { user } = useSession();
+  const { user, loading } = useSession();
+  const [skipLogin, setSkipLogin] = useState<boolean | null>(null);
   const [ganim, setGanim] = useState<Gan[]>([]);
   const [selectedGan, setSelectedGan] = useState<Gan | null>(null);
   const [selectedClusterGanim, setSelectedClusterGanim] = useState<Gan[] | null>(
@@ -31,6 +33,15 @@ export default function HomePage() {
   const onBoundsChange = useCallback(() => {}, []);
 
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      setSkipLogin(window.localStorage.getItem(SKIP_LOGIN_STORAGE_KEY) === "1");
+    } catch {
+      setSkipLogin(false);
+    }
+  }, []);
 
   const reloadGanim = useCallback(async () => {
     setFetchError(null);
@@ -54,6 +65,24 @@ export default function HomePage() {
   useEffect(() => {
     reloadGanim();
   }, [reloadGanim]);
+
+  if (loading || skipLogin === null) {
+    return <ConnectionGate loading />;
+  }
+
+  if (!user && !skipLogin) {
+    return (
+      <ConnectionGate
+        onSkip={() => {
+          try {
+            window.localStorage.setItem(SKIP_LOGIN_STORAGE_KEY, "1");
+          } finally {
+            setSkipLogin(true);
+          }
+        }}
+      />
+    );
+  }
 
   // Filter ganim by search (client-side for now)
   const filteredGanim = searchQuery
@@ -210,6 +239,12 @@ export default function HomePage() {
           <span className="text-sm text-gray-500 font-hebrew">גן מתאים</span>
         </div>
         <div className="flex items-center gap-2">
+          {!user && skipLogin && (
+            <div className="hidden md:flex items-center gap-2 bg-amber-50/95 backdrop-blur px-3 py-2 rounded-full shadow-lg border border-amber-200 text-amber-900 font-hebrew text-xs">
+              <TriangleAlert className="w-4 h-4" />
+              מצב אורח: חלק מהפעולות מוגבלות
+            </div>
+          )}
           <AuthButton />
           <button
             type="button"
@@ -232,6 +267,14 @@ export default function HomePage() {
         </button>
         </div>
       </div>
+
+      {/* Mobile guest notice */}
+      {!user && skipLogin && (
+        <div className="absolute top-14 start-4 end-4 md:hidden z-10 bg-amber-50/95 backdrop-blur border border-amber-200 text-amber-900 px-4 py-2 rounded-lg text-xs font-hebrew flex items-center gap-2 shadow-lg">
+          <TriangleAlert className="w-4 h-4" />
+          מצב אורח: חלק מהפעולות מוגבלות. התחברו כדי לפתוח הכל.
+        </div>
+      )}
     </div>
   );
 }

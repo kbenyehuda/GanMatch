@@ -42,11 +42,25 @@ export function GanDetail({
       user_id: string;
       rating: number;
       is_anonymous: boolean;
+      reviewer_public_name?: string | null;
+      reviewer_public_email_masked?: string | null;
       advice_to_parents_text: string | null;
       created_at: string;
     }>
   >([]);
   const [contactReviewId, setContactReviewId] = useState<string | null>(null);
+
+  const maskEmail = useMemo(() => {
+    return (email: string): string => {
+      const e = String(email ?? "").trim();
+      const at = e.indexOf("@");
+      if (at <= 0) return e;
+      const local = e.slice(0, at);
+      const domain = e.slice(at + 1);
+      const keep = local.length >= 2 ? local.slice(0, 2) : local.slice(0, 1);
+      return `${keep}***@${domain}`;
+    };
+  }, []);
 
   const [rating, setRating] = useState(4.0);
   const [isAnonymous, setIsAnonymous] = useState(true);
@@ -101,7 +115,15 @@ export function GanDetail({
     }
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = {
+      const fullName =
+        typeof (user as any)?.user_metadata?.full_name === "string"
+          ? String((user as any).user_metadata.full_name).trim()
+          : "";
+      const email = typeof user?.email === "string" ? user.email.trim() : "";
+      const reviewerPublicName = !isAnonymous ? (fullName || null) : null;
+      const reviewerPublicEmailMasked = !isAnonymous && email ? maskEmail(email) : null;
+
+      const basePayload: Record<string, unknown> = {
         user_id: user.id,
         gan_id: gan.id,
         rating,
@@ -114,9 +136,25 @@ export function GanDetail({
         location_rating: location,
       };
 
-      const { error } = await supabase
+      const identityPayload: Record<string, unknown> = {
+        reviewer_public_name: reviewerPublicName,
+        reviewer_public_email_masked: reviewerPublicEmailMasked,
+      };
+
+      let { error } = await supabase
         .from("reviews")
-        .upsert(payload, { onConflict: "user_id,gan_id" });
+        .upsert({ ...basePayload, ...identityPayload }, { onConflict: "user_id,gan_id" });
+
+      // Backwards compatible: if the DB columns don't exist yet, retry without them.
+      if (error) {
+        const msg = typeof (error as any)?.message === "string" ? String((error as any).message) : "";
+        const missingCol =
+          msg.includes("does not exist") &&
+          (msg.includes("reviewer_public_name") || msg.includes("reviewer_public_email_masked"));
+        if (missingCol) {
+          ({ error } = await supabase.from("reviews").upsert(basePayload, { onConflict: "user_id,gan_id" }));
+        }
+      }
       if (error) throw error;
       setSubmitted(true);
       onReviewSaved?.();
@@ -147,11 +185,31 @@ export function GanDetail({
 
     (async () => {
       try {
-        const { data, error } = await supabase
+        const queryNew = supabase
           .from("reviews")
-          .select("id,user_id,rating,is_anonymous,advice_to_parents_text,created_at")
+          .select(
+            "id,user_id,rating,is_anonymous,reviewer_public_name,reviewer_public_email_masked,advice_to_parents_text,created_at"
+          )
           .eq("gan_id", gan.id)
           .order("created_at", { ascending: false });
+        let data: any[] | null = null;
+        let error: any = null;
+        ({ data, error } = (await (queryNew as any)) as any);
+
+        // Backwards compatible: if the DB columns don't exist yet, retry without them.
+        if (error) {
+          const msg = typeof (error as any)?.message === "string" ? String((error as any).message) : "";
+          const missingCol =
+            msg.includes("does not exist") &&
+            (msg.includes("reviewer_public_name") || msg.includes("reviewer_public_email_masked"));
+          if (missingCol) {
+            ({ data, error } = (await (supabase
+              .from("reviews")
+              .select("id,user_id,rating,is_anonymous,advice_to_parents_text,created_at")
+              .eq("gan_id", gan.id)
+              .order("created_at", { ascending: false }) as any)) as any);
+          }
+        }
 
         if (cancelled) return;
         if (error) {
@@ -166,6 +224,12 @@ export function GanDetail({
             user_id: String(r.user_id),
             rating: Number(r.rating),
             is_anonymous: Boolean(r.is_anonymous),
+            reviewer_public_name:
+              typeof r.reviewer_public_name === "string" ? r.reviewer_public_name : null,
+            reviewer_public_email_masked:
+              typeof r.reviewer_public_email_masked === "string"
+                ? r.reviewer_public_email_masked
+                : null,
             advice_to_parents_text:
               typeof r.advice_to_parents_text === "string" ? r.advice_to_parents_text : null,
             created_at: String(r.created_at),
@@ -453,7 +517,15 @@ export function GanDetail({
                                       if (fullName && email && fullName !== email) return `${fullName} (${email})`;
                                       return fullName || email || "לא אנונימי";
                                     })()
-                                  : "לא אנונימי"}
+                                  : r.reviewer_public_name || r.reviewer_public_email_masked
+                                    ? `${r.reviewer_public_name ?? ""}${
+                                        r.reviewer_public_name && r.reviewer_public_email_masked
+                                          ? ` (${r.reviewer_public_email_masked})`
+                                          : r.reviewer_public_email_masked
+                                            ? r.reviewer_public_email_masked
+                                            : ""
+                                      }`.trim()
+                                    : "לא אנונימי"}
                             </span>
                             <span className="text-[11px] text-gray-500 font-hebrew">
                               {formatReviewDate(r.created_at)}
