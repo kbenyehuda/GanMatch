@@ -5,6 +5,11 @@ import { Search, MapPin } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
 import type { Gan } from "@/types/ganim";
+import {
+  getGanCityForDisplay,
+  getGanNeighborhoodForDisplay,
+  getGanStreetAddressForDisplay,
+} from "@/lib/gan-format";
 
 interface SearchResultsPanelProps {
   ganim: Gan[];
@@ -151,6 +156,32 @@ export function SearchResultsPanel({
           </p>
         ) : (
           ganim.map((gan) => (
+            (() => {
+              const showUnapproved = !gan.is_verified;
+              const licenseWarn =
+                gan.is_verified && gan.license_status && gan.license_status !== "Permanent"
+                  ? gan.license_status
+                  : null;
+              const licenseWarnText =
+                licenseWarn === "Temporary" ? "רישוי זמני" : licenseWarn === "Under Observation" ? "תחת מעקב" : null;
+              const typeText = showUnapproved
+                ? (typeof gan.metadata?.suggested_type === "string" && gan.metadata.suggested_type.trim()
+                    ? gan.metadata.suggested_type.trim()
+                    : "לא ידוע")
+                : gan.type === "Private"
+                  ? "פרטי"
+                  : gan.type === "Maon"
+                    ? "מעון"
+                    : "מפוקח (רישוי)";
+              const pikuachText =
+                gan.metadata?.pikuach_ironi === true
+                  ? "קיים"
+                  : gan.metadata?.pikuach_ironi === false
+                    ? "לא קיים"
+                    : "לא ידוע";
+              const neighborhood = getGanNeighborhoodForDisplay(gan);
+
+              return (
             <Card
               key={gan.id}
               className={`cursor-pointer transition-colors hover:border-gan-primary ${
@@ -161,35 +192,44 @@ export function SearchResultsPanel({
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="font-semibold text-gan-dark font-hebrew">{gan.name_he}</h3>
-                  {!gan.is_verified ? (
+                  {showUnapproved ? (
                     <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
-                      לא מאומת
+                      נוסף לאחרונה ע״י משתמש — עדיין לא אושר
+                    </span>
+                  ) : licenseWarnText ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-900 border border-rose-200 whitespace-nowrap">
+                      {licenseWarnText}
                     </span>
                   ) : null}
                 </div>
                 <div className="mt-1">
                   <StarRating value={gan.avg_rating} count={gan.recommendation_count} />
                 </div>
-                <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    {gan.address
-                      ? gan.address
-                      : gan.city
-                        ? `${gan.city} · אין כתובת`
-                        : "אין כתובת"}
-                  </span>
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gan-muted text-gan-dark">
-                    {gan.type}
-                  </span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gan-accent/30 text-gan-dark">
-                    {gan.license_status}
-                  </span>
-                </div>
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+                  <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 shrink-0 text-gray-500" />
+                    כתובת
+                  </dt>
+                  <dd className="text-gray-600 font-hebrew">
+                    {getGanStreetAddressForDisplay(gan)}
+                  </dd>
+                  <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">עיר</dt>
+                  <dd className="text-gray-600 font-hebrew">{getGanCityForDisplay(gan)}</dd>
+                  {neighborhood ? (
+                    <>
+                      <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">שכונה</dt>
+                      <dd className="text-gray-600 font-hebrew">{neighborhood}</dd>
+                    </>
+                  ) : null}
+                  <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
+                  <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
+                  <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
+                  <dd className="text-gray-600 font-hebrew">{typeText}</dd>
+                </dl>
               </CardContent>
             </Card>
+              );
+            })()
           ))
         )}
       </div>

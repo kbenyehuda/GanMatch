@@ -14,6 +14,9 @@ export interface SuggestGanResult {
   city: string | null;
   lat: number;
   lon: number;
+  suggested_type?: string;
+  pikuach_ironi?: boolean | null;
+  cctv_access?: "none" | "exceptional" | "online" | null;
 }
 
 type GeocodeSuggestion = {
@@ -40,6 +43,9 @@ export function SuggestGanModal({
   const [nameHe, setNameHe] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("גבעתיים");
+  const [suggestedType, setSuggestedType] = useState<string>("לא בטוח");
+  const [pikuachIroni, setPikuachIroni] = useState<boolean | null>(null);
+  const [cctvAccess, setCctvAccess] = useState<"none" | "exceptional" | "online" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -143,6 +149,11 @@ export function SuggestGanModal({
     }
     setSaving(true);
     try {
+      const extraMetadata: Record<string, unknown> = {
+        suggested_type: suggestedType?.trim() ? suggestedType.trim() : undefined,
+        pikuach_ironi: pikuachIroni,
+        cctv_access: cctvAccess,
+      };
       const { data, error: rpcError } = await supabase
         .rpc("suggest_gan", {
           p_name_he: nameHe.trim(),
@@ -150,7 +161,7 @@ export function SuggestGanModal({
           p_lat: coords.lat,
           p_address: address.trim() ? address.trim() : null,
           p_city: city.trim() ? city.trim() : null,
-          p_metadata: {},
+          p_metadata: extraMetadata,
         })
         .single();
       if (rpcError) throw rpcError;
@@ -162,6 +173,9 @@ export function SuggestGanModal({
         city: city.trim() ? city.trim() : null,
         lat: coords.lat,
         lon: coords.lon,
+        suggested_type: suggestedType?.trim() ? suggestedType.trim() : undefined,
+        pikuach_ironi: pikuachIroni,
+        cctv_access: cctvAccess,
       });
       onClose();
     } catch (e: any) {
@@ -193,6 +207,55 @@ export function SuggestGanModal({
             className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
             placeholder="לדוגמה: גן אור"
           />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג גן (לפי מה שאתם יודעים)</label>
+            <select
+              value={suggestedType}
+              onChange={(e) => setSuggestedType(e.target.value)}
+              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+            >
+              <option value="גן עירייה">גן עירייה</option>
+              <option value="פרטי">פרטי</option>
+              <option value="מעון יום">מעון יום</option>
+              <option value="לא בטוח">לא בטוח</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1 font-hebrew">פיקוח עירוני</label>
+            <select
+              value={pikuachIroni === null ? "unknown" : pikuachIroni ? "yes" : "no"}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "yes") setPikuachIroni(true);
+                else if (v === "no") setPikuachIroni(false);
+                else setPikuachIroni(null);
+              }}
+              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+            >
+              <option value="unknown">לא ידוע</option>
+              <option value="yes">קיים</option>
+              <option value="no">לא קיים</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-600 mb-1 font-hebrew">CCTV</label>
+          <select
+            value={cctvAccess ?? "unknown"}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "none" || v === "exceptional" || v === "online") setCctvAccess(v);
+              else setCctvAccess(null);
+            }}
+            className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+          >
+            <option value="unknown">לא ידוע</option>
+            <option value="none">אין</option>
+            <option value="exceptional">יש (פתוח למקרים חריגים)</option>
+            <option value="online">יש ואפשר להתחבר אונליין</option>
+          </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">

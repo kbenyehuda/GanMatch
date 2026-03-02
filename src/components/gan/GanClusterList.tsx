@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
 import type { Gan } from "@/types/ganim";
+import {
+  getGanCityForDisplay,
+  getGanNeighborhoodForDisplay,
+  getGanStreetAddressForDisplay,
+} from "@/lib/gan-format";
 
 interface GanClusterListProps {
   ganim: Gan[];
@@ -52,13 +57,36 @@ export function GanClusterList({ ganim, onClose, onSelectGan }: GanClusterListPr
                 <StarRating value={g.avg_rating} count={g.recommendation_count} showValue />
                 {!g.is_verified ? (
                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
-                    לא מאומת
+                    עדיין לא אושר
                   </span>
                 ) : null}
               </div>
-              <div className="mt-1 text-sm text-gray-600 font-hebrew truncate">
-                {g.address ? g.address : g.city ? `${g.city} · אין כתובת` : "אין כתובת"}
-              </div>
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">כתובת</dt>
+                <dd className="text-gray-600 font-hebrew truncate">
+                  {getGanStreetAddressForDisplay(g)}
+                </dd>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">עיר</dt>
+                <dd className="text-gray-600 font-hebrew truncate">
+                  {(() => {
+                    const city = getGanCityForDisplay(g);
+                    const neighborhood = getGanNeighborhoodForDisplay(g);
+                    return neighborhood ? `${city} · ${neighborhood}` : city;
+                  })()}
+                </dd>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
+                <dd className="text-gray-600 font-hebrew truncate">
+                  {!g.is_verified
+                    ? typeof g.metadata?.suggested_type === "string" && g.metadata.suggested_type.trim()
+                      ? g.metadata.suggested_type.trim()
+                      : "לא ידוע"
+                    : g.type === "Private"
+                      ? "פרטי"
+                      : g.type === "Maon"
+                        ? "מעון"
+                        : "מפוקח (רישוי)"}
+                </dd>
+              </dl>
             </button>
           ))}
         </div>

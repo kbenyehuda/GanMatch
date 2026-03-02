@@ -198,7 +198,12 @@ export default function HomePage() {
                 type: "Supervised",
                 license_status: "Temporary",
                 has_cctv: false,
-                metadata: { source: "user_suggestion" },
+                metadata: {
+                  source: "user_suggestion",
+                  ...(r.suggested_type ? { suggested_type: r.suggested_type } : null),
+                  pikuach_ironi: r.pikuach_ironi ?? null,
+                  cctv_access: r.cctv_access ?? null,
+                },
                 is_verified: false,
                 avg_rating: null,
                 avg_cleanliness: null,

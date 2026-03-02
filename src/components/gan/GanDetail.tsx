@@ -10,6 +10,11 @@ import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import { useEffect, useMemo, useState } from "react";
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
+import {
+  getGanCityForDisplay,
+  getGanNeighborhoodForDisplay,
+  getGanStreetAddressForDisplay,
+} from "@/lib/gan-format";
 
 interface GanDetailProps {
   gan: Gan;
@@ -84,6 +89,29 @@ export function GanDetail({
     : gan.metadata?.phone
       ? [String(gan.metadata.phone)]
       : [];
+
+  const pikuachText =
+    gan.metadata?.pikuach_ironi === true
+      ? "קיים"
+      : gan.metadata?.pikuach_ironi === false
+        ? "לא קיים"
+        : "לא ידוע";
+
+  const suggestedTypeText =
+    typeof gan.metadata?.suggested_type === "string" && gan.metadata.suggested_type.trim()
+      ? gan.metadata.suggested_type.trim()
+      : "לא ידוע";
+
+  const govTypeText =
+    gan.type === "Private" ? "פרטי" : gan.type === "Maon" ? "מעון" : "מפוקח (רישוי)";
+
+  const cctvText = (() => {
+    const v = gan.metadata?.cctv_access;
+    if (v === "none") return "אין";
+    if (v === "online") return "יש ואפשר להתחבר אונליין";
+    if (v === "exceptional") return "יש (פתוח למקרים חריגים)";
+    return gan.has_cctv ? "יש (פתוח למקרים חריגים)" : "אין";
+  })();
 
   const facetAverages = useMemo(
     () => [
@@ -294,7 +322,7 @@ export function GanDetail({
             <div className="flex flex-col items-end gap-2">
               {!gan.is_verified ? (
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
-                  לא מאומת
+                  נוסף לאחרונה ע״י משתמש — עדיין לא אושר
                 </span>
               ) : null}
               <Button
@@ -423,27 +451,51 @@ export function GanDetail({
           )}
         </div>
 
-        {/* Government licensing data - always visible */}
-        <div className="rounded-lg bg-gan-muted/50 p-4 space-y-2">
-          <h4 className="font-medium text-gan-dark flex items-center gap-2">
-            <Shield className="w-4 h-4" />
-            נתוני רישוי ממשלתי
-          </h4>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
-              סוג
-            </dt>
-            <dd className="text-gray-600">{gan.type}</dd>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
-              סטטוס רישוי
-            </dt>
-            <dd className="text-gray-600">{gan.license_status}</dd>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
-              מעקב CCTV
-            </dt>
-            <dd className="text-gray-600">{gan.has_cctv ? "כן ✓" : "לא"}</dd>
-          </dl>
-        </div>
+        {/* Community-provided fields (especially for unverified ganim) */}
+        {!gan.is_verified ? (
+          <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-2">
+            <h4 className="font-medium text-gan-dark flex items-center gap-2 font-hebrew">
+              <Sparkles className="w-4 h-4" />
+              מידע שהוזן ע״י משתמש
+            </h4>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
+              <dd className="text-gray-600 font-hebrew">{suggestedTypeText}</dd>
+              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
+              <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
+              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
+              <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
+            </dl>
+          </div>
+        ) : null}
+
+        {/* Government licensing data (only when verified) */}
+        {gan.is_verified ? (
+          <div className="rounded-lg bg-gan-muted/50 p-4 space-y-2">
+            <h4 className="font-medium text-gan-dark flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              נתוני רישוי ממשלתי
+            </h4>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג מסגרת (רישוי)</dt>
+              <dd className="text-gray-600 font-hebrew">{govTypeText}</dd>
+              {gan.license_status !== "Permanent" ? (
+                <>
+                  <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סטטוס רישוי</dt>
+                  <dd className="text-gray-600 font-hebrew">
+                    {gan.license_status === "Temporary"
+                      ? "זמני"
+                      : gan.license_status === "Under Observation"
+                        ? "תחת מעקב"
+                        : gan.license_status}
+                  </dd>
+                </>
+              ) : null}
+              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
+              <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
+            </dl>
+          </div>
+        ) : null}
 
         {/* Address & contact */}
         <div className="rounded-lg border border-gan-accent/30 bg-white p-4">
@@ -451,11 +503,17 @@ export function GanDetail({
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
               כתובת
             </dt>
-            <dd className="text-gray-600">{gan.address || "אין כתובת"}</dd>
+            <dd className="text-gray-600 font-hebrew">{getGanStreetAddressForDisplay(gan)}</dd>
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
               עיר
             </dt>
-            <dd className="text-gray-600">{gan.city || "—"}</dd>
+            <dd className="text-gray-600 font-hebrew">{getGanCityForDisplay(gan)}</dd>
+            {getGanNeighborhoodForDisplay(gan) ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">שכונה</dt>
+                <dd className="text-gray-600 font-hebrew">{getGanNeighborhoodForDisplay(gan)}</dd>
+              </>
+            ) : null}
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
               טלפון
             </dt>

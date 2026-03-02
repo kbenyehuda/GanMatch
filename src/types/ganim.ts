@@ -6,6 +6,13 @@ export interface GanMetadata {
   phone?: string[];
   age_groups?: string[];
   hours?: string;
+  /**
+   * Extra fields that can be provided by users for unverified ganim.
+   * We keep these in metadata so we don't have to expand the core gov schema.
+   */
+  suggested_type?: string;
+  pikuach_ironi?: boolean | null;
+  cctv_access?: "none" | "exceptional" | "online" | null;
   [key: string]: unknown;
 }
 
