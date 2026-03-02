@@ -9,7 +9,7 @@ import Map, {
 import type { MapRef } from "react-map-gl";
 import Supercluster from "supercluster";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { MapPin } from "lucide-react";
+import { LocateFixed, MapPin } from "lucide-react";
 import type { Gan } from "@/types/ganim";
 import { publicEnv } from "@/lib/env/public";
 
@@ -30,6 +30,8 @@ const DEFAULT_VIEW = {
   latitude: 32.08,
   zoom: 11,
 };
+
+const USER_RADIUS_M = 1000;
 
 export interface Bounds {
   minLon: number;
@@ -59,6 +61,9 @@ export function MapContainer({
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lon: number; lat: number } | null>(null);
+  const [hasCenteredOnUser, setHasCenteredOnUser] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [viewport, setViewport] = useState({
     bounds: [34.69, 32.03, 34.88, 32.16] as [number, number, number, number],
     zoom: 11,
@@ -67,6 +72,49 @@ export function MapContainer({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const fitToUserRadius = useCallback((pos: { lon: number; lat: number }) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const { lon, lat } = pos;
+    const metersPerDegreeLat = 111320;
+    const dLat = USER_RADIUS_M / metersPerDegreeLat;
+    const dLon = USER_RADIUS_M / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+
+    map.fitBounds(
+      [
+        [lon - dLon, lat - dLat],
+        [lon + dLon, lat + dLat],
+      ],
+      { padding: 80, duration: 650 }
+    );
+  }, []);
+
+  // One-time geolocation lookup (if supported)
+  useEffect(() => {
+    if (!mounted) return;
+    if (userLocation || hasCenteredOnUser) return;
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        if (typeof lat !== "number" || typeof lon !== "number") return;
+        if (!isFinite(lat) || !isFinite(lon)) return;
+        setUserLocation({ lat, lon });
+      },
+      () => {
+        // Permission denied / unavailable - keep default view silently
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 60_000,
+      }
+    );
+  }, [mounted, userLocation, hasCenteredOnUser]);
 
   const updateViewport = useCallback(() => {
     const map = mapRef.current;
@@ -94,6 +142,17 @@ export function MapContainer({
   const handleMoveEnd = useCallback(() => {
     updateViewport();
   }, [updateViewport]);
+
+  // When we have the user's location, fit the map to a 1km radius around it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!userLocation) return;
+    if (hasCenteredOnUser) return;
+
+    fitToUserRadius(userLocation);
+    setHasCenteredOnUser(true);
+  }, [userLocation, hasCenteredOnUser, fitToUserRadius]);
 
   const index = useMemo(() => {
     const sc = new Supercluster<GanPointProps>({ radius: 60, maxZoom: 18 });
@@ -230,6 +289,44 @@ export function MapContainer({
     );
   }
 
+  const canLocate =
+    mounted && typeof navigator !== "undefined" && "geolocation" in navigator;
+
+  const locateMe = () => {
+    if (!canLocate || locating) return;
+
+    // If we already have a recent location, just re-center immediately.
+    if (userLocation) {
+      fitToUserRadius(userLocation);
+      return;
+    }
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          if (typeof lat !== "number" || typeof lon !== "number") return;
+          if (!isFinite(lat) || !isFinite(lon)) return;
+          const next = { lat, lon };
+          setUserLocation(next);
+          fitToUserRadius(next);
+        } finally {
+          setLocating(false);
+        }
+      },
+      () => {
+        setLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 0,
+      }
+    );
+  };
+
   return (
     <Map
       ref={mapRef}
@@ -242,6 +339,31 @@ export function MapContainer({
       onClick={handleMapClick}
     >
       <NavigationControl position="bottom-right" />
+      {canLocate ? (
+        <div className="absolute bottom-[92px] end-3 z-10">
+          <button
+            type="button"
+            onClick={locateMe}
+            disabled={locating}
+            title="אתר אותי"
+            aria-label="אתר אותי"
+            className="h-10 w-10 rounded-md bg-white/95 backdrop-blur shadow-lg border border-gray-200 flex items-center justify-center hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <LocateFixed className="h-5 w-5 text-gan-dark" />
+          </button>
+        </div>
+      ) : null}
+      {userLocation ? (
+        <Marker
+          key="user-location"
+          longitude={userLocation.lon}
+          latitude={userLocation.lat}
+          anchor="center"
+          onClick={(e) => e.originalEvent.stopPropagation()}
+        >
+          <div className="w-3 h-3 rounded-full bg-blue-600 ring-4 ring-blue-600/25 shadow" />
+        </Marker>
+      ) : null}
       {pendingPin ? (
         <Marker
           key="pending-pin"
