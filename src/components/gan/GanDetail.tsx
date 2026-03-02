@@ -1,6 +1,17 @@
 "use client";
 
-import { Shield, Phone, X, Lock, ArrowRight, Sparkles, Info, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Shield,
+  Phone,
+  X,
+  Lock,
+  ArrowRight,
+  Sparkles,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
@@ -39,7 +50,7 @@ export function GanDetail({
   onRequestLogin,
   onReviewSaved,
 }: GanDetailProps) {
-  const { user } = useSession();
+  const { user, session } = useSession();
   const [showAvgFacets, setShowAvgFacets] = useState(false);
   const [showRecommendFacets, setShowRecommendFacets] = useState(false);
   const [showRecommendForm, setShowRecommendForm] = useState(false);
@@ -130,12 +141,28 @@ export function GanDetail({
 
   const neighborhood = getGanNeighborhoodForDisplay(gan);
 
+  const normalizeWebsiteUrl = useMemo(() => {
+    return (raw: string | null | undefined): string | null => {
+      const s = String(raw ?? "").trim();
+      if (!s) return null;
+      if (/^https?:\/\//i.test(s)) return s;
+      // Allow bare domains like "facebook.com/..." and normalize to https.
+      if (/^[a-z0-9.-]+\.[a-z]{2,}([/?#].*)?$/i.test(s)) return `https://${s}`;
+      return null;
+    };
+  }, []);
+
+  const [localWebsiteUrl, setLocalWebsiteUrl] = useState<string | null>(() =>
+    normalizeWebsiteUrl((gan as any).website_url)
+  );
+
   const [editAddress, setEditAddress] = useState<string>("");
   const [editCity, setEditCity] = useState<string>("");
   const [editNeighborhood, setEditNeighborhood] = useState<string>("");
   const [editPikuach, setEditPikuach] = useState<"unknown" | "yes" | "no">("unknown");
   const [editSuggestedType, setEditSuggestedType] = useState<string>("");
   const [editPriceNotes, setEditPriceNotes] = useState<string>("");
+  const [editWebsiteUrl, setEditWebsiteUrl] = useState<string>("");
   const [editCategory, setEditCategory] = useState<Gan["category"]>("UNSPECIFIED");
   const [editMaonSymbolCode, setEditMaonSymbolCode] = useState<string>("");
   const [editPrivateSupervision, setEditPrivateSupervision] = useState<NonNullable<Gan["private_supervision"]>>(
@@ -164,6 +191,8 @@ export function GanDetail({
     setShowRecommendFacets(false);
     setShowMissingDetails(false);
 
+    setLocalWebsiteUrl(normalizeWebsiteUrl((gan as any).website_url));
+
     const street = getGanStreetAddressForDisplay(gan);
     const city = getGanCityForDisplay(gan);
     setEditAddress(street === "אין כתובת" ? "" : street);
@@ -172,6 +201,7 @@ export function GanDetail({
     setEditPikuach(gan.metadata?.pikuach_ironi === true ? "yes" : gan.metadata?.pikuach_ironi === false ? "no" : "unknown");
     setEditSuggestedType(typeof gan.metadata?.suggested_type === "string" ? gan.metadata.suggested_type : "");
     setEditPriceNotes(typeof gan.price_notes === "string" ? gan.price_notes : "");
+    setEditWebsiteUrl(typeof gan.website_url === "string" ? gan.website_url : "");
     setEditCategory(gan.category);
     setEditMaonSymbolCode(gan.maon_symbol_code ?? "");
     setEditPrivateSupervision((gan.private_supervision ?? "UNKNOWN") as any);
@@ -251,9 +281,24 @@ export function GanDetail({
     }
     setSaving(true);
     try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess?.session?.access_token;
-      if (!token) throw new Error("Authentication required");
+      // Ensure we have a fresh access token (auto-refresh isn't guaranteed to have run yet).
+      const nowSec = Math.floor(Date.now() / 1000);
+      const shouldRefresh =
+        (session?.expires_at != null && session.expires_at - nowSec < 60) || !session?.access_token;
+      if (shouldRefresh) {
+        try {
+          await supabase.auth.refreshSession();
+        } catch {
+          // ignore; we'll fall back to current session/getSession below
+        }
+      }
+
+      const token =
+        (await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null)) ??
+        session?.access_token ??
+        null;
+
+      if (!token) throw new Error("פג תוקף ההתחברות. אנא התחבר/י מחדש כדי לשמור שינויים.");
 
       const parseYearsToMonths = (s: string): number | null => {
         const t = s.trim();
@@ -285,6 +330,7 @@ export function GanDetail({
         pikuach_ironi: editPikuach === "unknown" ? null : editPikuach === "yes",
         suggested_type: editSuggestedType.trim() ? editSuggestedType.trim() : null,
         price_notes: editPriceNotes.trim() ? editPriceNotes.trim() : null,
+        website_url: editWebsiteUrl.trim() ? editWebsiteUrl.trim() : null,
         category: editCategory,
         maon_symbol_code: editMaonSymbolCode.trim() ? editMaonSymbolCode.trim() : null,
         private_supervision: editPrivateSupervision,
@@ -310,9 +356,15 @@ export function GanDetail({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = typeof data?.error === "string" ? data.error : "שגיאה בשמירת פרטים";
+        const raw = typeof data?.error === "string" ? data.error : "שגיאה בשמירת פרטים";
+        const msg =
+          raw === "Authentication required"
+            ? "פג תוקף ההתחברות. אנא התחבר/י מחדש כדי לשמור שינויים."
+            : raw;
         throw new Error(msg);
       }
+      // Update link immediately (don’t wait for a full reload).
+      setLocalWebsiteUrl(normalizeWebsiteUrl(editWebsiteUrl));
       setEditSaved(true);
       onReviewSaved?.(); // refresh gan list/details (temporary reuse)
     } catch (e: any) {
@@ -504,7 +556,20 @@ export function GanDetail({
             </Button>
           )}
           <CardTitle className="font-hebrew text-lg min-w-0 truncate">
-            {gan.name_he}
+            {localWebsiteUrl ? (
+              <a
+                href={localWebsiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 hover:underline"
+                title="פתח אתר"
+              >
+                <span className="truncate">{gan.name_he}</span>
+                <ExternalLink className="w-4 h-4 shrink-0" />
+              </a>
+            ) : (
+              gan.name_he
+            )}
           </CardTitle>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
@@ -628,6 +693,23 @@ export function GanDetail({
             <dd className="text-gray-600 font-hebrew">{getGanStreetAddressForDisplay(gan)}</dd>
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">עיר</dt>
             <dd className="text-gray-600 font-hebrew">{getGanCityForDisplay(gan)}</dd>
+            {localWebsiteUrl ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">אתר</dt>
+                <dd className="text-gray-600 font-hebrew">
+                  <a
+                    href={localWebsiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-gan-primary hover:underline"
+                    title="פתח אתר"
+                  >
+                    <span className="truncate">{localWebsiteUrl}</span>
+                    <ExternalLink className="w-4 h-4 shrink-0" />
+                  </a>
+                </dd>
+              </>
+            ) : null}
             {neighborhood ? (
               <>
                 <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">שכונה</dt>
@@ -892,6 +974,19 @@ export function GanDetail({
                       />
                       <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
                         נשמר לשקיפות (ב־metadata), אבל הסיווג הראשי הוא “סוג”.
+                      </div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">אתר (אופציונלי)</label>
+                      <input
+                        value={editWebsiteUrl}
+                        onChange={(e) => setEditWebsiteUrl(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="https://facebook.com/... / https://linkedin.com/... / https://example.com"
+                        inputMode="url"
+                      />
+                      <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
+                        נשמר כקישור (http/https). אם אין https:// נוסיף אוטומטית.
                       </div>
                     </div>
                   </div>

@@ -35,6 +35,28 @@ function coerceTrimmedOrNull(v: unknown): string | null | undefined {
   return t ? t : null;
 }
 
+function coerceHttpUrlOrNull(v: unknown): string | null | undefined {
+  const s = coerceTrimmedOrNull(v);
+  if (s === undefined || s === null) return s;
+  try {
+    const u = new URL(s);
+    const proto = u.protocol.toLowerCase();
+    if (proto !== "http:" && proto !== "https:") return null;
+    return u.toString();
+  } catch {
+    // Allow users to paste "www.example.com" without scheme; normalize to https.
+    if (/^[a-z0-9.-]+\.[a-z]{2,}([/?#].*)?$/i.test(s)) {
+      try {
+        const u = new URL(`https://${s}`);
+        return u.toString();
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -99,6 +121,7 @@ export async function POST(req: Request) {
   const suggestedType = coerceTrimmedOrNull(patch.suggested_type);
   const addressExtra = coerceTrimmedOrNull(patch.address_extra);
   const priceNotes = coerceTrimmedOrNull(patch.price_notes);
+  const websiteUrl = coerceHttpUrlOrNull(patch.website_url);
 
   if (neighborhood !== undefined) {
     if (neighborhood === null) delete nextMetadata.neighborhood;
@@ -142,6 +165,7 @@ export async function POST(req: Request) {
   if (address !== undefined) updatePayload.address = address;
   if (city !== undefined) updatePayload.city = city;
   if (priceNotes !== undefined) updatePayload.price_notes = priceNotes;
+  if (websiteUrl !== undefined) updatePayload.website_url = websiteUrl;
 
   if (patch.category !== undefined && isGanCategory(patch.category)) {
     updatePayload.category = patch.category;

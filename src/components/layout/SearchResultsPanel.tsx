@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, MapPin } from "lucide-react";
+import { Search, MapPin, ExternalLink, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
 import type { Gan } from "@/types/ganim";
@@ -49,6 +49,16 @@ export function SearchResultsPanel({
 
   const [translateY, setTranslateY] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  const normalizeWebsiteUrl = useMemo(() => {
+    return (raw: string | null | undefined): string | null => {
+      const s = String(raw ?? "").trim();
+      if (!s) return null;
+      if (/^https?:\/\//i.test(s)) return s;
+      if (/^[a-z0-9.-]+\.[a-z]{2,}([/?#].*)?$/i.test(s)) return `https://${s}`;
+      return null;
+    };
+  }, []);
 
   useEffect(() => {
     translateYRef.current = translateY;
@@ -167,6 +177,7 @@ export function SearchResultsPanel({
                     : null;
               const neighborhood = getGanNeighborhoodForDisplay(gan);
               const addon = formatGanCategoryAddonLabelHe(gan);
+              const websiteUrl = normalizeWebsiteUrl(gan.website_url);
 
               return (
             <Card
@@ -178,11 +189,35 @@ export function SearchResultsPanel({
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-semibold text-gan-dark font-hebrew">{gan.name_he}</h3>
+                  <div className="min-w-0 flex-1">
+                    {websiteUrl ? (
+                      <a
+                        href={websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-gan-primary font-hebrew inline-flex items-center gap-2 hover:underline whitespace-normal break-words"
+                        title="פתח אתר"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span>{gan.name_he}</span>
+                        <ExternalLink className="w-4 h-4 shrink-0" />
+                      </a>
+                    ) : (
+                      <h3 className="font-semibold text-gan-dark font-hebrew whitespace-normal break-words">
+                        {gan.name_he}
+                      </h3>
+                    )}
+                  </div>
                   {showUnapproved ? (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
-                      נוסף לאחרונה ע״י משתמש — עדיין לא אושר
-                    </span>
+                    <button
+                      type="button"
+                      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-50 text-amber-900 border border-amber-200"
+                      title="נוסף לאחרונה ע״י משתמש — עדיין לא אושר"
+                      aria-label="נוסף לאחרונה ע״י משתמש — עדיין לא אושר"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Info className="w-4 h-4" />
+                    </button>
                   ) : null}
                 </div>
                 <div className="mt-1">

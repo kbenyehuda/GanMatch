@@ -30,6 +30,7 @@ export interface Gan {
   name_en: string | null;
   address: string | null;
   city: string | null;
+  website_url?: string | null;
   category: GanCategory;
   maon_symbol_code?: string | null;
   private_supervision?: PrivateSupervisionStatus | null;
