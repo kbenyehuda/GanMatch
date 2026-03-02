@@ -10,6 +10,7 @@ import {
   getGanNeighborhoodForDisplay,
   getGanStreetAddressForDisplay,
 } from "@/lib/gan-format";
+import { formatGanCategoryAddonLabelHe, formatGanCategoryHe } from "@/lib/gan-display";
 
 interface GanClusterListProps {
   ganim: Gan[];
@@ -75,17 +76,16 @@ export function GanClusterList({ ganim, onClose, onSelectGan }: GanClusterListPr
                   })()}
                 </dd>
                 <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
-                <dd className="text-gray-600 font-hebrew truncate">
-                  {!g.is_verified
-                    ? typeof g.metadata?.suggested_type === "string" && g.metadata.suggested_type.trim()
-                      ? g.metadata.suggested_type.trim()
-                      : "לא ידוע"
-                    : g.type === "Private"
-                      ? "פרטי"
-                      : g.type === "Maon"
-                        ? "מעון"
-                        : "מפוקח (רישוי)"}
-                </dd>
+                <dd className="text-gray-600 font-hebrew truncate">{formatGanCategoryHe(g.category)}</dd>
+                {(() => {
+                  const addon = formatGanCategoryAddonLabelHe(g);
+                  return addon ? (
+                    <>
+                      <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">{addon.label}</dt>
+                      <dd className="text-gray-600 font-hebrew truncate">{addon.value}</dd>
+                    </>
+                  ) : null;
+                })()}
               </dl>
             </button>
           ))}

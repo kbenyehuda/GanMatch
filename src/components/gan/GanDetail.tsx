@@ -15,6 +15,12 @@ import {
   getGanNeighborhoodForDisplay,
   getGanStreetAddressForDisplay,
 } from "@/lib/gan-format";
+import {
+  formatAgesHe,
+  formatGanCategoryAddonLabelHe,
+  formatGanCategoryHe,
+  formatPriceHe,
+} from "@/lib/gan-display";
 
 interface GanDetailProps {
   gan: Gan;
@@ -36,6 +42,7 @@ export function GanDetail({
   const { user } = useSession();
   const [showFacets, setShowFacets] = useState(false);
   const [showRecommendForm, setShowRecommendForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -95,15 +102,17 @@ export function GanDetail({
       ? "קיים"
       : gan.metadata?.pikuach_ironi === false
         ? "לא קיים"
-        : "לא ידוע";
+        : null;
 
   const suggestedTypeText =
     typeof gan.metadata?.suggested_type === "string" && gan.metadata.suggested_type.trim()
       ? gan.metadata.suggested_type.trim()
       : "לא ידוע";
 
-  const govTypeText =
-    gan.type === "Private" ? "פרטי" : gan.type === "Maon" ? "מעון" : "מפוקח (רישוי)";
+  const categoryText = formatGanCategoryHe(gan.category);
+  const addon = formatGanCategoryAddonLabelHe(gan);
+  const agesText = formatAgesHe(gan);
+  const priceText = formatPriceHe(gan);
 
   const cctvText = (() => {
     // Prefer DB field when available, then user-suggested metadata, then legacy boolean.
@@ -117,6 +126,132 @@ export function GanDetail({
     if (v === "exceptional") return "יש (פתוח למקרים חריגים)";
     return gan.has_cctv ? "יש (פתוח למקרים חריגים)" : "אין";
   })();
+
+  const neighborhood = getGanNeighborhoodForDisplay(gan);
+
+  const [editAddress, setEditAddress] = useState<string>("");
+  const [editCity, setEditCity] = useState<string>("");
+  const [editNeighborhood, setEditNeighborhood] = useState<string>("");
+  const [editPikuach, setEditPikuach] = useState<"unknown" | "yes" | "no">("unknown");
+  const [editSuggestedType, setEditSuggestedType] = useState<string>("");
+  const [editCategory, setEditCategory] = useState<Gan["category"]>("UNSPECIFIED");
+  const [editMaonSymbolCode, setEditMaonSymbolCode] = useState<string>("");
+  const [editPrivateSupervision, setEditPrivateSupervision] = useState<NonNullable<Gan["private_supervision"]>>(
+    "UNKNOWN"
+  );
+  const [editMishpachtonAffiliation, setEditMishpachtonAffiliation] = useState<
+    NonNullable<Gan["mishpachton_affiliation"]>
+  >("UNKNOWN");
+  const [editMunicipalGrade, setEditMunicipalGrade] = useState<NonNullable<Gan["municipal_grade"]>>("UNKNOWN");
+  const [editMinAgeYears, setEditMinAgeYears] = useState<string>("");
+  const [editMaxAgeYears, setEditMaxAgeYears] = useState<string>("");
+  const [editMonthlyPrice, setEditMonthlyPrice] = useState<string>("");
+  const [editCctv, setEditCctv] = useState<"unknown" | "none" | "exceptional" | "online">("unknown");
+  const [editSaveError, setEditSaveError] = useState<string | null>(null);
+  const [editSaved, setEditSaved] = useState(false);
+
+  useEffect(() => {
+    // When changing gan, reset edit form fields to current values.
+    setShowEditForm(false);
+    setEditSaveError(null);
+    setEditSaved(false);
+
+    const street = getGanStreetAddressForDisplay(gan);
+    const city = getGanCityForDisplay(gan);
+    setEditAddress(street === "אין כתובת" ? "" : street);
+    setEditCity(city === "—" ? "" : city);
+    setEditNeighborhood(getGanNeighborhoodForDisplay(gan) ?? "");
+    setEditPikuach(gan.metadata?.pikuach_ironi === true ? "yes" : gan.metadata?.pikuach_ironi === false ? "no" : "unknown");
+    setEditSuggestedType(typeof gan.metadata?.suggested_type === "string" ? gan.metadata.suggested_type : "");
+    setEditCategory(gan.category);
+    setEditMaonSymbolCode(gan.maon_symbol_code ?? "");
+    setEditPrivateSupervision((gan.private_supervision ?? "UNKNOWN") as any);
+    setEditMishpachtonAffiliation((gan.mishpachton_affiliation ?? "UNKNOWN") as any);
+    setEditMunicipalGrade((gan.municipal_grade ?? "UNKNOWN") as any);
+    setEditMinAgeYears(gan.min_age_months == null ? "" : String(Math.round((Number(gan.min_age_months) / 12) * 2) / 2));
+    setEditMaxAgeYears(gan.max_age_months == null ? "" : String(Math.round((Number(gan.max_age_months) / 12) * 2) / 2));
+    setEditMonthlyPrice(gan.monthly_price_nis == null ? "" : String(Math.round(Number(gan.monthly_price_nis))));
+    setEditCctv(
+      gan.has_cctv
+        ? gan.cctv_streamed_online === true
+          ? "online"
+          : gan.cctv_streamed_online === false
+            ? "exceptional"
+            : "exceptional"
+        : "none"
+    );
+  }, [gan]);
+
+  const submitGanEdit = async () => {
+    setEditSaveError(null);
+    setEditSaved(false);
+    if (!supabase || !user) {
+      setEditSaveError("נדרשת התחברות כדי לערוך פרטים.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error("Authentication required");
+
+      const parseYearsToMonths = (s: string): number | null => {
+        const t = s.trim();
+        if (!t) return null;
+        const n = Number(t.replace(",", "."));
+        if (!Number.isFinite(n) || n < 0) return null;
+        return Math.round(n * 12);
+      };
+      const minAgeMonths = parseYearsToMonths(editMinAgeYears);
+      const maxAgeMonths = parseYearsToMonths(editMaxAgeYears);
+
+      const monthlyPrice = (() => {
+        const t = editMonthlyPrice.trim();
+        if (!t) return null;
+        const n = Number(t.replace(/[^\d.]/g, ""));
+        if (!Number.isFinite(n) || n < 0) return null;
+        return Math.round(n);
+      })();
+
+      const patch: Record<string, unknown> = {
+        address: editAddress.trim() ? editAddress.trim() : null,
+        city: editCity.trim() ? editCity.trim() : null,
+        neighborhood: editNeighborhood.trim() ? editNeighborhood.trim() : null,
+        pikuach_ironi: editPikuach === "unknown" ? null : editPikuach === "yes",
+        suggested_type: editSuggestedType.trim() ? editSuggestedType.trim() : null,
+        category: editCategory,
+        maon_symbol_code: editMaonSymbolCode.trim() ? editMaonSymbolCode.trim() : null,
+        private_supervision: editPrivateSupervision,
+        mishpachton_affiliation: editMishpachtonAffiliation,
+        municipal_grade: editMunicipalGrade,
+        monthly_price_nis: monthlyPrice,
+        min_age_months: minAgeMonths,
+        max_age_months: maxAgeMonths,
+        has_cctv: editCctv !== "none",
+        cctv_streamed_online: editCctv === "online" ? true : editCctv === "exceptional" ? false : null,
+      };
+
+      const res = await fetch("/api/ganim/edit", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ganId: gan.id, patch }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = typeof data?.error === "string" ? data.error : "שגיאה בשמירת פרטים";
+        throw new Error(msg);
+      }
+      setEditSaved(true);
+      onReviewSaved?.(); // refresh gan list/details (temporary reuse)
+    } catch (e: any) {
+      setEditSaveError(typeof e?.message === "string" ? e.message : "שגיאה בשמירת פרטים");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const facetAverages = useMemo(
     () => [
@@ -338,6 +473,14 @@ export function GanDetail({
                 <Sparkles className="w-4 h-4" />
                 כתבו המלצה
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() => setShowEditForm((v) => !v)}
+              >
+                ערוך פרטים
+              </Button>
             </div>
           </div>
 
@@ -456,72 +599,48 @@ export function GanDetail({
           )}
         </div>
 
-        {/* Community-provided fields (especially for unverified ganim) */}
-        {!gan.is_verified ? (
-          <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-2">
-            <h4 className="font-medium text-gan-dark flex items-center gap-2 font-hebrew">
-              <Sparkles className="w-4 h-4" />
-              מידע שהוזן ע״י משתמש
-            </h4>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
-              <dd className="text-gray-600 font-hebrew">{suggestedTypeText}</dd>
-              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
-              <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
-              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
-              <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
-            </dl>
-          </div>
-        ) : null}
-
-        {/* Government licensing data (only when verified) */}
-        {gan.is_verified ? (
-          <div className="rounded-lg bg-gan-muted/50 p-4 space-y-2">
-            <h4 className="font-medium text-gan-dark flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              נתוני רישוי ממשלתי
-            </h4>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג מסגרת (רישוי)</dt>
-              <dd className="text-gray-600 font-hebrew">{govTypeText}</dd>
-              {gan.license_status !== "Permanent" ? (
-                <>
-                  <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סטטוס רישוי</dt>
-                  <dd className="text-gray-600 font-hebrew">
-                    {gan.license_status === "Temporary"
-                      ? "זמני"
-                      : gan.license_status === "Under Observation"
-                        ? "תחת מעקב"
-                        : gan.license_status}
-                  </dd>
-                </>
-              ) : null}
-              <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
-              <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
-            </dl>
-          </div>
-        ) : null}
-
-        {/* Address & contact */}
-        <div className="rounded-lg border border-gan-accent/30 bg-white p-4">
+        {/* Unified info block (same style as search cards) */}
+        <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
-              כתובת
-            </dt>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">כתובת</dt>
             <dd className="text-gray-600 font-hebrew">{getGanStreetAddressForDisplay(gan)}</dd>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
-              עיר
-            </dt>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">עיר</dt>
             <dd className="text-gray-600 font-hebrew">{getGanCityForDisplay(gan)}</dd>
-            {getGanNeighborhoodForDisplay(gan) ? (
+            {neighborhood ? (
               <>
                 <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">שכונה</dt>
-                <dd className="text-gray-600 font-hebrew">{getGanNeighborhoodForDisplay(gan)}</dd>
+                <dd className="text-gray-600 font-hebrew">{neighborhood}</dd>
               </>
             ) : null}
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
-              טלפון
-            </dt>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
+            <dd className="text-gray-600 font-hebrew">{categoryText}</dd>
+            {addon ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">{addon.label}</dt>
+                <dd className="text-gray-600 font-hebrew">{addon.value}</dd>
+              </>
+            ) : null}
+            {pikuachText ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
+                <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
+              </>
+            ) : null}
+            {agesText ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">גילאים</dt>
+                <dd className="text-gray-600 font-hebrew">{agesText}</dd>
+              </>
+            ) : null}
+            {priceText ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">מחיר</dt>
+                <dd className="text-gray-600 font-hebrew">{priceText}</dd>
+              </>
+            ) : null}
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
+            <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">טלפון</dt>
             <dd className="text-gray-600">
               {phones.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
@@ -541,6 +660,221 @@ export function GanDetail({
               )}
             </dd>
           </dl>
+
+          {showEditForm && (
+            <div className="border-t border-gan-accent/30 pt-4 space-y-3">
+              <div className="text-sm font-hebrew font-semibold text-gan-dark">עריכת פרטים</div>
+              {!user ? (
+                <div className="text-sm text-gray-600 font-hebrew">צריך להתחבר כדי לערוך.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">כתובת (רחוב + מספר)</label>
+                      <input
+                        value={editAddress}
+                        onChange={(e) => setEditAddress(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="אבן גבירול 30"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג</label>
+                      <select
+                        value={editCategory}
+                        onChange={(e) => {
+                          const next = e.target.value as Gan["category"];
+                          setEditCategory(next);
+                          // Reset dependent fields so we never save mismatched add-ons.
+                          setEditMaonSymbolCode("");
+                          setEditPrivateSupervision("UNKNOWN");
+                          setEditMishpachtonAffiliation("UNKNOWN");
+                          setEditMunicipalGrade("UNKNOWN");
+                        }}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="UNSPECIFIED">לא ידוע</option>
+                        <option value="MAON_SYMBOL">מעון סמל</option>
+                        <option value="PRIVATE_GAN">גן פרטי</option>
+                        <option value="MISHPACHTON">משפחתון</option>
+                        <option value="MUNICIPAL_GAN">גן עירוני</option>
+                      </select>
+                    </div>
+
+                    {editCategory === "MAON_SYMBOL" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">סמל מעון</label>
+                        <input
+                          value={editMaonSymbolCode}
+                          onChange={(e) => setEditMaonSymbolCode(e.target.value)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                          placeholder="לדוגמה: 73874"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    ) : null}
+
+                    {editCategory === "PRIVATE_GAN" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">מפוקח?</label>
+                        <select
+                          value={editPrivateSupervision}
+                          onChange={(e) => setEditPrivateSupervision(e.target.value as any)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                        >
+                          <option value="UNKNOWN">לא ידוע</option>
+                          <option value="SUPERVISED">🛡️ מפוקח</option>
+                          <option value="NOT_SUPERVISED">לא מפוקח</option>
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {editCategory === "MISHPACHTON" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">פרטי או תמ״ת?</label>
+                        <select
+                          value={editMishpachtonAffiliation}
+                          onChange={(e) => setEditMishpachtonAffiliation(e.target.value as any)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                        >
+                          <option value="UNKNOWN">לא ידוע</option>
+                          <option value="PRIVATE">פרטי</option>
+                          <option value="TAMAT">תמ״ת</option>
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {editCategory === "MUNICIPAL_GAN" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">טט״ח/ט״ח/חובה</label>
+                        <select
+                          value={editMunicipalGrade}
+                          onChange={(e) => setEditMunicipalGrade(e.target.value as any)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                        >
+                          <option value="UNKNOWN">לא ידוע</option>
+                          <option value="TTAH">טט״ח</option>
+                          <option value="TAH">ט״ח</option>
+                          <option value="HOVA">חובה</option>
+                        </select>
+                      </div>
+                    ) : null}
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">עיר</label>
+                      <input
+                        value={editCity}
+                        onChange={(e) => setEditCity(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="תל אביב"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">שכונה (אופציונלי)</label>
+                      <input
+                        value={editNeighborhood}
+                        onChange={(e) => setEditNeighborhood(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="קטמונים"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">פיקוח עירוני</label>
+                      <select
+                        value={editPikuach}
+                        onChange={(e) => setEditPikuach(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="unknown">לא ידוע</option>
+                        <option value="yes">קיים</option>
+                        <option value="no">לא קיים</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">CCTV</label>
+                      <select
+                        value={editCctv}
+                        onChange={(e) => setEditCctv(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="unknown">לא ידוע</option>
+                        <option value="none">אין</option>
+                        <option value="exceptional">יש (פתוח למקרים חריגים)</option>
+                        <option value="online">יש ואפשר להתחבר אונליין</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">גיל מינימום (בשנים)</label>
+                      <input
+                        value={editMinAgeYears}
+                        onChange={(e) => setEditMinAgeYears(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="0.5"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">גיל מקסימום (בשנים)</label>
+                      <input
+                        value={editMaxAgeYears}
+                        onChange={(e) => setEditMaxAgeYears(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="3"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">מחיר חודשי (₪)</label>
+                      <input
+                        value={editMonthlyPrice}
+                        onChange={(e) => setEditMonthlyPrice(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="4200"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">הערה (סוג חופשי, אופציונלי)</label>
+                      <input
+                        value={editSuggestedType}
+                        onChange={(e) => setEditSuggestedType(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="לדוגמה: 'גן עירייה', 'פרטי', 'מעון יום'..."
+                      />
+                      <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
+                        תמיד נשמר בנוסף (לשקיפות), אבל הסיווג הראשי הוא “סוג”.
+                      </div>
+                    </div>
+                  </div>
+
+                  {editSaveError ? (
+                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 font-hebrew">
+                      {editSaveError}
+                    </div>
+                  ) : null}
+                  {editSaved ? (
+                    <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
+                      השינויים נשמרו.
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowEditForm(false)}
+                      disabled={saving}
+                    >
+                      ביטול
+                    </Button>
+                    <Button type="button" size="sm" onClick={submitGanEdit} disabled={saving}>
+                      {saving ? "שומר..." : "שמור שינויים"}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Give-to-Get: Reviews section - blurred if no contribution */}

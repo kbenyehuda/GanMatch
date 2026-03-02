@@ -1,5 +1,13 @@
-export type GanType = "Private" | "Supervised" | "Maon";
-export type LicenseStatus = "Permanent" | "Temporary" | "Under Observation";
+export type GanCategory =
+  | "UNSPECIFIED"
+  | "MAON_SYMBOL"
+  | "PRIVATE_GAN"
+  | "MISHPACHTON"
+  | "MUNICIPAL_GAN";
+
+export type PrivateSupervisionStatus = "UNKNOWN" | "SUPERVISED" | "NOT_SUPERVISED";
+export type MishpachtonAffiliation = "UNKNOWN" | "PRIVATE" | "TAMAT";
+export type MunicipalGrade = "UNKNOWN" | "TTAH" | "TAH" | "HOVA";
 export type WaitlistStatus = "Available" | "Limited" | "Full";
 
 export interface GanMetadata {
@@ -22,8 +30,15 @@ export interface Gan {
   name_en: string | null;
   address: string | null;
   city: string | null;
-  type: GanType;
-  license_status: LicenseStatus;
+  category: GanCategory;
+  maon_symbol_code?: string | null;
+  private_supervision?: PrivateSupervisionStatus | null;
+  mishpachton_affiliation?: MishpachtonAffiliation | null;
+  municipal_grade?: MunicipalGrade | null;
+  monthly_price_nis?: number | null;
+  min_age_months?: number | null;
+  max_age_months?: number | null;
+  price_notes?: string | null;
   has_cctv: boolean;
   cctv_streamed_online?: boolean | null;
   metadata: GanMetadata;

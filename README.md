@@ -118,6 +118,73 @@ src/
 - **Gan detail view** – Government licensing data, address, phones; Give-to-Get blurred reviews
 - **Darga calculator** – Estimated subsidy from Ministry of Labor 2025–2026 tables (placeholder brackets)
 
+## Canonical data model (v2 categories) + edit flow
+
+The app is moving toward a **category-first** model that is developer-intuitive and matches the Hebrew UI.
+
+### Canonical table: `public.ganim_v2`
+
+`ganim_v2` is the **canonical** “one row per gan” table that the app reads from via RPCs.
+
+- **Core**: `name_he`, `location`, `address` (street + number), `city`
+- **Category**: `category` plus exactly **one** dependent add-on field (see below)
+- **CCTV**:
+  - `has_cctv` (boolean)
+  - `cctv_streamed_online` (boolean nullable; meaningful only when `has_cctv=true`)
+- **Price & ages**:
+  - `monthly_price_nis` (numeric)
+  - `min_age_months`, `max_age_months` (ints)
+
+### Category logic (Hebrew UI)
+
+The UI shows `סוג` and then **only the add-on that matches the chosen category**:
+
+1) **מעון סמל** (`category = MAON_SYMBOL`)
+   - add-on: **סמל מעון** (`maon_symbol_code`)
+2) **גן פרטי** (`category = PRIVATE_GAN`)
+   - add-on: **פיקוח** (`private_supervision`: 🛡️ מפוקח / לא מפוקח / לא ידוע)
+3) **משפחתון** (`category = MISHPACHTON`)
+   - add-on: **שיוך** (`mishpachton_affiliation`: פרטי / תמ״ת / לא ידוע)
+4) **גן עירוני** (`category = MUNICIPAL_GAN`)
+   - add-on: **שכבה** (`municipal_grade`: טט״ח / ט״ח / חובה / לא ידוע)
+
+This prevents invalid combinations like “גן עירוני” with “🛡️ מפוקח”.
+
+### Deterministic backfill (Step A)
+
+To populate `ganim_v2` from existing imported data, we run a deterministic backfill migration:
+
+- Extracts `סמל מעון: ####` from text into `maon_symbol_code` (and sets category to `MAON_SYMBOL`).
+- Infers `category` conservatively from text signals (e.g., “משפחתון”, “גן עירייה/עירוני”, “פרטי”).
+- Backfills dependent add-ons to `UNKNOWN` when category is known but add-on cannot be inferred.
+- Backfills CCTV columns from `metadata.cctv_access` (none/exceptional/online).
+
+Migration: `supabase/migrations/20260302006000_backfill_ganim_v2_from_metadata.sql`
+
+### Read RPCs switched to `ganim_v2`
+
+The existing RPC names are preserved, but their source is now `ganim_v2`:
+
+- `get_all_ganim(p_limit)`
+- `get_ganim_in_bbox(min_lon, min_lat, max_lon, max_lat, p_limit)`
+
+Migration: `supabase/migrations/20260302005000_switch_rpcs_to_ganim_v2.sql`
+
+### Editing gan data (auto-approve stub)
+
+Users can edit gan fields from the UI (`GanDetail` → **ערוך פרטים**). The save flow is:
+
+- Client calls `POST /api/ganim/edit` with a patch.
+- Server runs a dummy approval function (currently always approves):
+  - `src/lib/moderation/gan-edit-approval.ts`
+- Server enforces category correctness:
+  - keeps only the dependent add-on for the chosen category
+  - clears all other dependent add-on columns to `NULL`
+- Server writes updates to `public.ganim_v2` using the Supabase service role key.
+- Request is logged in `public.gan_edit_requests`.
+
+Migration: `supabase/migrations/20260302002000_gan_edit_requests.sql`
+
 ## Populating real data (Tel Aviv / Givatayim)
 
 A Python scraper lives in `scripts/scraper/`:

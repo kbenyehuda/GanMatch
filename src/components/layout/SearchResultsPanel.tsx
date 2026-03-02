@@ -10,6 +10,7 @@ import {
   getGanNeighborhoodForDisplay,
   getGanStreetAddressForDisplay,
 } from "@/lib/gan-format";
+import { formatGanCategoryAddonLabelHe, formatGanCategoryHe } from "@/lib/gan-display";
 
 interface SearchResultsPanelProps {
   ganim: Gan[];
@@ -158,28 +159,14 @@ export function SearchResultsPanel({
           ganim.map((gan) => (
             (() => {
               const showUnapproved = !gan.is_verified;
-              const licenseWarn =
-                gan.is_verified && gan.license_status && gan.license_status !== "Permanent"
-                  ? gan.license_status
-                  : null;
-              const licenseWarnText =
-                licenseWarn === "Temporary" ? "רישוי זמני" : licenseWarn === "Under Observation" ? "תחת מעקב" : null;
-              const typeText = showUnapproved
-                ? (typeof gan.metadata?.suggested_type === "string" && gan.metadata.suggested_type.trim()
-                    ? gan.metadata.suggested_type.trim()
-                    : "לא ידוע")
-                : gan.type === "Private"
-                  ? "פרטי"
-                  : gan.type === "Maon"
-                    ? "מעון"
-                    : "מפוקח (רישוי)";
               const pikuachText =
                 gan.metadata?.pikuach_ironi === true
                   ? "קיים"
                   : gan.metadata?.pikuach_ironi === false
                     ? "לא קיים"
-                    : "לא ידוע";
+                    : null;
               const neighborhood = getGanNeighborhoodForDisplay(gan);
+              const addon = formatGanCategoryAddonLabelHe(gan);
 
               return (
             <Card
@@ -195,10 +182,6 @@ export function SearchResultsPanel({
                   {showUnapproved ? (
                     <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
                       נוסף לאחרונה ע״י משתמש — עדיין לא אושר
-                    </span>
-                  ) : licenseWarnText ? (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-900 border border-rose-200 whitespace-nowrap">
-                      {licenseWarnText}
                     </span>
                   ) : null}
                 </div>
@@ -221,10 +204,20 @@ export function SearchResultsPanel({
                       <dd className="text-gray-600 font-hebrew">{neighborhood}</dd>
                     </>
                   ) : null}
-                  <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
-                  <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
                   <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
-                  <dd className="text-gray-600 font-hebrew">{typeText}</dd>
+                  <dd className="text-gray-600 font-hebrew">{formatGanCategoryHe(gan.category)}</dd>
+                  {addon ? (
+                    <>
+                      <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">{addon.label}</dt>
+                      <dd className="text-gray-600 font-hebrew">{addon.value}</dd>
+                    </>
+                  ) : null}
+                  {pikuachText ? (
+                    <>
+                      <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
+                      <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
+                    </>
+                  ) : null}
                 </dl>
               </CardContent>
             </Card>
