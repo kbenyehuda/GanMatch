@@ -38,11 +38,16 @@ export function ContactReviewerModal({
     setSenderEmail((prev) => (prev.trim() ? prev : initialEmail));
   }, [initialEmail]);
 
-  if (!user || !session?.access_token) return null;
+  if (!user) return null;
+  const accessToken = session?.access_token ?? null;
 
   const submit = async () => {
     setError(null);
     setSuccess(false);
+    if (!accessToken) {
+      setError("אנא המתן… ההתחברות עדיין נטענת.");
+      return;
+    }
     if (!enabled) {
       setError("אפשרות יצירת קשר אינה זמינה כרגע.");
       return;
@@ -66,7 +71,7 @@ export function ContactReviewerModal({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ reviewId, senderEmail: email, messageText: msg }),
       });
@@ -99,6 +104,11 @@ export function ContactReviewerModal({
                 אפשרות יצירת קשר אינה זמינה כרגע.
               </div>
             ) : null}
+          {!accessToken ? (
+            <div className="mt-2 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 font-hebrew">
+              טוען נתוני התחברות…
+            </div>
+          ) : null}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
             <X className="w-5 h-5" />
@@ -144,7 +154,7 @@ export function ContactReviewerModal({
             <Button variant="outline" onClick={onClose} disabled={sending}>
               ביטול
             </Button>
-            <Button onClick={submit} disabled={sending || !enabled}>
+            <Button onClick={submit} disabled={sending || !enabled || !accessToken}>
               {sending ? "שולח..." : "שלח"}
             </Button>
           </div>

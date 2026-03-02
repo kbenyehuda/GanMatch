@@ -1099,15 +1099,25 @@ export function GanDetail({
                           )}
                         </div>
 
-                        {user && r.user_id !== user.id ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="whitespace-nowrap"
-                            onClick={() => setContactReviewId(r.id)}
-                          >
-                            שלח שאלה
-                          </Button>
+                        {user ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="whitespace-nowrap"
+                              disabled={r.user_id === user.id}
+                              title={r.user_id === user.id ? "אי אפשר לשלוח הודעה לעצמך" : "שלח שאלה לממליץ"}
+                              onClick={() => {
+                                if (r.user_id === user.id) return;
+                                setContactReviewId(r.id);
+                              }}
+                            >
+                              שלח שאלה
+                            </Button>
+                            {r.user_id === user.id ? (
+                              <div className="text-[11px] text-gray-500 font-hebrew">זו הביקורת שלך</div>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     </div>
