@@ -57,7 +57,7 @@ export function GanClusterList({ ganim, onClose, onSelectGan }: GanClusterListPr
                 ) : null}
               </div>
               <div className="mt-1 text-sm text-gray-600 font-hebrew truncate">
-                {g.address || g.city || "—"}
+                {g.address ? g.address : g.city ? `${g.city} · אין כתובת` : "אין כתובת"}
               </div>
             </button>
           ))}

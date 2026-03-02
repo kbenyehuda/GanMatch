@@ -172,7 +172,13 @@ export function SearchResultsPanel({
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
                   <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span>{gan.address || gan.city || "—"}</span>
+                  <span>
+                    {gan.address
+                      ? gan.address
+                      : gan.city
+                        ? `${gan.city} · אין כתובת`
+                        : "אין כתובת"}
+                  </span>
                 </div>
                 <div className="flex gap-2 mt-2">
                   <span className="text-xs px-2 py-0.5 rounded-full bg-gan-muted text-gan-dark">

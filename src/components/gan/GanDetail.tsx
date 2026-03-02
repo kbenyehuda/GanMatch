@@ -451,7 +451,7 @@ export function GanDetail({
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
               כתובת
             </dt>
-            <dd className="text-gray-600">{gan.address || "—"}</dd>
+            <dd className="text-gray-600">{gan.address || "אין כתובת"}</dd>
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">
               עיר
             </dt>
