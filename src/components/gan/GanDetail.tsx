@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, Phone, X, Lock, ArrowRight, Sparkles } from "lucide-react";
+import { Shield, Phone, X, Lock, ArrowRight, Sparkles, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
@@ -8,7 +8,7 @@ import { StarRatingInput } from "@/components/ui/StarRatingInput";
 import type { Gan } from "@/types/ganim";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import {
   getGanCityForDisplay,
@@ -40,7 +40,8 @@ export function GanDetail({
   onReviewSaved,
 }: GanDetailProps) {
   const { user } = useSession();
-  const [showFacets, setShowFacets] = useState(false);
+  const [showAvgFacets, setShowAvgFacets] = useState(false);
+  const [showRecommendFacets, setShowRecommendFacets] = useState(false);
   const [showRecommendForm, setShowRecommendForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,6 +135,7 @@ export function GanDetail({
   const [editNeighborhood, setEditNeighborhood] = useState<string>("");
   const [editPikuach, setEditPikuach] = useState<"unknown" | "yes" | "no">("unknown");
   const [editSuggestedType, setEditSuggestedType] = useState<string>("");
+  const [editPriceNotes, setEditPriceNotes] = useState<string>("");
   const [editCategory, setEditCategory] = useState<Gan["category"]>("UNSPECIFIED");
   const [editMaonSymbolCode, setEditMaonSymbolCode] = useState<string>("");
   const [editPrivateSupervision, setEditPrivateSupervision] = useState<NonNullable<Gan["private_supervision"]>>(
@@ -149,12 +151,16 @@ export function GanDetail({
   const [editCctv, setEditCctv] = useState<"unknown" | "none" | "exceptional" | "online">("unknown");
   const [editSaveError, setEditSaveError] = useState<string | null>(null);
   const [editSaved, setEditSaved] = useState(false);
+  const editFormTopRef = useRef<HTMLDivElement | null>(null);
+  const editFirstMissingFieldRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     // When changing gan, reset edit form fields to current values.
     setShowEditForm(false);
     setEditSaveError(null);
     setEditSaved(false);
+    setShowRecommendForm(false);
+    setShowRecommendFacets(false);
 
     const street = getGanStreetAddressForDisplay(gan);
     const city = getGanCityForDisplay(gan);
@@ -163,6 +169,7 @@ export function GanDetail({
     setEditNeighborhood(getGanNeighborhoodForDisplay(gan) ?? "");
     setEditPikuach(gan.metadata?.pikuach_ironi === true ? "yes" : gan.metadata?.pikuach_ironi === false ? "no" : "unknown");
     setEditSuggestedType(typeof gan.metadata?.suggested_type === "string" ? gan.metadata.suggested_type : "");
+    setEditPriceNotes(typeof gan.price_notes === "string" ? gan.price_notes : "");
     setEditCategory(gan.category);
     setEditMaonSymbolCode(gan.maon_symbol_code ?? "");
     setEditPrivateSupervision((gan.private_supervision ?? "UNKNOWN") as any);
@@ -181,6 +188,57 @@ export function GanDetail({
         : "none"
     );
   }, [gan]);
+
+  const missingInfo = useMemo(() => {
+    const items: Array<{ key: string; label: string; focus?: "category" | "addon" | "ages" | "price" | "neighborhood" }> = [];
+
+    if (gan.category === "UNSPECIFIED") {
+      items.push({ key: "category", label: "סוג", focus: "category" });
+    } else if (gan.category === "MAON_SYMBOL") {
+      if (!gan.maon_symbol_code) items.push({ key: "maon_symbol_code", label: "סמל מעון", focus: "addon" });
+    } else if (gan.category === "PRIVATE_GAN") {
+      if ((gan.private_supervision ?? "UNKNOWN") === "UNKNOWN") items.push({ key: "private_supervision", label: "פיקוח", focus: "addon" });
+    } else if (gan.category === "MISHPACHTON") {
+      if ((gan.mishpachton_affiliation ?? "UNKNOWN") === "UNKNOWN") items.push({ key: "mishpachton_affiliation", label: "שיוך", focus: "addon" });
+    } else if (gan.category === "MUNICIPAL_GAN") {
+      if ((gan.municipal_grade ?? "UNKNOWN") === "UNKNOWN") items.push({ key: "municipal_grade", label: "שכבה", focus: "addon" });
+    }
+
+    if (gan.min_age_months == null && gan.max_age_months == null) {
+      items.push({ key: "ages", label: "גילאים", focus: "ages" });
+    }
+    if (gan.monthly_price_nis == null) {
+      items.push({ key: "price", label: "מחיר", focus: "price" });
+    }
+    if (!neighborhood) {
+      items.push({ key: "neighborhood", label: "שכונה", focus: "neighborhood" });
+    }
+
+    return items;
+  }, [gan, neighborhood]);
+
+  const openEditAndFocus = (focus?: (typeof missingInfo)[number]["focus"]) => {
+    setShowEditForm(true);
+    setEditSaved(false);
+    setEditSaveError(null);
+    requestAnimationFrame(() => {
+      editFormTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Focus the first missing field if we have a known target.
+      if (focus === "category") {
+        (document.getElementById("gan-edit-category") as HTMLElement | null)?.focus?.();
+      } else if (focus === "addon") {
+        (document.getElementById("gan-edit-addon") as HTMLElement | null)?.focus?.();
+      } else if (focus === "ages") {
+        (document.getElementById("gan-edit-min-age") as HTMLElement | null)?.focus?.();
+      } else if (focus === "price") {
+        (document.getElementById("gan-edit-monthly-price") as HTMLElement | null)?.focus?.();
+      } else if (focus === "neighborhood") {
+        (document.getElementById("gan-edit-neighborhood") as HTMLElement | null)?.focus?.();
+      } else {
+        editFirstMissingFieldRef.current?.focus?.();
+      }
+    });
+  };
 
   const submitGanEdit = async () => {
     setEditSaveError(null);
@@ -213,12 +271,18 @@ export function GanDetail({
         return Math.round(n);
       })();
 
+      if (editCategory === "MAON_SYMBOL" && !editMaonSymbolCode.trim()) {
+        setEditSaveError("במעון סמל חייבים למלא סמל מעון.");
+        return;
+      }
+
       const patch: Record<string, unknown> = {
         address: editAddress.trim() ? editAddress.trim() : null,
         city: editCity.trim() ? editCity.trim() : null,
         neighborhood: editNeighborhood.trim() ? editNeighborhood.trim() : null,
         pikuach_ironi: editPikuach === "unknown" ? null : editPikuach === "yes",
         suggested_type: editSuggestedType.trim() ? editSuggestedType.trim() : null,
+        price_notes: editPriceNotes.trim() ? editPriceNotes.trim() : null,
         category: editCategory,
         maon_symbol_code: editMaonSymbolCode.trim() ? editMaonSymbolCode.trim() : null,
         private_supervision: editPrivateSupervision,
@@ -227,9 +291,12 @@ export function GanDetail({
         monthly_price_nis: monthlyPrice,
         min_age_months: minAgeMonths,
         max_age_months: maxAgeMonths,
-        has_cctv: editCctv !== "none",
-        cctv_streamed_online: editCctv === "online" ? true : editCctv === "exceptional" ? false : null,
       };
+
+      if (editCctv !== "unknown") {
+        patch.has_cctv = editCctv !== "none";
+        patch.cctv_streamed_online = editCctv === "online" ? true : editCctv === "exceptional" ? false : null;
+      }
 
       const res = await fetch("/api/ganim/edit", {
         method: "POST",
@@ -342,6 +409,7 @@ export function GanDetail({
     if (!showRecommendForm) {
       setSubmitted(false);
       setSubmitError(null);
+      setShowRecommendFacets(false);
     }
   }, [showRecommendForm]);
 
@@ -447,7 +515,7 @@ export function GanDetail({
             <button
               type="button"
               className="text-start"
-              onClick={() => setShowFacets((v) => !v)}
+              onClick={() => setShowAvgFacets((v) => !v)}
               title="לחץ לפירוט קטגוריות"
             >
               <div className="font-hebrew font-semibold text-gan-dark">דירוג הורים</div>
@@ -461,30 +529,19 @@ export function GanDetail({
 
             <div className="flex flex-col items-end gap-2">
               {!gan.is_verified ? (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
-                  נוסף לאחרונה ע״י משתמש — עדיין לא אושר
-                </span>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-50 text-amber-900 border border-amber-200"
+                  title="נוסף לאחרונה ע״י משתמש — עדיין לא אושר"
+                  aria-label="נוסף לאחרונה ע״י משתמש — עדיין לא אושר"
+                >
+                  <Info className="w-4 h-4" />
+                </button>
               ) : null}
-              <Button
-                size="sm"
-                className="gap-2"
-                onClick={() => setShowRecommendForm((v) => !v)}
-              >
-                <Sparkles className="w-4 h-4" />
-                כתבו המלצה
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2"
-                onClick={() => setShowEditForm((v) => !v)}
-              >
-                ערוך פרטים
-              </Button>
             </div>
           </div>
 
-          {showFacets && (
+          {showAvgFacets && (
             <div className="mt-4 border-t border-gan-accent/30 pt-3">
               <div className="grid grid-cols-1 gap-2">
                 {facetAverages.map((f) => (
@@ -498,9 +555,367 @@ export function GanDetail({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Unified info block (same style as search cards) */}
+        <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3">
+          {missingInfo.length > 0 ? (
+            <div className="rounded-lg border border-gan-accent/30 bg-gan-muted/20 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-hebrew font-semibold text-gan-dark">חסרים פרטים</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {missingInfo.slice(0, 6).map((m) => (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => openEditAndFocus(m.focus)}
+                        className="text-[12px] font-hebrew px-2 py-1 rounded-full border border-gan-accent/40 bg-white text-gan-dark hover:bg-gan-muted/30"
+                        title="לחצו כדי למלא"
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  {!user ? (
+                    <Button size="sm" onClick={onRequestLogin ?? signIn} className="gap-2">
+                      <Lock className="w-4 h-4" />
+                      התחבר כדי לתרום
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={() => openEditAndFocus(missingInfo[0]?.focus)}>
+                      מלאו פרטים
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 text-[11px] text-gray-500 font-hebrew">
+                בשלב הזה השינויים נשמרים מיידית (לניפוי שגיאות). בהמשך נוכל לעבור לאישור/אגרגציה.
+              </div>
+            </div>
+          ) : null}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">כתובת</dt>
+            <dd className="text-gray-600 font-hebrew">{getGanStreetAddressForDisplay(gan)}</dd>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">עיר</dt>
+            <dd className="text-gray-600 font-hebrew">{getGanCityForDisplay(gan)}</dd>
+            {neighborhood ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">שכונה</dt>
+                <dd className="text-gray-600 font-hebrew">{neighborhood}</dd>
+              </>
+            ) : null}
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
+            <dd className="text-gray-600 font-hebrew">{categoryText}</dd>
+            {addon ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">{addon.label}</dt>
+                <dd className="text-gray-600 font-hebrew">{addon.value}</dd>
+              </>
+            ) : null}
+            {pikuachText ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
+                <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
+              </>
+            ) : null}
+            {agesText ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">גילאים</dt>
+                <dd className="text-gray-600 font-hebrew">{agesText}</dd>
+              </>
+            ) : null}
+            {priceText ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">מחיר</dt>
+                <dd className="text-gray-600 font-hebrew">
+                  <div>{priceText}</div>
+                  {gan.price_notes ? (
+                    <div className="mt-1 text-[12px] text-gray-500 font-hebrew whitespace-pre-wrap">
+                      {gan.price_notes}
+                    </div>
+                  ) : null}
+                </dd>
+              </>
+            ) : null}
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
+            <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">טלפון</dt>
+            <dd className="text-gray-600">
+              {phones.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {phones.map((p) => (
+                    <a
+                      key={p}
+                      href={`tel:${p}`}
+                      className="inline-flex items-center gap-1 text-gan-primary hover:underline"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      {p}
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                "—"
+              )}
+            </dd>
+          </dl>
+
+          {showEditForm && (
+            <div className="border-t border-gan-accent/30 pt-4 space-y-3">
+              <div ref={editFormTopRef} />
+              <div className="text-sm font-hebrew font-semibold text-gan-dark">עריכת פרטים</div>
+              {!user ? (
+                <div className="text-sm text-gray-600 font-hebrew">צריך להתחבר כדי לערוך.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">כתובת (רחוב + מספר)</label>
+                      <input
+                        ref={(el) => {
+                          if (el && !editFirstMissingFieldRef.current) editFirstMissingFieldRef.current = el;
+                        }}
+                        value={editAddress}
+                        onChange={(e) => setEditAddress(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="אבן גבירול 30"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג</label>
+                      <select
+                        id="gan-edit-category"
+                        value={editCategory}
+                        onChange={(e) => {
+                          const next = e.target.value as Gan["category"];
+                          setEditCategory(next);
+                          // Reset dependent fields so we never save mismatched add-ons.
+                          setEditMaonSymbolCode("");
+                          setEditPrivateSupervision("UNKNOWN");
+                          setEditMishpachtonAffiliation("UNKNOWN");
+                          setEditMunicipalGrade("UNKNOWN");
+                        }}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="UNSPECIFIED">לא ידוע</option>
+                        <option value="MAON_SYMBOL">מעון סמל</option>
+                        <option value="PRIVATE_GAN">גן פרטי</option>
+                        <option value="MISHPACHTON">משפחתון</option>
+                        <option value="MUNICIPAL_GAN">גן עירוני</option>
+                      </select>
+                    </div>
+
+                    {editCategory === "MAON_SYMBOL" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">סמל מעון</label>
+                        <input
+                          id="gan-edit-addon"
+                          value={editMaonSymbolCode}
+                          onChange={(e) => setEditMaonSymbolCode(e.target.value)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                          placeholder="לדוגמה: 73874"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    ) : null}
+
+                    {editCategory === "PRIVATE_GAN" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">מפוקח?</label>
+                        <select
+                          id="gan-edit-addon"
+                          value={editPrivateSupervision}
+                          onChange={(e) => setEditPrivateSupervision(e.target.value as any)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                        >
+                          <option value="UNKNOWN">לא ידוע</option>
+                          <option value="SUPERVISED">🛡️ מפוקח</option>
+                          <option value="NOT_SUPERVISED">לא מפוקח</option>
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {editCategory === "MISHPACHTON" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">פרטי או תמ״ת?</label>
+                        <select
+                          id="gan-edit-addon"
+                          value={editMishpachtonAffiliation}
+                          onChange={(e) => setEditMishpachtonAffiliation(e.target.value as any)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                        >
+                          <option value="UNKNOWN">לא ידוע</option>
+                          <option value="PRIVATE">פרטי</option>
+                          <option value="TAMAT">תמ״ת</option>
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {editCategory === "MUNICIPAL_GAN" ? (
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">טט״ח/ט״ח/חובה</label>
+                        <select
+                          id="gan-edit-addon"
+                          value={editMunicipalGrade}
+                          onChange={(e) => setEditMunicipalGrade(e.target.value as any)}
+                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                        >
+                          <option value="UNKNOWN">לא ידוע</option>
+                          <option value="TTAH">טט״ח</option>
+                          <option value="TAH">ט״ח</option>
+                          <option value="HOVA">חובה</option>
+                        </select>
+                      </div>
+                    ) : null}
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">עיר</label>
+                      <input
+                        value={editCity}
+                        onChange={(e) => setEditCity(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="תל אביב"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">שכונה (אופציונלי)</label>
+                      <input
+                        id="gan-edit-neighborhood"
+                        value={editNeighborhood}
+                        onChange={(e) => setEditNeighborhood(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="קטמונים"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">פיקוח עירוני</label>
+                      <select
+                        value={editPikuach}
+                        onChange={(e) => setEditPikuach(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="unknown">לא ידוע</option>
+                        <option value="yes">קיים</option>
+                        <option value="no">לא קיים</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">CCTV</label>
+                      <select
+                        value={editCctv}
+                        onChange={(e) => setEditCctv(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="unknown">לא ידוע</option>
+                        <option value="none">אין</option>
+                        <option value="exceptional">יש (פתוח למקרים חריגים)</option>
+                        <option value="online">יש ואפשר להתחבר אונליין</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">גיל מינימום (בשנים)</label>
+                      <input
+                        id="gan-edit-min-age"
+                        value={editMinAgeYears}
+                        onChange={(e) => setEditMinAgeYears(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="0.5"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">גיל מקסימום (בשנים)</label>
+                      <input
+                        value={editMaxAgeYears}
+                        onChange={(e) => setEditMaxAgeYears(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="3"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">מחיר חודשי (₪)</label>
+                      <input
+                        id="gan-edit-monthly-price"
+                        value={editMonthlyPrice}
+                        onChange={(e) => setEditMonthlyPrice(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="4200"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">הערת מחיר (אופציונלי)</label>
+                      <input
+                        value={editPriceNotes}
+                        onChange={(e) => setEditPriceNotes(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="לדוגמה: כולל אוכל / כולל צהרון / מחיר משתנה לפי גיל..."
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג (טקסט חופשי, אופציונלי)</label>
+                      <input
+                        value={editSuggestedType}
+                        onChange={(e) => setEditSuggestedType(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="לדוגמה: 'גן עירייה', 'פרטי', 'מעון יום'..."
+                      />
+                      <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
+                        נשמר לשקיפות (ב־metadata), אבל הסיווג הראשי הוא “סוג”.
+                      </div>
+                    </div>
+                  </div>
+
+                  {editSaveError ? (
+                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 font-hebrew">
+                      {editSaveError}
+                    </div>
+                  ) : null}
+                  {editSaved ? (
+                    <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
+                      השינויים נשמרו.
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowEditForm(false)}
+                      disabled={saving}
+                    >
+                      ביטול
+                    </Button>
+                    <Button type="button" size="sm" onClick={submitGanEdit} disabled={saving}>
+                      {saving ? "שומר..." : "שמור שינויים"}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Give-to-Get: Reviews section - blurred if no contribution */}
+        <div>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h4 className="font-medium text-gan-dark">ביקורות הורים</h4>
+            <Button
+              size="sm"
+              className="gap-2 whitespace-nowrap"
+              onClick={() => setShowRecommendForm((v) => !v)}
+            >
+              <Sparkles className="w-4 h-4" />
+              כתבו המלצה
+            </Button>
+          </div>
 
           {showRecommendForm && (
-            <div className="mt-4 border-t border-gan-accent/30 pt-4 space-y-3">
+            <div className="mb-3 rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3">
               <div className="text-xs text-gray-600 font-hebrew">
                 כדי למנוע בוטים צריך להתחבר, אבל אפשר לפרסם כ״אנונימי״.
               </div>
@@ -516,12 +931,12 @@ export function GanDetail({
                   <button
                     type="button"
                     className="text-sm font-hebrew text-gan-primary hover:underline"
-                    onClick={() => setShowFacets((v) => !v)}
+                    onClick={() => setShowRecommendFacets((v) => !v)}
                   >
-                    {showFacets ? "הסתר דירוג קטגוריות" : "הוסף דירוג קטגוריות"}
+                    {showRecommendFacets ? "הסתר דירוג קטגוריות" : "הוסף דירוג קטגוריות"}
                   </button>
 
-                  {showFacets && (
+                  {showRecommendFacets && (
                     <div className="grid grid-cols-1 gap-3">
                       <StarRatingInput
                         value={cleanliness}
@@ -597,289 +1012,6 @@ export function GanDetail({
               )}
             </div>
           )}
-        </div>
-
-        {/* Unified info block (same style as search cards) */}
-        <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">כתובת</dt>
-            <dd className="text-gray-600 font-hebrew">{getGanStreetAddressForDisplay(gan)}</dd>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">עיר</dt>
-            <dd className="text-gray-600 font-hebrew">{getGanCityForDisplay(gan)}</dd>
-            {neighborhood ? (
-              <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">שכונה</dt>
-                <dd className="text-gray-600 font-hebrew">{neighborhood}</dd>
-              </>
-            ) : null}
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
-            <dd className="text-gray-600 font-hebrew">{categoryText}</dd>
-            {addon ? (
-              <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">{addon.label}</dt>
-                <dd className="text-gray-600 font-hebrew">{addon.value}</dd>
-              </>
-            ) : null}
-            {pikuachText ? (
-              <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
-                <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
-              </>
-            ) : null}
-            {agesText ? (
-              <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">גילאים</dt>
-                <dd className="text-gray-600 font-hebrew">{agesText}</dd>
-              </>
-            ) : null}
-            {priceText ? (
-              <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">מחיר</dt>
-                <dd className="text-gray-600 font-hebrew">{priceText}</dd>
-              </>
-            ) : null}
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
-            <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">טלפון</dt>
-            <dd className="text-gray-600">
-              {phones.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {phones.map((p) => (
-                    <a
-                      key={p}
-                      href={`tel:${p}`}
-                      className="inline-flex items-center gap-1 text-gan-primary hover:underline"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      {p}
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                "—"
-              )}
-            </dd>
-          </dl>
-
-          {showEditForm && (
-            <div className="border-t border-gan-accent/30 pt-4 space-y-3">
-              <div className="text-sm font-hebrew font-semibold text-gan-dark">עריכת פרטים</div>
-              {!user ? (
-                <div className="text-sm text-gray-600 font-hebrew">צריך להתחבר כדי לערוך.</div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">כתובת (רחוב + מספר)</label>
-                      <input
-                        value={editAddress}
-                        onChange={(e) => setEditAddress(e.target.value)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                        placeholder="אבן גבירול 30"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג</label>
-                      <select
-                        value={editCategory}
-                        onChange={(e) => {
-                          const next = e.target.value as Gan["category"];
-                          setEditCategory(next);
-                          // Reset dependent fields so we never save mismatched add-ons.
-                          setEditMaonSymbolCode("");
-                          setEditPrivateSupervision("UNKNOWN");
-                          setEditMishpachtonAffiliation("UNKNOWN");
-                          setEditMunicipalGrade("UNKNOWN");
-                        }}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-                      >
-                        <option value="UNSPECIFIED">לא ידוע</option>
-                        <option value="MAON_SYMBOL">מעון סמל</option>
-                        <option value="PRIVATE_GAN">גן פרטי</option>
-                        <option value="MISHPACHTON">משפחתון</option>
-                        <option value="MUNICIPAL_GAN">גן עירוני</option>
-                      </select>
-                    </div>
-
-                    {editCategory === "MAON_SYMBOL" ? (
-                      <div className="col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">סמל מעון</label>
-                        <input
-                          value={editMaonSymbolCode}
-                          onChange={(e) => setEditMaonSymbolCode(e.target.value)}
-                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                          placeholder="לדוגמה: 73874"
-                          inputMode="numeric"
-                        />
-                      </div>
-                    ) : null}
-
-                    {editCategory === "PRIVATE_GAN" ? (
-                      <div className="col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">מפוקח?</label>
-                        <select
-                          value={editPrivateSupervision}
-                          onChange={(e) => setEditPrivateSupervision(e.target.value as any)}
-                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-                        >
-                          <option value="UNKNOWN">לא ידוע</option>
-                          <option value="SUPERVISED">🛡️ מפוקח</option>
-                          <option value="NOT_SUPERVISED">לא מפוקח</option>
-                        </select>
-                      </div>
-                    ) : null}
-
-                    {editCategory === "MISHPACHTON" ? (
-                      <div className="col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">פרטי או תמ״ת?</label>
-                        <select
-                          value={editMishpachtonAffiliation}
-                          onChange={(e) => setEditMishpachtonAffiliation(e.target.value as any)}
-                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-                        >
-                          <option value="UNKNOWN">לא ידוע</option>
-                          <option value="PRIVATE">פרטי</option>
-                          <option value="TAMAT">תמ״ת</option>
-                        </select>
-                      </div>
-                    ) : null}
-
-                    {editCategory === "MUNICIPAL_GAN" ? (
-                      <div className="col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1 font-hebrew">טט״ח/ט״ח/חובה</label>
-                        <select
-                          value={editMunicipalGrade}
-                          onChange={(e) => setEditMunicipalGrade(e.target.value as any)}
-                          className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-                        >
-                          <option value="UNKNOWN">לא ידוע</option>
-                          <option value="TTAH">טט״ח</option>
-                          <option value="TAH">ט״ח</option>
-                          <option value="HOVA">חובה</option>
-                        </select>
-                      </div>
-                    ) : null}
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">עיר</label>
-                      <input
-                        value={editCity}
-                        onChange={(e) => setEditCity(e.target.value)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                        placeholder="תל אביב"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">שכונה (אופציונלי)</label>
-                      <input
-                        value={editNeighborhood}
-                        onChange={(e) => setEditNeighborhood(e.target.value)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                        placeholder="קטמונים"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">פיקוח עירוני</label>
-                      <select
-                        value={editPikuach}
-                        onChange={(e) => setEditPikuach(e.target.value as any)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-                      >
-                        <option value="unknown">לא ידוע</option>
-                        <option value="yes">קיים</option>
-                        <option value="no">לא קיים</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">CCTV</label>
-                      <select
-                        value={editCctv}
-                        onChange={(e) => setEditCctv(e.target.value as any)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-                      >
-                        <option value="unknown">לא ידוע</option>
-                        <option value="none">אין</option>
-                        <option value="exceptional">יש (פתוח למקרים חריגים)</option>
-                        <option value="online">יש ואפשר להתחבר אונליין</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">גיל מינימום (בשנים)</label>
-                      <input
-                        value={editMinAgeYears}
-                        onChange={(e) => setEditMinAgeYears(e.target.value)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                        placeholder="0.5"
-                        inputMode="decimal"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">גיל מקסימום (בשנים)</label>
-                      <input
-                        value={editMaxAgeYears}
-                        onChange={(e) => setEditMaxAgeYears(e.target.value)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                        placeholder="3"
-                        inputMode="decimal"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">מחיר חודשי (₪)</label>
-                      <input
-                        value={editMonthlyPrice}
-                        onChange={(e) => setEditMonthlyPrice(e.target.value)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                        placeholder="4200"
-                        inputMode="numeric"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">הערה (סוג חופשי, אופציונלי)</label>
-                      <input
-                        value={editSuggestedType}
-                        onChange={(e) => setEditSuggestedType(e.target.value)}
-                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-                        placeholder="לדוגמה: 'גן עירייה', 'פרטי', 'מעון יום'..."
-                      />
-                      <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
-                        תמיד נשמר בנוסף (לשקיפות), אבל הסיווג הראשי הוא “סוג”.
-                      </div>
-                    </div>
-                  </div>
-
-                  {editSaveError ? (
-                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 font-hebrew">
-                      {editSaveError}
-                    </div>
-                  ) : null}
-                  {editSaved ? (
-                    <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
-                      השינויים נשמרו.
-                    </div>
-                  ) : null}
-
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowEditForm(false)}
-                      disabled={saving}
-                    >
-                      ביטול
-                    </Button>
-                    <Button type="button" size="sm" onClick={submitGanEdit} disabled={saving}>
-                      {saving ? "שומר..." : "שמור שינויים"}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Give-to-Get: Reviews section - blurred if no contribution */}
-        <div>
-          <h4 className="font-medium text-gan-dark mb-2">ביקורות הורים</h4>
           {canViewReviews ? (
             <div className="space-y-3">
               {reviewsLoading ? (

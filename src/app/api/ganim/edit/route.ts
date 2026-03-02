@@ -98,6 +98,7 @@ export async function POST(req: Request) {
   const neighborhood = coerceTrimmedOrNull(patch.neighborhood);
   const suggestedType = coerceTrimmedOrNull(patch.suggested_type);
   const addressExtra = coerceTrimmedOrNull(patch.address_extra);
+  const priceNotes = coerceTrimmedOrNull(patch.price_notes);
 
   if (neighborhood !== undefined) {
     if (neighborhood === null) delete nextMetadata.neighborhood;
@@ -140,6 +141,7 @@ export async function POST(req: Request) {
   };
   if (address !== undefined) updatePayload.address = address;
   if (city !== undefined) updatePayload.city = city;
+  if (priceNotes !== undefined) updatePayload.price_notes = priceNotes;
 
   if (patch.category !== undefined && isGanCategory(patch.category)) {
     updatePayload.category = patch.category;
