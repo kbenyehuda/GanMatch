@@ -32,6 +32,7 @@ const DEFAULT_VIEW = {
 };
 
 const USER_RADIUS_M = 1000;
+const FOCUS_GAN_ZOOM = 15.5;
 
 export interface Bounds {
   minLon: number;
@@ -142,6 +143,25 @@ export function MapContainer({
   const handleMoveEnd = useCallback(() => {
     updateViewport();
   }, [updateViewport]);
+
+  // When a gan is selected from the UI (search / list / pin), center it and zoom in.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!selectedGanId) return;
+    const gan = ganim.find((g) => g.id === selectedGanId);
+    if (!gan) return;
+    if (typeof gan.lon !== "number" || typeof gan.lat !== "number") return;
+    if (!isFinite(gan.lon) || !isFinite(gan.lat)) return;
+
+    const currentZoom = map.getZoom?.() ?? DEFAULT_VIEW.zoom;
+    const targetZoom = Math.max(Number(currentZoom) || DEFAULT_VIEW.zoom, FOCUS_GAN_ZOOM);
+    map.easeTo({
+      center: [gan.lon, gan.lat],
+      zoom: targetZoom,
+      duration: 650,
+    });
+  }, [selectedGanId, ganim]);
 
   // When we have the user's location, fit the map to a 1km radius around it.
   useEffect(() => {

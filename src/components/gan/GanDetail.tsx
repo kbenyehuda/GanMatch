@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, Phone, X, Lock, ArrowRight, Sparkles, Info } from "lucide-react";
+import { Shield, Phone, X, Lock, ArrowRight, Sparkles, Info, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
@@ -153,6 +153,7 @@ export function GanDetail({
   const [editSaved, setEditSaved] = useState(false);
   const editFormTopRef = useRef<HTMLDivElement | null>(null);
   const editFirstMissingFieldRef = useRef<HTMLElement | null>(null);
+  const [showMissingDetails, setShowMissingDetails] = useState(false);
 
   useEffect(() => {
     // When changing gan, reset edit form fields to current values.
@@ -161,6 +162,7 @@ export function GanDetail({
     setEditSaved(false);
     setShowRecommendForm(false);
     setShowRecommendFacets(false);
+    setShowMissingDetails(false);
 
     const street = getGanStreetAddressForDisplay(gan);
     const city = getGanCityForDisplay(gan);
@@ -560,10 +562,47 @@ export function GanDetail({
         {/* Unified info block (same style as search cards) */}
         <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3">
           {missingInfo.length > 0 ? (
-            <div className="rounded-lg border border-gan-accent/30 bg-gan-muted/20 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-hebrew font-semibold text-gan-dark">חסרים פרטים</div>
+            <div className="rounded-lg border border-gan-accent/30 bg-gan-muted/20 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowMissingDetails((v) => !v)}
+                  className="min-w-0 inline-flex items-center gap-2 text-xs font-hebrew font-semibold text-gan-dark hover:underline"
+                  aria-expanded={showMissingDetails}
+                  title={showMissingDetails ? "הסתר פרטים חסרים" : "הצג פרטים חסרים"}
+                >
+                  <span>חסרים פרטים</span>
+                  {showMissingDetails ? (
+                    <ChevronUp className="w-4 h-4 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                  )}
+                </button>
+                <div className="shrink-0">
+                  {!user ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={onRequestLogin ?? signIn}
+                      className="gap-2 h-8 px-2 text-xs text-gan-primary hover:text-gan-dark"
+                    >
+                      <Lock className="w-4 h-4" />
+                      התחבר כדי לתרום
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => openEditAndFocus(missingInfo[0]?.focus)}
+                      className="h-8 px-2 text-xs text-gan-primary hover:text-gan-dark"
+                    >
+                      ערכו פרטים
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {showMissingDetails ? (
+                <>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {missingInfo.slice(0, 6).map((m) => (
                       <button
@@ -577,23 +616,11 @@ export function GanDetail({
                       </button>
                     ))}
                   </div>
-                </div>
-                <div className="shrink-0">
-                  {!user ? (
-                    <Button size="sm" onClick={onRequestLogin ?? signIn} className="gap-2">
-                      <Lock className="w-4 h-4" />
-                      התחבר כדי לתרום
-                    </Button>
-                  ) : (
-                    <Button size="sm" onClick={() => openEditAndFocus(missingInfo[0]?.focus)}>
-                      מלאו פרטים
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="mt-2 text-[11px] text-gray-500 font-hebrew">
-                בשלב הזה השינויים נשמרים מיידית (לניפוי שגיאות). בהמשך נוכל לעבור לאישור/אגרגציה.
-              </div>
+                  <div className="mt-2 text-[11px] text-gray-500 font-hebrew">
+                    בשלב הזה השינויים נשמרים מיידית (לניפוי שגיאות). בהמשך נוכל לעבור לאישור/אגרגציה.
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : null}
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
@@ -906,7 +933,8 @@ export function GanDetail({
             <h4 className="font-medium text-gan-dark">ביקורות הורים</h4>
             <Button
               size="sm"
-              className="gap-2 whitespace-nowrap"
+              variant="ghost"
+              className="gap-2 whitespace-nowrap h-8 px-2 text-xs text-gan-primary hover:text-gan-dark"
               onClick={() => setShowRecommendForm((v) => !v)}
             >
               <Sparkles className="w-4 h-4" />
