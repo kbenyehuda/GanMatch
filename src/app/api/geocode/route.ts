@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
+function getMapboxToken() {
+  return (
+    (process.env.MAPBOX_ACCESS_TOKEN || "").trim() ||
+    (process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "").trim() ||
+    null
+  );
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") || "").trim();
@@ -9,21 +17,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing query (q)" }, { status: 400 });
   }
 
-  const query = city ? `${q}, ${city}, Israel` : `${q}, Israel`;
-  const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.searchParams.set("q", query);
-  url.searchParams.set("format", "json");
+  const token = getMapboxToken();
+  if (!token) {
+    return NextResponse.json(
+      { error: "Missing Mapbox token (MAPBOX_ACCESS_TOKEN or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN)" },
+      { status: 500 }
+    );
+  }
+
+  const query = city && !q.includes(city) ? `${q}, ${city}` : q;
+  const url = new URL(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json`);
+  url.searchParams.set("access_token", token);
+  url.searchParams.set("country", "il");
+  url.searchParams.set("language", "he");
   url.searchParams.set("limit", "1");
-  url.searchParams.set("countrycodes", "il");
+  url.searchParams.set("types", "address,poi");
 
   try {
     const resp = await fetch(url.toString(), {
       headers: {
-        "User-Agent": "GanMatch/0.1 (daycare finder)",
         Accept: "application/json",
-        "Accept-Language": "he,en;q=0.9",
       },
-      // Nominatim is shared infra; avoid aggressive caching client-side
       cache: "no-store",
     });
 
@@ -34,14 +48,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const data = (await resp.json()) as Array<Record<string, unknown>>;
-    if (!Array.isArray(data) || data.length === 0) {
+    const data = (await resp.json()) as any;
+    const features = Array.isArray(data?.features) ? data.features : [];
+    if (features.length === 0) {
       return NextResponse.json({ error: "No results" }, { status: 404 });
     }
 
-    const first = data[0] as any;
-    const lat = Number(first.lat);
-    const lon = Number(first.lon);
+    const first = features[0] as any;
+    const center = Array.isArray(first?.center) ? first.center : null;
+    const lon = Number(center?.[0]);
+    const lat = Number(center?.[1]);
     if (!isFinite(lat) || !isFinite(lon)) {
       return NextResponse.json({ error: "Invalid result" }, { status: 502 });
     }
@@ -49,7 +65,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       lat,
       lon,
-      display_name: first.display_name ?? null,
+      display_name: first.place_name ?? null,
     });
   } catch (e: any) {
     return NextResponse.json(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapPin, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,13 @@ export interface SuggestGanResult {
   lat: number;
   lon: number;
 }
+
+type GeocodeSuggestion = {
+  id: string;
+  place_name: string;
+  lon: number;
+  lat: number;
+};
 
 export function SuggestGanModal({
   onClose,
@@ -36,8 +43,56 @@ export function SuggestGanModal({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [pinFromAddress, setPinFromAddress] = useState(false);
+  const hideSuggestionsTimer = useRef<number | null>(null);
 
   const canSubmit = useMemo(() => nameHe.trim().length >= 2 && (!!pin || address.trim().length >= 4), [nameHe, pin, address]);
+
+  useEffect(() => {
+    const q = address.trim();
+    const c = city.trim();
+
+    if (hideSuggestionsTimer.current) {
+      window.clearTimeout(hideSuggestionsTimer.current);
+      hideSuggestionsTimer.current = null;
+    }
+
+    if (q.length < 3) {
+      setSuggestions([]);
+      setSuggesting(false);
+      return;
+    }
+
+    const t = window.setTimeout(async () => {
+      setSuggesting(true);
+      try {
+        const params = new URLSearchParams({ q, city: c });
+        const res = await fetch(`/api/geocode/suggest?${params}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { suggestions?: GeocodeSuggestion[] };
+        const next = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        setSuggestions(next);
+      } finally {
+        setSuggesting(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [address, city]);
+
+  const chooseSuggestion = (s: GeocodeSuggestion) => {
+    setError(null);
+    setAddress(s.place_name);
+    onPinChange({ lon: s.lon, lat: s.lat });
+    setPinFromAddress(true);
+    setSuggestions([]);
+    setShowSuggestions(false);
+  };
 
   const geocode = async (): Promise<{ lon: number; lat: number } | null> => {
     setError(null);
@@ -54,12 +109,13 @@ export function SuggestGanModal({
         const e = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(e?.error || "Geocode failed");
       }
-      const data = (await res.json()) as { lat: number; lon: number };
+      const data = (await res.json()) as { lat: number; lon: number; display_name?: string | null };
       if (typeof data?.lat !== "number" || typeof data?.lon !== "number") {
         throw new Error("לא נמצא מיקום לכתובת");
       }
       const next = { lat: data.lat, lon: data.lon };
       onPinChange(next);
+      setPinFromAddress(true);
       return next;
     } catch (e: any) {
       setError(typeof e?.message === "string" ? e.message : "שגיאת ג׳אוקודינג");
@@ -141,12 +197,54 @@ export function SuggestGanModal({
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">כתובת (או לבחור במפה)</label>
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-              placeholder="רחוב בן גוריון 144"
-            />
+            <div className="relative">
+              <input
+                value={address}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setAddress(next);
+                  setShowSuggestions(true);
+                  setError(null);
+                  if (pin && pinFromAddress) {
+                    onPinChange(null);
+                    setPinFromAddress(false);
+                  }
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => {
+                  hideSuggestionsTimer.current = window.setTimeout(() => setShowSuggestions(false), 150);
+                }}
+                className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                placeholder="רחוב בן גוריון 144"
+                autoComplete="off"
+              />
+              {showSuggestions ? (
+                <div className="absolute z-20 mt-1 w-full">
+                  {suggesting ? (
+                    <div className="rounded-lg border bg-white shadow-lg px-3 py-2 text-xs text-gray-600 font-hebrew">
+                      מחפש כתובות…
+                    </div>
+                  ) : suggestions.length > 0 ? (
+                    <div className="rounded-lg border bg-white shadow-lg overflow-auto max-h-56">
+                      {suggestions.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className="w-full text-right px-3 py-2 text-sm font-hebrew hover:bg-gray-50 border-b last:border-b-0"
+                          onMouseDown={(e) => {
+                            // Prevent input blur before selection
+                            e.preventDefault();
+                            chooseSuggestion(s);
+                          }}
+                        >
+                          {s.place_name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
           <div>
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">עיר</label>
