@@ -143,4 +143,4 @@ See `scripts/scraper/README.md` for full details.
 
 1. **Auth** – Supabase Auth for login; wire `canViewReviews` to contribution check
 2. **Darga tables** – Replace placeholder brackets in `src/lib/darga-calculator.ts` with official 2026 tables
-3. **(Later) LLM review structuring** – Currently the app stores the single free-text recommendation into `reviews.advice_to_parents_text`. In the future we can use an LLM to split that text into structured fields (`pros_text`, `cons_text`, and `advice_to_parents_text`) and optionally auto-tag categories.
+3. **(Later) LLM review structuring** – Currently the app stores the single free-text recommendation into `reviews.advice_to_parents_text`. In the future we can use an LLM to split that text into structured fields (`pros_text`, `cons_text`, and `advice_to_parents_text`) and optionally auto-tag categories..
