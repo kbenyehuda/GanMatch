@@ -106,6 +106,11 @@ export function GanDetail({
     gan.type === "Private" ? "פרטי" : gan.type === "Maon" ? "מעון" : "מפוקח (רישוי)";
 
   const cctvText = (() => {
+    // Prefer DB field when available, then user-suggested metadata, then legacy boolean.
+    if (gan.has_cctv) {
+      if (gan.cctv_streamed_online === true) return "יש ואפשר להתחבר אונליין";
+      if (gan.cctv_streamed_online === false) return "יש (פתוח למקרים חריגים)";
+    }
     const v = gan.metadata?.cctv_access;
     if (v === "none") return "אין";
     if (v === "online") return "יש ואפשר להתחבר אונליין";

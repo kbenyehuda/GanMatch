@@ -28,6 +28,8 @@ export async function fetchAllGanim(): Promise<Gan[]> {
     type: row.type as Gan["type"],
     license_status: row.license_status as Gan["license_status"],
     has_cctv: (row.has_cctv as boolean) ?? false,
+    cctv_streamed_online:
+      row.cctv_streamed_online == null ? null : Boolean(row.cctv_streamed_online),
     metadata: (row.metadata as Gan["metadata"]) || {},
     is_verified: (row.is_verified as boolean) ?? true,
     avg_rating:
@@ -76,6 +78,8 @@ export async function fetchGanimInBounds(bounds: Bounds): Promise<Gan[]> {
     type: row.type as Gan["type"],
     license_status: row.license_status as Gan["license_status"],
     has_cctv: (row.has_cctv as boolean) ?? false,
+    cctv_streamed_online:
+      row.cctv_streamed_online == null ? null : Boolean(row.cctv_streamed_online),
     metadata: (row.metadata as Gan["metadata"]) || {},
     is_verified: (row.is_verified as boolean) ?? true,
     avg_rating:

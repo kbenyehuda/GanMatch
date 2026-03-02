@@ -189,6 +189,8 @@ export default function HomePage() {
               setPickingPin(false);
             }}
             onSuggested={(r) => {
+              const suggestedHasCctv = r.cctv_access === "online" || r.cctv_access === "exceptional";
+              const suggestedStreamedOnline = r.cctv_access === "online" ? true : r.cctv_access === "exceptional" ? false : null;
               const newGan: Gan = {
                 id: r.id,
                 name_he: r.name_he,
@@ -197,7 +199,8 @@ export default function HomePage() {
                 city: r.city,
                 type: "Supervised",
                 license_status: "Temporary",
-                has_cctv: false,
+                has_cctv: suggestedHasCctv,
+                cctv_streamed_online: suggestedStreamedOnline,
                 metadata: {
                   source: "user_suggestion",
                   ...(r.suggested_type ? { suggested_type: r.suggested_type } : null),

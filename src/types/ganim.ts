@@ -25,6 +25,7 @@ export interface Gan {
   type: GanType;
   license_status: LicenseStatus;
   has_cctv: boolean;
+  cctv_streamed_online?: boolean | null;
   metadata: GanMetadata;
   is_verified: boolean;
   avg_rating: number | null;
