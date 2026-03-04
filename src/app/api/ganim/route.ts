@@ -22,17 +22,27 @@ export async function GET(request: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   if (fetchAll) {
-    const { data, error } = await supabase
-      .rpc("get_all_ganim", { p_limit: 1000 })
-      .range(0, 99_999);
-    if (error) {
-      console.error("[API ganim] get_all_ganim RPC error:", error);
-      return NextResponse.json(
-        { error: error.message, code: error.code, details: error.details },
-        { status: 500 }
-      );
-    }
-    return NextResponse.json(data ?? []);
+    // Paginate: Supabase/PostgREST may cap at 50 rows per request, so fetch in batches.
+    const BATCH = 50;
+    const all: unknown[] = [];
+    let offset = 0;
+    let batch: unknown[];
+    do {
+      const { data, error } = await supabase
+        .rpc("get_all_ganim", { p_limit: 100_000 })
+        .range(offset, offset + BATCH - 1);
+      if (error) {
+        console.error("[API ganim] get_all_ganim RPC error:", error);
+        return NextResponse.json(
+          { error: error.message, code: error.code, details: error.details },
+          { status: 500 }
+        );
+      }
+      batch = (data ?? []) as unknown[];
+      all.push(...batch);
+      offset += BATCH;
+    } while (batch.length === BATCH);
+    return NextResponse.json(all);
   }
 
   const minLon = parseFloat(searchParams.get("minLon") ?? "");
