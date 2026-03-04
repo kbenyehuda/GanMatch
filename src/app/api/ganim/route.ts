@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   if (fetchAll) {
-    const { data, error } = await supabase.rpc("get_all_ganim", {
-      p_limit: 1000,
-    });
+    const { data, error } = await supabase
+      .rpc("get_all_ganim", { p_limit: 1000 })
+      .range(0, 99_999);
     if (error) {
       console.error("[API ganim] get_all_ganim RPC error:", error);
       return NextResponse.json(
