@@ -47,6 +47,7 @@ export default function HomePage() {
     setFetchError(null);
     try {
       const data = await fetchAllGanim();
+      console.log("[GanMatch] Fetched ganim count:", data?.length ?? 0);
       setGanim(data);
       setSelectedGan((prev) => (prev ? data.find((g) => g.id === prev.id) ?? prev : prev));
       setSelectedClusterGanim((prev) =>
