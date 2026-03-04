@@ -12,6 +12,7 @@ import { fetchAllGanim } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
 import { Baby, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
+import { publicEnv } from "@/lib/env/public";
 
 export default function HomePage() {
   const { user, loading } = useSession();
@@ -43,11 +44,37 @@ export default function HomePage() {
     }
   }, []);
 
+  // Diagnostic: fetch directly from Supabase to see Content-Range and actual row count
+  useEffect(() => {
+    const url = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anonKey) return;
+    const fullUrl = `${url}/rest/v1/rpc/get_all_ganim`;
+    fetch(fullUrl, {
+      method: "POST",
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        "Content-Type": "application/json",
+        Prefer: "count=exact",
+      },
+      body: JSON.stringify({ p_limit: 1000 }),
+    })
+      .then((res) => {
+        console.log("[GanMatch diagnostic] Status:", res.status);
+        console.log("[GanMatch diagnostic] Content-Range:", res.headers.get("content-range"));
+        return res.json();
+      })
+      .then((data) => {
+        console.log("[GanMatch diagnostic] Actual rows received:", Array.isArray(data) ? data.length : "not array");
+      })
+      .catch((err) => console.error("[GanMatch diagnostic] Error:", err));
+  }, []);
+
   const reloadGanim = useCallback(async () => {
     setFetchError(null);
     try {
       const data = await fetchAllGanim();
-      console.log("[GanMatch] Fetched ganim count:", data?.length ?? 0);
       setGanim(data);
       setSelectedGan((prev) => (prev ? data.find((g) => g.id === prev.id) ?? prev : prev));
       setSelectedClusterGanim((prev) =>
