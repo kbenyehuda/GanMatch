@@ -40,7 +40,8 @@ export async function fetchAllGanim(): Promise<Gan[]> {
     throw new Error(msg);
   }
   const data = (await res.json()) as unknown[];
-  return (data ?? []).map((row: Record<string, unknown>) => ({
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return rows.map((row) => ({
     id: row.id as string,
     name_he: row.name_he as string,
     name_en: (row.name_en as string) || null,

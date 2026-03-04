@@ -219,7 +219,7 @@ export function GanDetail({
             : "exceptional"
         : "none"
     );
-  }, [gan]);
+  }, [gan, normalizeWebsiteUrl]);
 
   const missingInfo = useMemo(() => {
     const items: Array<{ key: string; label: string; focus?: "category" | "addon" | "ages" | "price" | "neighborhood" }> = [];
