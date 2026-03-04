@@ -1,0 +1,38 @@
+{
+  "openai_street_spellings:v1:city=גבעתיים|street=המעין": {
+    "street_variants": [
+      "המעיין"
+    ],
+    "city_variants": []
+  },
+  "openai_street_spellings:v1:city=גבעתיים|street=רודין אלישע": {
+    "street_variants": [],
+    "city_variants": []
+  },
+  "openai_street_spellings:v1:city=גבעתיים|street=המעורר": {
+    "street_variants": [
+      "המעוררת"
+    ],
+    "city_variants": []
+  },
+  "openai_street_spellings:v1:city=גבעתיים|street=גלבוע": {
+    "street_variants": [],
+    "city_variants": []
+  },
+  "openai_street_spellings:v1:city=גבעתיים|street=ההסתדרות": {
+    "street_variants": [],
+    "city_variants": []
+  },
+  "openai_street_spellings:v1:city=גבעתיים|street=משמר הירדן": {
+    "street_variants": [],
+    "city_variants": []
+  },
+  "openai_street_spellings:v1:city=גבעתיים|street=ההגנה": {
+    "street_variants": [],
+    "city_variants": []
+  },
+  "openai_street_spellings:v1:city=גבעתיים|street=גזית": {
+    "street_variants": [],
+    "city_variants": []
+  }
+}

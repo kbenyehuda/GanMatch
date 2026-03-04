@@ -39,3 +39,5 @@ yarn-error.log*
 next-env.d.ts
 scripts/maintenance/out/*.csv
 scripts/maintenance/out/*.xlsx
+scripts/gov_import/out
+scripts/gov_import/__pycache__
