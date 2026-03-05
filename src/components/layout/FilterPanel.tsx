@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Filter, ChevronDown, ChevronUp, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Filter, ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import type { GanFilters } from "@/types/filters";
 import type { FridaySchedule, MealType, KosherStatus, SpokenLanguage, VacancyStatus } from "@/types/ganim";
+import type { SearchSuggestion } from "@/types/search";
 
 interface FilterPanelProps {
   filters: GanFilters;
   onFiltersChange: (f: GanFilters) => void;
   onClear: () => void;
   activeCount: number;
+  onSearchSelect?: (s: SearchSuggestion) => void;
 }
 
 const FRIDAY_OPTS: { value: FridaySchedule; label: string }[] = [
@@ -48,12 +50,56 @@ export function FilterPanel({
   onFiltersChange,
   onClear,
   activeCount,
+  onSearchSelect,
 }: FilterPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const update = (patch: Partial<GanFilters>) => {
     onFiltersChange({ ...filters, ...patch });
   };
+
+  useEffect(() => {
+    const q = (filters.location_query ?? "").trim();
+    if (q.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const t = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q });
+        const res = await fetch(`/api/geocode/suggest?${params}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { suggestions?: SearchSuggestion[] };
+        const next = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        setSuggestions(next);
+        setShowSuggestions(next.length > 0);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [filters.location_query]);
+
+  const chooseSuggestion = useCallback(
+    (s: SearchSuggestion) => {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      const isCity = s.place_type?.includes("place") && !s.place_type?.includes("address");
+      const isAddressOrPoi =
+        s.place_type?.includes("address") || s.place_type?.includes("poi");
+      if (isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0)) {
+        onFiltersChange({ ...filters, location_query: null });
+        onSearchSelect?.(s);
+      } else {
+        onFiltersChange({ ...filters, location_query: s.place_name });
+      }
+    },
+    [filters, onFiltersChange, onSearchSelect]
+  );
 
   const toggleLang = (lang: SpokenLanguage) => {
     const current = filters.languages_spoken ?? [];
@@ -101,83 +147,137 @@ export function FilterPanel({
           )}
 
           <div>
+            <label className="block text-xs text-gray-600 mb-1 font-hebrew">מיקום (עיר / כתובת)</label>
+            <div className="relative">
+              <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-gray-400" />
+              <input
+                ref={searchInputRef}
+                type="search"
+                placeholder="חיפוש לפי עיר או כתובת..."
+                value={filters.location_query ?? ""}
+                onChange={(e) => update({ location_query: e.target.value || null })}
+                onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                className="w-full pe-10 ps-10 py-2 rounded-lg border border-gan-accent/50 focus:outline-none focus:ring-2 focus:ring-gan-primary/50 text-sm font-hebrew"
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute top-full start-0 end-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-gan-accent/50 bg-white shadow-lg z-50">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="w-full text-start px-4 py-2 text-sm font-hebrew hover:bg-gan-muted/30 border-b border-gan-accent/20 last:border-b-0"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        chooseSuggestion(s);
+                      }}
+                    >
+                      {s.place_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">ימי שישי</label>
-            <select
-              value={filters.friday_schedule ?? ""}
-              onChange={(e) =>
-                update({
-                  friday_schedule: (e.target.value || null) as FridaySchedule | null,
-                })
-              }
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-            >
-              <option value="">הכל</option>
-              {FRIDAY_OPTS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {FRIDAY_OPTS.map((o) => {
+                const selected = (filters.friday_schedule ?? []).includes(o.value);
+                return (
+                  <label key={o.value} className="flex items-center gap-1 text-sm font-hebrew">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => {
+                        const curr = filters.friday_schedule ?? [];
+                        const next = selected
+                          ? curr.filter((v) => v !== o.value)
+                          : [...curr, o.value];
+                        update({ friday_schedule: next.length ? next : null });
+                      }}
+                    />
+                    {o.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div>
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג אוכל</label>
-            <select
-              value={filters.meal_type ?? ""}
-              onChange={(e) =>
-                update({
-                  meal_type: (e.target.value || null) as MealType | null,
-                })
-              }
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-            >
-              <option value="">הכל</option>
-              {MEAL_OPTS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {MEAL_OPTS.map((o) => {
+                const selected = (filters.meal_type ?? []).includes(o.value);
+                return (
+                  <label key={o.value} className="flex items-center gap-1 text-sm font-hebrew">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => {
+                        const curr = filters.meal_type ?? [];
+                        const next = selected
+                          ? curr.filter((v) => v !== o.value)
+                          : [...curr, o.value];
+                        update({ meal_type: next.length ? next : null });
+                      }}
+                    />
+                    {o.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div>
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">כשרות</label>
-            <select
-              value={filters.kosher_status ?? ""}
-              onChange={(e) =>
-                update({
-                  kosher_status: (e.target.value || null) as KosherStatus | null,
-                })
-              }
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-            >
-              <option value="">הכל</option>
-              {KOSHER_OPTS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {KOSHER_OPTS.map((o) => {
+                const selected = (filters.kosher_status ?? []).includes(o.value);
+                return (
+                  <label key={o.value} className="flex items-center gap-1 text-sm font-hebrew">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => {
+                        const curr = filters.kosher_status ?? [];
+                        const next = selected
+                          ? curr.filter((v) => v !== o.value)
+                          : [...curr, o.value];
+                        update({ kosher_status: next.length ? next : null });
+                      }}
+                    />
+                    {o.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div>
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">מקום פנוי</label>
-            <select
-              value={filters.vacancy_status ?? ""}
-              onChange={(e) =>
-                update({
-                  vacancy_status: (e.target.value || null) as VacancyStatus | null,
-                })
-              }
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
-            >
-              <option value="">הכל</option>
-              {VACANCY_OPTS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {VACANCY_OPTS.map((o) => {
+                const selected = (filters.vacancy_status ?? []).includes(o.value);
+                return (
+                  <label key={o.value} className="flex items-center gap-1 text-sm font-hebrew">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => {
+                        const curr = filters.vacancy_status ?? [];
+                        const next = selected
+                          ? curr.filter((v) => v !== o.value)
+                          : [...curr, o.value];
+                        update({ vacancy_status: next.length ? next : null });
+                      }}
+                    />
+                    {o.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div>
@@ -301,6 +401,22 @@ export function FilterPanel({
                 </div>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-600 mb-1 font-hebrew">שעות פעילות (מכיל)</label>
+            <input
+              type="text"
+              value={filters.operating_hours ?? ""}
+              onChange={(e) =>
+                update({
+                  operating_hours: e.target.value.trim() ? e.target.value.trim() : null,
+                })
+              }
+              placeholder="7:30, 8:00, 16:00..."
+              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+              inputMode="numeric"
+            />
           </div>
 
           <div>
