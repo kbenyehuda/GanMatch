@@ -55,6 +55,11 @@ try:
 except Exception:
     openpyxl = None  # type: ignore
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None  # type: ignore
+
 _HEBREW_RE = re.compile(r"[\u0590-\u05FF]")
 
 
@@ -1361,6 +1366,64 @@ def iter_ckan_records_all(resource_id: str, *, page_limit: int = 500) -> Iterabl
             break
 
 
+def _rid_from_row(rec: dict[str, Any], city: str) -> uuid.UUID:
+    """Compute deterministic id from a record (same logic as main loop)."""
+    name_he = (
+        rec.get("SHEM_MAON") or rec.get("שם מעון") or rec.get("שם_מעון") or rec.get("name") or ""
+    ).strip() or "שם לא ידוע"
+    street = rec.get("RECHOV") or rec.get("שם רחוב") or rec.get("רחוב")
+    house = rec.get("BAYIT") or rec.get("מספר בית") or rec.get("בית")
+    semel = str(
+        rec.get("SEMEL_MAON") or rec.get("SEMEL") or rec.get("סמל מעון") or rec.get("סמל_מעון") or ""
+    ).strip()
+    address = clean_he_street_house(str(street or ""), str(house or ""), city=city)
+    if semel:
+        return stable_id_from_semel(semel)
+    return stable_id_fallback(city, name_he, address)
+
+
+def filter_input_to_retry_rows(
+    input_path: Path,
+    retry_path: Path,
+    out_path: Path,
+) -> int:
+    """
+    Filter the original data.gov.il input CSV to only rows that appear in the
+    retry output (geocode_cap). Outputs a CSV with the exact same columns as the input.
+    Returns the number of rows written.
+    """
+    # Collect ids from retry CSV (geocode_cap rows)
+    with open(retry_path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        retry_ids = {
+            (row.get("id") or "").strip()
+            for row in reader
+            if (row.get("geocode_status") or "").strip() == "geocode_cap"
+            and (row.get("action") or "").strip() == "skip"
+        }
+    retry_ids.discard("")
+
+    # Read input, filter, write with same columns
+    with open(input_path, "r", encoding="utf-8-sig", newline="") as fin:
+        reader = csv.DictReader(fin)
+        fieldnames = reader.fieldnames or []
+        rows_to_write: list[dict[str, Any]] = []
+        for row in reader:
+            rec = {k: v for k, v in row.items()}
+            rec_city = pick_record_city(rec) or ""
+            rid = _rid_from_row(rec, rec_city)
+            if str(rid) in retry_ids:
+                rows_to_write.append(rec)
+
+    with open(out_path, "w", encoding="utf-8-sig", newline="") as fout:
+        w = csv.DictWriter(fout, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        for r in rows_to_write:
+            w.writerow(r)
+
+    return len(rows_to_write)
+
+
 REPORT_COLUMNS = [
     "id",
     "semel_maon",
@@ -1385,6 +1448,12 @@ def main() -> int:
     ap.add_argument("--all-cities", action="store_true", help="Process all cities (omit city filter; requires API, not input-csv)")
     ap.add_argument("--resource-id", default=env_trim("DATAGOVIL_MAON_RESOURCE_ID") or DEFAULT_RESOURCE_ID)
     ap.add_argument("--input-csv", default=None, help="Use a local data.gov.il CSV file instead of calling the API")
+    ap.add_argument(
+        "--retry-from-csv",
+        default=None,
+        help="Retry only rows that failed with max_geocodes. Requires --input-csv (original data.gov.il table). "
+        "Outputs a filtered CSV matching the original format, then runs the normal pipeline on it.",
+    )
     ap.add_argument("--dry-run", action="store_true", help="Do everything except DB writes")
     ap.add_argument("--write", action="store_true", help="Write results to Supabase via RPC (requires service role key)")
     ap.add_argument("--max-records", type=int, default=0, help="Stop after N mapped records (0 = no limit)")
@@ -1415,11 +1484,24 @@ def main() -> int:
     if not args.write and not args.dry_run:
         print("Choose one: --dry-run (recommended first) or --write")
         return 2
-    if not args.all_cities and (not args.city or not args.city.strip()):
-        print("Provide --city or use --all-cities")
+    use_retry = bool(args.retry_from_csv)
+    if use_retry:
+        if not args.input_csv:
+            print("--retry-from-csv requires --input-csv (original data.gov.il table)")
+            return 2
+        retry_path = Path(args.retry_from_csv)
+        if not retry_path.exists():
+            print(f"ERROR: retry CSV not found: {retry_path}")
+            return 1
+        in_path = Path(args.input_csv)
+        if not in_path.exists():
+            print(f"ERROR: input CSV not found: {in_path}")
+            return 1
+    elif not args.all_cities and (not args.city or not args.city.strip()):
+        print("Provide --city or use --all-cities (or --retry-from-csv)")
         return 2
 
-    all_cities = bool(args.all_cities)
+    all_cities = bool(args.all_cities) or use_retry
     city = (args.city or "").strip() if not all_cities else "all"
     city_norm = norm_city(city)
     city_tag = urlquote(city_norm, safe="")
@@ -1525,6 +1607,8 @@ def main() -> int:
 
     # Use ASCII-only output to avoid Windows console encoding issues.
     print(f"=== data.gov.il -> ganim_v2 ({'DRY RUN' if args.dry_run else 'WRITE'}) ===")
+    if use_retry:
+        print(f"Retry mode: filter {in_path} to geocode_cap rows from {retry_path}")
     resource_id = args.resource_id
     resolved_from: str | None = None
     use_local = bool(args.input_csv)
@@ -1580,7 +1664,13 @@ def main() -> int:
         w.writeheader()
 
         try:
-            if use_local:
+            if use_retry:
+                merge_csv = out_dir / f"import_maon_symbol_retry_merged_{ts}.csv"
+                n = filter_input_to_retry_rows(in_path, retry_path, merge_csv)
+                print(f"Records after merge: {n} -> {merge_csv}")
+                rec_iter = iter_local_csv_records(merge_csv)
+                total_expected = n
+            elif use_local:
                 rec_iter = iter_local_csv_records(Path(args.input_csv))
                 total_expected: int | None = None
                 try:
@@ -1599,7 +1689,13 @@ def main() -> int:
             if total_expected is not None:
                 print(f"Total records to process: {total_expected}")
 
-            for rec in rec_iter:
+            rec_iter_wrapped = (
+                tqdm(rec_iter, total=total_expected, desc="Import", unit="rec", dynamic_ncols=True)
+                if tqdm is not None
+                else rec_iter
+            )
+
+            for rec in rec_iter_wrapped:
                 total_seen += 1
                 if args.trace:
                     trace.log("\n" + "=" * 80)
@@ -2231,13 +2327,16 @@ def main() -> int:
                     except Exception:
                         pass
 
-                # Progress: X / total (mapped Y, upserted Z)
+                # Progress: update tqdm postfix or fallback to print
                 if total_seen % 100 == 0:
-                    tq = f"{total_seen} / {total_expected}" if total_expected is not None else str(total_seen)
-                    parts = [f"seen {tq}", f"mapped {total_mapped}"]
-                    if args.write:
-                        parts.append(f"upserted {inserted}")
-                    print(f"Progress: {' | '.join(parts)}")
+                    if tqdm is not None and rec_iter_wrapped is not rec_iter:
+                        rec_iter_wrapped.set_postfix(mapped=total_mapped, upserted=inserted if args.write else None)
+                    else:
+                        tq = f"{total_seen} / {total_expected}" if total_expected is not None else str(total_seen)
+                        parts = [f"seen {tq}", f"mapped {total_mapped}"]
+                        if args.write:
+                            parts.append(f"upserted {inserted}")
+                        print(f"Progress: {' | '.join(parts)}")
         except Exception as e:
             # Ensure the report isn't empty on crashes; write a single error line.
             w.writerow(
