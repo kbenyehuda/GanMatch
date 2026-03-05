@@ -64,6 +64,22 @@ export async function fetchAllGanim(): Promise<Gan[]> {
     has_cctv: (row.has_cctv as boolean) ?? false,
     cctv_streamed_online:
       row.cctv_streamed_online == null ? null : Boolean(row.cctv_streamed_online),
+    operating_hours: (row.operating_hours as string) || null,
+    friday_schedule: (row.friday_schedule as Gan["friday_schedule"]) ?? null,
+    meal_type: (row.meal_type as Gan["meal_type"]) ?? null,
+    vegan_friendly: row.vegan_friendly == null ? null : Boolean(row.vegan_friendly),
+    vegetarian_friendly: row.vegetarian_friendly == null ? null : Boolean(row.vegetarian_friendly),
+    meat_served: row.meat_served == null ? null : Boolean(row.meat_served),
+    allergy_friendly: row.allergy_friendly == null ? null : Boolean(row.allergy_friendly),
+    kosher_status: (row.kosher_status as Gan["kosher_status"]) ?? null,
+    kosher_certifier: (row.kosher_certifier as string) || null,
+    staff_child_ratio: row.staff_child_ratio == null ? null : Number(row.staff_child_ratio),
+    first_aid_trained: row.first_aid_trained == null ? null : Boolean(row.first_aid_trained),
+    languages_spoken: (row.languages_spoken as Gan["languages_spoken"]) ?? null,
+    has_outdoor_space: row.has_outdoor_space == null ? null : Boolean(row.has_outdoor_space),
+    has_mamad: row.has_mamad == null ? null : Boolean(row.has_mamad),
+    chugim_types: (row.chugim_types as string[]) ?? null,
+    vacancy_status: (row.vacancy_status as Gan["vacancy_status"]) ?? null,
     metadata: (row.metadata as Gan["metadata"]) || {},
     is_verified: (row.is_verified as boolean) ?? true,
     avg_rating:
@@ -95,7 +111,7 @@ export async function fetchGanimInBounds(bounds: Bounds): Promise<Gan[]> {
     maxLon: String(bounds.maxLon),
     maxLat: String(bounds.maxLat),
   });
-  const res = await fetch(`/api/ganim?${params}`);
+  const res = await fetch(`/api/ganim?${params}`, { cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     console.error("[GanMatch] API error:", res.status, err);
@@ -122,6 +138,22 @@ export async function fetchGanimInBounds(bounds: Bounds): Promise<Gan[]> {
     has_cctv: (row.has_cctv as boolean) ?? false,
     cctv_streamed_online:
       row.cctv_streamed_online == null ? null : Boolean(row.cctv_streamed_online),
+    operating_hours: (row.operating_hours as string) || null,
+    friday_schedule: (row.friday_schedule as Gan["friday_schedule"]) ?? null,
+    meal_type: (row.meal_type as Gan["meal_type"]) ?? null,
+    vegan_friendly: row.vegan_friendly == null ? null : Boolean(row.vegan_friendly),
+    vegetarian_friendly: row.vegetarian_friendly == null ? null : Boolean(row.vegetarian_friendly),
+    meat_served: row.meat_served == null ? null : Boolean(row.meat_served),
+    allergy_friendly: row.allergy_friendly == null ? null : Boolean(row.allergy_friendly),
+    kosher_status: (row.kosher_status as Gan["kosher_status"]) ?? null,
+    kosher_certifier: (row.kosher_certifier as string) || null,
+    staff_child_ratio: row.staff_child_ratio == null ? null : Number(row.staff_child_ratio),
+    first_aid_trained: row.first_aid_trained == null ? null : Boolean(row.first_aid_trained),
+    languages_spoken: (row.languages_spoken as Gan["languages_spoken"]) ?? null,
+    has_outdoor_space: row.has_outdoor_space == null ? null : Boolean(row.has_outdoor_space),
+    has_mamad: row.has_mamad == null ? null : Boolean(row.has_mamad),
+    chugim_types: (row.chugim_types as string[]) ?? null,
+    vacancy_status: (row.vacancy_status as Gan["vacancy_status"]) ?? null,
     metadata: (row.metadata as Gan["metadata"]) || {},
     is_verified: (row.is_verified as boolean) ?? true,
     avg_rating:

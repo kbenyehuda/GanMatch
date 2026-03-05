@@ -10,6 +10,12 @@ export type MishpachtonAffiliation = "UNKNOWN" | "PRIVATE" | "TAMAT";
 export type MunicipalGrade = "UNKNOWN" | "TTAH" | "TAH" | "HOVA";
 export type WaitlistStatus = "Available" | "Limited" | "Full";
 
+export type FridaySchedule = "NONE" | "EVERY_FRIDAY" | "EVERY_OTHER_FRIDAY" | "UNKNOWN";
+export type MealType = "IN_HOUSE_COOK" | "EXTERNAL_CATERING" | "PARENTS_BRING" | "MIXED" | "UNKNOWN";
+export type KosherStatus = "CERTIFIED" | "NOT_CERTIFIED" | "UNKNOWN";
+export type SpokenLanguage = "HEBREW" | "ENGLISH" | "RUSSIAN" | "ARABIC";
+export type VacancyStatus = "Available" | "Limited" | "Full" | "UNKNOWN";
+
 export interface GanMetadata {
   phone?: string[];
   age_groups?: string[];
@@ -42,6 +48,22 @@ export interface Gan {
   price_notes?: string | null;
   has_cctv: boolean;
   cctv_streamed_online?: boolean | null;
+  operating_hours?: string | null;
+  friday_schedule?: FridaySchedule | null;
+  meal_type?: MealType | null;
+  vegan_friendly?: boolean | null;
+  vegetarian_friendly?: boolean | null;
+  meat_served?: boolean | null;
+  allergy_friendly?: boolean | null;
+  kosher_status?: KosherStatus | null;
+  kosher_certifier?: string | null;
+  staff_child_ratio?: number | null;
+  first_aid_trained?: boolean | null;
+  languages_spoken?: SpokenLanguage[] | null;
+  has_outdoor_space?: boolean | null;
+  has_mamad?: boolean | null;
+  chugim_types?: string[] | null;
+  vacancy_status?: VacancyStatus | null;
   metadata: GanMetadata;
   is_verified: boolean;
   avg_rating: number | null;

@@ -27,6 +27,45 @@ function isMunicipalGrade(v: unknown): v is MunicipalGrade {
   return v === "UNKNOWN" || v === "TTAH" || v === "TAH" || v === "HOVA";
 }
 
+const FRIDAY_SCHEDULES = ["NONE", "EVERY_FRIDAY", "EVERY_OTHER_FRIDAY", "UNKNOWN"] as const;
+const MEAL_TYPES = ["IN_HOUSE_COOK", "EXTERNAL_CATERING", "PARENTS_BRING", "MIXED", "UNKNOWN"] as const;
+const KOSHER_STATUSES = ["CERTIFIED", "NOT_CERTIFIED", "UNKNOWN"] as const;
+const SPOKEN_LANGUAGES = ["HEBREW", "ENGLISH", "RUSSIAN", "ARABIC"] as const;
+const VACANCY_STATUSES = ["Available", "Limited", "Full", "UNKNOWN"] as const;
+
+function isFridaySchedule(v: unknown): v is (typeof FRIDAY_SCHEDULES)[number] {
+  return typeof v === "string" && FRIDAY_SCHEDULES.includes(v as any);
+}
+function isMealType(v: unknown): v is (typeof MEAL_TYPES)[number] {
+  return typeof v === "string" && MEAL_TYPES.includes(v as any);
+}
+function isKosherStatus(v: unknown): v is (typeof KOSHER_STATUSES)[number] {
+  return typeof v === "string" && KOSHER_STATUSES.includes(v as any);
+}
+function isVacancyStatus(v: unknown): v is (typeof VACANCY_STATUSES)[number] {
+  return typeof v === "string" && VACANCY_STATUSES.includes(v as any);
+}
+function coerceSpokenLanguages(v: unknown): string[] | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (!Array.isArray(v)) return undefined;
+  const out: string[] = [];
+  for (const item of v) {
+    if (typeof item === "string" && SPOKEN_LANGUAGES.includes(item as any)) out.push(item);
+  }
+  return out.length ? out : null;
+}
+function coerceStringArray(v: unknown): string[] | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (!Array.isArray(v)) return undefined;
+  const out: string[] = [];
+  for (const item of v) {
+    if (typeof item === "string" && item.trim()) out.push(item.trim());
+  }
+  return out.length ? out : null;
+}
+
 function coerceTrimmedOrNull(v: unknown): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
@@ -221,6 +260,58 @@ export async function POST(req: Request) {
   }
   if (hasCctv !== undefined) updatePayload.has_cctv = hasCctv;
   if (streamedOnline !== undefined) updatePayload.cctv_streamed_online = streamedOnline;
+
+  // Filter fields
+  const operatingHours = coerceTrimmedOrNull(patch.operating_hours);
+  if (operatingHours !== undefined) updatePayload.operating_hours = operatingHours;
+  if (patch.friday_schedule !== undefined && isFridaySchedule(patch.friday_schedule)) {
+    updatePayload.friday_schedule = patch.friday_schedule;
+  }
+  if (patch.meal_type !== undefined && isMealType(patch.meal_type)) {
+    updatePayload.meal_type = patch.meal_type;
+  }
+  if (patch.vegan_friendly !== undefined) {
+    updatePayload.vegan_friendly = patch.vegan_friendly === null ? null : Boolean(patch.vegan_friendly);
+  }
+  if (patch.vegetarian_friendly !== undefined) {
+    updatePayload.vegetarian_friendly =
+      patch.vegetarian_friendly === null ? null : Boolean(patch.vegetarian_friendly);
+  }
+  if (patch.meat_served !== undefined) {
+    updatePayload.meat_served = patch.meat_served === null ? null : Boolean(patch.meat_served);
+  }
+  if (patch.allergy_friendly !== undefined) {
+    updatePayload.allergy_friendly =
+      patch.allergy_friendly === null ? null : Boolean(patch.allergy_friendly);
+  }
+  if (patch.kosher_status !== undefined && isKosherStatus(patch.kosher_status)) {
+    updatePayload.kosher_status = patch.kosher_status;
+  }
+  const kosherCertifier = coerceTrimmedOrNull(patch.kosher_certifier);
+  if (kosherCertifier !== undefined) updatePayload.kosher_certifier = kosherCertifier;
+  if (patch.staff_child_ratio !== undefined) {
+    updatePayload.staff_child_ratio =
+      patch.staff_child_ratio === null ? null : Number(patch.staff_child_ratio);
+  }
+  if (patch.first_aid_trained !== undefined) {
+    updatePayload.first_aid_trained =
+      patch.first_aid_trained === null ? null : Boolean(patch.first_aid_trained);
+  }
+  const languagesSpoken = coerceSpokenLanguages(patch.languages_spoken);
+  if (languagesSpoken !== undefined) updatePayload.languages_spoken = languagesSpoken;
+  if (patch.has_outdoor_space !== undefined) {
+    updatePayload.has_outdoor_space =
+      patch.has_outdoor_space === null ? null : Boolean(patch.has_outdoor_space);
+  }
+  if (patch.has_mamad !== undefined) {
+    updatePayload.has_mamad =
+      patch.has_mamad === null ? null : Boolean(patch.has_mamad);
+  }
+  const chugimTypes = coerceStringArray(patch.chugim_types);
+  if (chugimTypes !== undefined) updatePayload.chugim_types = chugimTypes;
+  if (patch.vacancy_status !== undefined && isVacancyStatus(patch.vacancy_status)) {
+    updatePayload.vacancy_status = patch.vacancy_status;
+  }
 
   // Log request (best-effort)
   await supabaseAdmin.from("gan_edit_requests").insert({

@@ -10,6 +10,8 @@ import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
 import { useViewportGanim } from "@/hooks/useViewportGanim";
 import { pointInBounds, type Bounds } from "@/lib/ganim-api";
+import { applyFilters } from "@/lib/apply-filters";
+import { DEFAULT_FILTERS, type GanFilters } from "@/types/filters";
 import type { Gan } from "@/types/ganim";
 import { Baby, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
@@ -27,6 +29,7 @@ export default function HomePage() {
   );
   const [pickingPin, setPickingPin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filters, setFilters] = useState<GanFilters>(DEFAULT_FILTERS);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [currentBounds, setCurrentBounds] = useState<Bounds | null>(null);
   const canViewReviews = !!user; // TODO: Wire to contribution check (Give-to-Get)
@@ -39,6 +42,13 @@ export default function HomePage() {
     addGan,
     refetchViewport,
   } = useViewportGanim();
+
+  // Keep selectedGan in sync with refetched data so edits appear immediately.
+  useEffect(() => {
+    if (!selectedGan || ganim.length === 0) return;
+    const updated = ganim.find((g) => g.id === selectedGan.id);
+    if (updated) setSelectedGan(updated);
+  }, [ganim, selectedGan]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -57,7 +67,7 @@ export default function HomePage() {
     [onBoundsChange]
   );
 
-  // Filter ganim: 1) by current map bounds (sync map and list), 2) by search text.
+  // Filter ganim: 1) by current map bounds (sync map and list), 2) by search text, 3) by attribute filters.
   // Always include selectedGan so it appears on map/list when zooming to a newly added gan.
   const filteredGanim = useMemo(() => {
     let out = ganim;
@@ -78,8 +88,9 @@ export default function HomePage() {
           (g.address?.toLowerCase().includes(q))
       );
     }
+    out = applyFilters(out, filters);
     return out;
-  }, [ganim, currentBounds, searchQuery, selectedGan?.id]);
+  }, [ganim, currentBounds, searchQuery, selectedGan?.id, filters]);
 
   if (loading || skipLogin === null) {
     return <ConnectionGate loading />;
@@ -140,6 +151,8 @@ export default function HomePage() {
           }}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          filters={filters}
+          onFiltersChange={setFilters}
           isMobileOpen={mobilePanelOpen}
           onMobileOpenChange={setMobilePanelOpen}
           onCloseMobile={() => setMobilePanelOpen(false)}
@@ -148,7 +161,7 @@ export default function HomePage() {
 
       {/* Right-side overlay: either cluster list or gan detail */}
       {(selectedGan || selectedClusterGanim) && (
-        <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] start-4 end-4 top-[calc(3.5rem+env(safe-area-inset-top))] md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
+        <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] start-4 end-4 top-[calc(3.5rem+env(safe-area-inset-top))] md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-20 max-h-[calc(100dvh-6rem)] overflow-auto rounded-lg shadow-xl min-w-0">
           {selectedGan ? (
             <GanDetail
               gan={selectedGan}

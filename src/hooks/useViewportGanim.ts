@@ -115,7 +115,12 @@ export function useViewportGanim(): UseViewportGanimResult {
 
   const refetchViewport = useCallback(() => {
     const b = currentBoundsRef.current;
-    if (b) fetchForBounds(b);
+    if (!b) return;
+    // Invalidate cache so we fetch fresh data (e.g. after user edits)
+    cacheRef.current = cacheRef.current.filter(
+      (e) => !boundsContains(e.bounds, b)
+    );
+    fetchForBounds(b);
   }, [fetchForBounds]);
 
   useEffect(() => {

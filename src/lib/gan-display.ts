@@ -1,4 +1,11 @@
-import type { Gan } from "@/types/ganim";
+import type {
+  Gan,
+  FridaySchedule,
+  MealType,
+  KosherStatus,
+  SpokenLanguage,
+  VacancyStatus,
+} from "@/types/ganim";
 
 export function formatGanCategoryHe(category: Gan["category"]): string {
   switch (category) {
@@ -62,5 +69,55 @@ export function formatPriceHe(gan: Pick<Gan, "monthly_price_nis">): string | nul
   const n = Math.round(Number(p));
   if (!Number.isFinite(n)) return null;
   return `₪${n.toLocaleString("he-IL")}`;
+}
+
+export function formatFridayScheduleHe(v: FridaySchedule | null | undefined): string | null {
+  if (!v || v === "UNKNOWN") return null;
+  switch (v) {
+    case "NONE": return "ללא ימי שישי";
+    case "EVERY_FRIDAY": return "כל שישי";
+    case "EVERY_OTHER_FRIDAY": return "כל שבועיים";
+    default: return null;
+  }
+}
+
+export function formatMealTypeHe(v: MealType | null | undefined): string | null {
+  if (!v || v === "UNKNOWN") return null;
+  switch (v) {
+    case "IN_HOUSE_COOK": return "בישול במקום";
+    case "EXTERNAL_CATERING": return "קייטרינג חיצוני";
+    case "PARENTS_BRING": return "הורים מביאים";
+    case "MIXED": return "מעורב";
+    default: return null;
+  }
+}
+
+export function formatKosherStatusHe(v: KosherStatus | null | undefined): string | null {
+  if (!v || v === "UNKNOWN") return null;
+  switch (v) {
+    case "CERTIFIED": return "כשר";
+    case "NOT_CERTIFIED": return "לא כשר";
+    default: return null;
+  }
+}
+
+export function formatSpokenLanguageHe(v: SpokenLanguage): string {
+  switch (v) {
+    case "HEBREW": return "עברית";
+    case "ENGLISH": return "אנגלית";
+    case "RUSSIAN": return "רוסית";
+    case "ARABIC": return "ערבית";
+    default: return v;
+  }
+}
+
+export function formatVacancyStatusHe(v: VacancyStatus | null | undefined): string | null {
+  if (!v || v === "UNKNOWN") return null;
+  switch (v) {
+    case "Available": return "יש מקום";
+    case "Limited": return "מקומות מוגבלים";
+    case "Full": return "מלא / רשימת המתנה";
+    default: return null;
+  }
 }
 

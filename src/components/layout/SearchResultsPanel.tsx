@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, MapPin, ExternalLink, Info } from "lucide-react";
+import { GanAttributeIcons } from "@/components/gan/GanAttributeIcons";
+import { FilterPanel } from "@/components/layout/FilterPanel";
+import type { GanFilters } from "@/types/filters";
+import { countActiveFilters, DEFAULT_FILTERS } from "@/types/filters";
 import { Card, CardContent } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
 import type { Gan } from "@/types/ganim";
@@ -18,6 +22,8 @@ interface SearchResultsPanelProps {
   onSelectGan: (gan: Gan) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  filters: GanFilters;
+  onFiltersChange: (f: GanFilters) => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
   onMobileOpenChange?: (open: boolean) => void;
@@ -29,6 +35,8 @@ export function SearchResultsPanel({
   onSelectGan,
   searchQuery,
   onSearchChange,
+  filters,
+  onFiltersChange,
   isMobileOpen = false,
   onCloseMobile,
   onMobileOpenChange,
@@ -148,6 +156,12 @@ export function SearchResultsPanel({
 
   const content = (
     <div className="flex flex-col flex-1 min-h-0">
+      <FilterPanel
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        onClear={() => onFiltersChange({ ...DEFAULT_FILTERS })}
+        activeCount={countActiveFilters(filters)}
+      />
       <div className="p-4 border-b border-gan-accent/30 shrink-0">
         <div className="relative">
           <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-gray-400" />
@@ -254,6 +268,9 @@ export function SearchResultsPanel({
                     </>
                   ) : null}
                 </dl>
+                <div className="mt-2">
+                  <GanAttributeIcons gan={gan} />
+                </div>
               </CardContent>
             </Card>
               );

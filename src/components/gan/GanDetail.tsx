@@ -21,6 +21,7 @@ import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
+import { GanAttributeIcons } from "@/components/gan/GanAttributeIcons";
 import {
   getGanCityForDisplay,
   getGanNeighborhoodForDisplay,
@@ -31,6 +32,11 @@ import {
   formatGanCategoryAddonLabelHe,
   formatGanCategoryHe,
   formatPriceHe,
+  formatFridayScheduleHe,
+  formatMealTypeHe,
+  formatKosherStatusHe,
+  formatSpokenLanguageHe,
+  formatVacancyStatusHe,
 } from "@/lib/gan-display";
 
 interface GanDetailProps {
@@ -176,6 +182,22 @@ export function GanDetail({
   const [editMaxAgeYears, setEditMaxAgeYears] = useState<string>("");
   const [editMonthlyPrice, setEditMonthlyPrice] = useState<string>("");
   const [editCctv, setEditCctv] = useState<"unknown" | "none" | "exceptional" | "online">("unknown");
+  const [editOperatingHours, setEditOperatingHours] = useState<string>("");
+  const [editFridaySchedule, setEditFridaySchedule] = useState<NonNullable<Gan["friday_schedule"]>>("UNKNOWN");
+  const [editMealType, setEditMealType] = useState<NonNullable<Gan["meal_type"]>>("UNKNOWN");
+  const [editVeganFriendly, setEditVeganFriendly] = useState<boolean | null>(null);
+  const [editVegetarianFriendly, setEditVegetarianFriendly] = useState<boolean | null>(null);
+  const [editMeatServed, setEditMeatServed] = useState<boolean | null>(null);
+  const [editAllergyFriendly, setEditAllergyFriendly] = useState<boolean | null>(null);
+  const [editKosherStatus, setEditKosherStatus] = useState<NonNullable<Gan["kosher_status"]>>("UNKNOWN");
+  const [editKosherCertifier, setEditKosherCertifier] = useState<string>("");
+  const [editStaffChildRatio, setEditStaffChildRatio] = useState<string>("");
+  const [editFirstAidTrained, setEditFirstAidTrained] = useState<boolean | null>(null);
+  const [editLanguagesSpoken, setEditLanguagesSpoken] = useState<NonNullable<Gan["languages_spoken"]>>([]);
+  const [editHasOutdoorSpace, setEditHasOutdoorSpace] = useState<boolean | null>(null);
+  const [editHasMamad, setEditHasMamad] = useState<boolean | null>(null);
+  const [editChugimTypes, setEditChugimTypes] = useState<string>("");
+  const [editVacancyStatus, setEditVacancyStatus] = useState<NonNullable<Gan["vacancy_status"]>>("UNKNOWN");
   const [editSaveError, setEditSaveError] = useState<string | null>(null);
   const [editSaved, setEditSaved] = useState(false);
   const editFormTopRef = useRef<HTMLDivElement | null>(null);
@@ -219,6 +241,22 @@ export function GanDetail({
             : "exceptional"
         : "none"
     );
+    setEditOperatingHours(gan.operating_hours ?? "");
+    setEditFridaySchedule((gan.friday_schedule ?? "UNKNOWN") as any);
+    setEditMealType((gan.meal_type ?? "UNKNOWN") as any);
+    setEditVeganFriendly(gan.vegan_friendly ?? null);
+    setEditVegetarianFriendly(gan.vegetarian_friendly ?? null);
+    setEditMeatServed(gan.meat_served ?? null);
+    setEditAllergyFriendly(gan.allergy_friendly ?? null);
+    setEditKosherStatus((gan.kosher_status ?? "UNKNOWN") as any);
+    setEditKosherCertifier(gan.kosher_certifier ?? "");
+    setEditStaffChildRatio(gan.staff_child_ratio != null ? String(gan.staff_child_ratio) : "");
+    setEditFirstAidTrained(gan.first_aid_trained ?? null);
+    setEditLanguagesSpoken(gan.languages_spoken ?? []);
+    setEditHasOutdoorSpace(gan.has_outdoor_space ?? null);
+    setEditHasMamad(gan.has_mamad ?? null);
+    setEditChugimTypes(Array.isArray(gan.chugim_types) ? gan.chugim_types.join(", ") : "");
+    setEditVacancyStatus((gan.vacancy_status ?? "UNKNOWN") as any);
   }, [gan, normalizeWebsiteUrl]);
 
   const missingInfo = useMemo(() => {
@@ -346,6 +384,28 @@ export function GanDetail({
         patch.cctv_streamed_online = editCctv === "online" ? true : editCctv === "exceptional" ? false : null;
       }
 
+      patch.operating_hours = editOperatingHours.trim() ? editOperatingHours.trim() : null;
+      patch.friday_schedule = editFridaySchedule === "UNKNOWN" ? null : editFridaySchedule;
+      patch.meal_type = editMealType === "UNKNOWN" ? null : editMealType;
+      patch.vegan_friendly = editVeganFriendly;
+      patch.vegetarian_friendly = editVegetarianFriendly;
+      patch.meat_served = editMeatServed;
+      patch.allergy_friendly = editAllergyFriendly;
+      patch.kosher_status = editKosherStatus === "UNKNOWN" ? null : editKosherStatus;
+      patch.kosher_certifier = editKosherCertifier.trim() ? editKosherCertifier.trim() : null;
+      const ratioNum = editStaffChildRatio.trim() ? Number(editStaffChildRatio.replace(",", ".")) : null;
+      patch.staff_child_ratio = ratioNum != null && Number.isFinite(ratioNum) ? ratioNum : null;
+      patch.first_aid_trained = editFirstAidTrained;
+      patch.languages_spoken = editLanguagesSpoken.length ? editLanguagesSpoken : null;
+      patch.has_outdoor_space = editHasOutdoorSpace;
+      patch.has_mamad = editHasMamad;
+      const chugimArr = editChugimTypes
+        .split(/[,;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      patch.chugim_types = chugimArr.length ? chugimArr : null;
+      patch.vacancy_status = editVacancyStatus === "UNKNOWN" ? null : editVacancyStatus;
+
       const res = await fetch("/api/ganim/edit", {
         method: "POST",
         headers: {
@@ -366,7 +426,8 @@ export function GanDetail({
       // Update link immediately (don’t wait for a full reload).
       setLocalWebsiteUrl(normalizeWebsiteUrl(editWebsiteUrl));
       setEditSaved(true);
-      onReviewSaved?.(); // refresh gan list/details (temporary reuse)
+      setShowEditForm(false);
+      onReviewSaved?.(); // refresh gan list/details
     } catch (e: any) {
       setEditSaveError(typeof e?.message === "string" ? e.message : "שגיאה בשמירת פרטים");
     } finally {
@@ -572,9 +633,11 @@ export function GanDetail({
             )}
           </CardTitle>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
-          <X className="w-5 h-5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="p-4 pt-0 space-y-4">
         <div className="rounded-lg border border-gan-accent/30 bg-white p-4">
@@ -625,7 +688,7 @@ export function GanDetail({
         </div>
 
         {/* Unified info block (same style as search cards) */}
-        <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3">
+        <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3 min-w-0">
           {missingInfo.length > 0 ? (
             <div className="rounded-lg border border-gan-accent/30 bg-gan-muted/20 px-3 py-2">
               <div className="flex items-center justify-between gap-3">
@@ -688,23 +751,23 @@ export function GanDetail({
               ) : null}
             </div>
           ) : null}
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">כתובת</dt>
-            <dd className="text-gray-600 font-hebrew">{getGanStreetAddressForDisplay(gan)}</dd>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">עיר</dt>
-            <dd className="text-gray-600 font-hebrew">{getGanCityForDisplay(gan)}</dd>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm min-w-0">
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">כתובת</dt>
+            <dd className="text-gray-600 font-hebrew min-w-0 break-words">{getGanStreetAddressForDisplay(gan)}</dd>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">עיר</dt>
+            <dd className="text-gray-600 font-hebrew min-w-0 break-words">{getGanCityForDisplay(gan)}</dd>
             {localWebsiteUrl ? (
               <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">אתר</dt>
-                <dd className="text-gray-600 font-hebrew">
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">אתר</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0">
                   <a
                     href={localWebsiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-gan-primary hover:underline"
-                    title="פתח אתר"
+                    className="flex flex-wrap items-baseline gap-x-2 gap-y-0 text-gan-primary hover:underline"
+                    title={localWebsiteUrl}
                   >
-                    <span className="truncate">{localWebsiteUrl}</span>
+                    <span className="break-all min-w-0 flex-1">{localWebsiteUrl}</span>
                     <ExternalLink className="w-4 h-4 shrink-0" />
                   </a>
                 </dd>
@@ -712,34 +775,63 @@ export function GanDetail({
             ) : null}
             {neighborhood ? (
               <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">שכונה</dt>
-                <dd className="text-gray-600 font-hebrew">{neighborhood}</dd>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">שכונה</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{neighborhood}</dd>
               </>
             ) : null}
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">סוג</dt>
-            <dd className="text-gray-600 font-hebrew">{categoryText}</dd>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">סוג</dt>
+            <dd className="text-gray-600 font-hebrew min-w-0 break-words">{categoryText}</dd>
             {addon ? (
               <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">{addon.label}</dt>
-                <dd className="text-gray-600 font-hebrew">{addon.value}</dd>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">{addon.label}</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{addon.value}</dd>
               </>
             ) : null}
             {pikuachText ? (
               <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">פיקוח עירוני</dt>
-                <dd className="text-gray-600 font-hebrew">{pikuachText}</dd>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">פיקוח עירוני</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{pikuachText}</dd>
               </>
             ) : null}
             {agesText ? (
               <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">גילאים</dt>
-                <dd className="text-gray-600 font-hebrew">{agesText}</dd>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">גילאים</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{agesText}</dd>
+              </>
+            ) : null}
+            {gan.operating_hours && String(gan.operating_hours).trim() ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">שעות פעילות</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{gan.operating_hours}</dd>
+              </>
+            ) : null}
+            {gan.friday_schedule && gan.friday_schedule !== "UNKNOWN" && formatFridayScheduleHe(gan.friday_schedule) ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">ימי שישי</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{formatFridayScheduleHe(gan.friday_schedule)}</dd>
+              </>
+            ) : null}
+            {gan.staff_child_ratio != null && Number.isFinite(Number(gan.staff_child_ratio)) ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">יחס צוות-ילד</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">
+                  {(() => {
+                    const r = Number(gan.staff_child_ratio);
+                    return r >= 1 ? `1:${Math.round(1 / r)}` : `1:${(1 / r).toFixed(1)}`;
+                  })()}
+                </dd>
+              </>
+            ) : null}
+            {gan.chugim_types && gan.chugim_types.length > 0 ? (
+              <>
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">חוגים</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{gan.chugim_types.join(", ")}</dd>
               </>
             ) : null}
             {priceText ? (
               <>
-                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">מחיר</dt>
-                <dd className="text-gray-600 font-hebrew">
+                <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">מחיר</dt>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">
                   <div>{priceText}</div>
                   {gan.price_notes ? (
                     <div className="mt-1 text-[12px] text-gray-500 font-hebrew whitespace-pre-wrap">
@@ -749,10 +841,13 @@ export function GanDetail({
                 </dd>
               </>
             ) : null}
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">CCTV</dt>
-            <dd className="text-gray-600 font-hebrew">{cctvText}</dd>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap">טלפון</dt>
-            <dd className="text-gray-600">
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">CCTV</dt>
+            <dd className="text-gray-600 font-hebrew min-w-0 break-words">{cctvText}</dd>
+            <div className="col-span-2 min-w-0">
+              <GanAttributeIcons gan={gan} />
+            </div>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">טלפון</dt>
+            <dd className="text-gray-600 min-w-0 break-words">
               {phones.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {phones.map((p) => (
@@ -988,6 +1083,214 @@ export function GanDetail({
                       <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
                         נשמר כקישור (http/https). אם אין https:// נוסיף אוטומטית.
                       </div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">שעות פעילות</label>
+                      <input
+                        value={editOperatingHours}
+                        onChange={(e) => setEditOperatingHours(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="07:30–16:00, א'-ה'"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">ימי שישי</label>
+                      <select
+                        value={editFridaySchedule}
+                        onChange={(e) => setEditFridaySchedule(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="UNKNOWN">לא ידוע</option>
+                        <option value="NONE">ללא</option>
+                        <option value="EVERY_FRIDAY">כל שישי</option>
+                        <option value="EVERY_OTHER_FRIDAY">כל שבועיים</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג אוכל</label>
+                      <select
+                        value={editMealType}
+                        onChange={(e) => setEditMealType(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="UNKNOWN">לא ידוע</option>
+                        <option value="IN_HOUSE_COOK">בישול במקום</option>
+                        <option value="EXTERNAL_CATERING">קייטרינג חיצוני</option>
+                        <option value="PARENTS_BRING">הורים מביאים</option>
+                        <option value="MIXED">מעורב</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">טבעוני</label>
+                      <select
+                        value={editVeganFriendly === null ? "" : editVeganFriendly ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditVeganFriendly(e.target.value === "" ? null : e.target.value === "yes")
+                        }
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="">לא ידוע</option>
+                        <option value="yes">כן</option>
+                        <option value="no">לא</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">צמחוני</label>
+                      <select
+                        value={editVegetarianFriendly === null ? "" : editVegetarianFriendly ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditVegetarianFriendly(e.target.value === "" ? null : e.target.value === "yes")
+                        }
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="">לא ידוע</option>
+                        <option value="yes">כן</option>
+                        <option value="no">לא</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">מגיש בשר</label>
+                      <select
+                        value={editMeatServed === null ? "" : editMeatServed ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditMeatServed(e.target.value === "" ? null : e.target.value === "yes")
+                        }
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="">לא ידוע</option>
+                        <option value="yes">כן</option>
+                        <option value="no">לא</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">ידידותי לאלרגיות</label>
+                      <select
+                        value={editAllergyFriendly === null ? "" : editAllergyFriendly ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditAllergyFriendly(e.target.value === "" ? null : e.target.value === "yes")
+                        }
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="">לא ידוע</option>
+                        <option value="yes">כן</option>
+                        <option value="no">לא</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">כשרות</label>
+                      <select
+                        value={editKosherStatus}
+                        onChange={(e) => setEditKosherStatus(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="UNKNOWN">לא ידוע</option>
+                        <option value="CERTIFIED">כשר</option>
+                        <option value="NOT_CERTIFIED">לא כשר</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">גוף כשרות (אופציונלי)</label>
+                      <input
+                        value={editKosherCertifier}
+                        onChange={(e) => setEditKosherCertifier(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="רבנות, בד״ץ..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">יחס צוות-ילד</label>
+                      <input
+                        value={editStaffChildRatio}
+                        onChange={(e) => setEditStaffChildRatio(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="0.33 = 1:3"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">עזרה ראשונה</label>
+                      <select
+                        value={editFirstAidTrained === null ? "" : editFirstAidTrained ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditFirstAidTrained(e.target.value === "" ? null : e.target.value === "yes")
+                        }
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="">לא ידוע</option>
+                        <option value="yes">כן</option>
+                        <option value="no">לא</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">חצר חיצונית</label>
+                      <select
+                        value={editHasOutdoorSpace === null ? "" : editHasOutdoorSpace ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditHasOutdoorSpace(e.target.value === "" ? null : e.target.value === "yes")
+                        }
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="">לא ידוע</option>
+                        <option value="yes">כן</option>
+                        <option value="no">לא</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">ממ&quot;ד / מיקלט</label>
+                      <select
+                        value={editHasMamad === null ? "" : editHasMamad ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditHasMamad(e.target.value === "" ? null : e.target.value === "yes")
+                        }
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="">לא ידוע</option>
+                        <option value="yes">כן</option>
+                        <option value="no">לא</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">מקום פנוי</label>
+                      <select
+                        value={editVacancyStatus}
+                        onChange={(e) => setEditVacancyStatus(e.target.value as any)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew bg-white"
+                      >
+                        <option value="UNKNOWN">לא ידוע</option>
+                        <option value="Available">יש מקום</option>
+                        <option value="Limited">מקומות מוגבלים</option>
+                        <option value="Full">מלא / רשימת המתנה</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">שפות (בחרו את כולן)</label>
+                      <div className="flex flex-wrap gap-2">
+                        {(["HEBREW", "ENGLISH", "RUSSIAN", "ARABIC"] as const).map((lang) => (
+                          <label key={lang} className="flex items-center gap-2 text-sm font-hebrew">
+                            <input
+                              type="checkbox"
+                              checked={editLanguagesSpoken.includes(lang)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEditLanguagesSpoken([...editLanguagesSpoken, lang]);
+                                } else {
+                                  setEditLanguagesSpoken(editLanguagesSpoken.filter((l) => l !== lang));
+                                }
+                              }}
+                            />
+                            {formatSpokenLanguageHe(lang)}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">חוגים (מופרדים בפסיק)</label>
+                      <input
+                        value={editChugimTypes}
+                        onChange={(e) => setEditChugimTypes(e.target.value)}
+                        className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                        placeholder="מוזיקה, אמנות, ספורט..."
+                      />
                     </div>
                   </div>
 
