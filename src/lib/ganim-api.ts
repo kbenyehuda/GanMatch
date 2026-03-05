@@ -22,9 +22,9 @@ export async function fetchAllGanim(): Promise<Gan[]> {
       Authorization: `Bearer ${anonKey}`,
       "Content-Type": "application/json",
       "Range-Unit": "items",
-      Range: "0-999",
+      Range: "0-99999",
     },
-    body: JSON.stringify({ p_limit: 1000 }),
+    body: JSON.stringify({ p_limit: 100000 }),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as Record<string, unknown>;

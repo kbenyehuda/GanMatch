@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
   if (fetchAll) {
     const { data, error } = await supabase.rpc("get_all_ganim", {
-      p_limit: 1000,
+      p_limit: 100000,
     });
     if (error) {
       console.error("[API ganim] get_all_ganim RPC error:", error);
