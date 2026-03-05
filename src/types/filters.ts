@@ -20,7 +20,7 @@ export interface GanFilters {
   vacancy_status: VacancyStatus[] | null; // gan matches ANY of selected
   languages_spoken: SpokenLanguage[] | null; // must have ALL of these
   max_price_nis: number | null;
-  chugim_has: string | null; // gan must have this chug type (substring match)
+  chugim: string[] | null; // gan must have at least one of these (exact match from data)
   operating_hours: string | null; // gan operating_hours must contain this (e.g. "7:30", "8:00")
   location_query: string | null; // text search (city/address/name) - AND with rest
 }
@@ -39,7 +39,7 @@ export const DEFAULT_FILTERS: GanFilters = {
   vacancy_status: null,
   languages_spoken: null,
   max_price_nis: null,
-  chugim_has: null,
+  chugim: null,
   operating_hours: null,
   location_query: null,
 };
@@ -63,7 +63,7 @@ export function countActiveFilters(f: GanFilters): number {
   if (f.vacancy_status != null && f.vacancy_status.length > 0) n++;
   if (f.languages_spoken != null && f.languages_spoken.length > 0) n++;
   if (f.max_price_nis != null) n++;
-  if (f.chugim_has != null && f.chugim_has.trim() !== "") n++;
+  if (f.chugim != null && f.chugim.length > 0) n++;
   if (f.operating_hours != null && f.operating_hours.trim() !== "") n++;
   if (f.location_query != null && f.location_query.trim() !== "") n++;
   return n;

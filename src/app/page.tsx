@@ -151,7 +151,7 @@ export default function HomePage() {
           filters={filters}
           onFiltersChange={setFilters}
           onSearchSelect={handleSearchSelect}
-          onFiltersChange={setFilters}
+          allGanimInView={ganim}
           isMobileOpen={mobilePanelOpen}
           onMobileOpenChange={setMobilePanelOpen}
           onCloseMobile={() => setMobilePanelOpen(false)}

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { Filter, ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import type { GanFilters } from "@/types/filters";
 import type { FridaySchedule, MealType, KosherStatus, SpokenLanguage, VacancyStatus } from "@/types/ganim";
+import type { Gan } from "@/types/ganim";
 import type { SearchSuggestion } from "@/types/search";
 
 interface FilterPanelProps {
@@ -12,6 +13,7 @@ interface FilterPanelProps {
   onClear: () => void;
   activeCount: number;
   onSearchSelect?: (s: SearchSuggestion) => void;
+  ganim?: Gan[]; // for extracting unique chugim options
 }
 
 const FRIDAY_OPTS: { value: FridaySchedule; label: string }[] = [
@@ -51,8 +53,28 @@ export function FilterPanel({
   onClear,
   activeCount,
   onSearchSelect,
+  ganim = [],
 }: FilterPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const [chugimSearch, setChugimSearch] = useState("");
+  const [chugimDropdownOpen, setChugimDropdownOpen] = useState(false);
+
+  const uniqueChugim = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of ganim) {
+      for (const c of g.chugim_types ?? []) {
+        const t = (c ?? "").trim();
+        if (t) set.add(t);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
+  }, [ganim]);
+
+  const filteredChugim = useMemo(() => {
+    const q = chugimSearch.trim().toLowerCase();
+    if (!q) return uniqueChugim;
+    return uniqueChugim.filter((c) => c.toLowerCase().includes(q));
+  }, [uniqueChugim, chugimSearch]);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -420,18 +442,79 @@ export function FilterPanel({
           </div>
 
           <div>
-            <label className="block text-xs text-gray-600 mb-1 font-hebrew">חוג (מכיל)</label>
-            <input
-              type="text"
-              value={filters.chugim_has ?? ""}
-              onChange={(e) =>
-                update({
-                  chugim_has: e.target.value.trim() ? e.target.value.trim() : null,
-                })
-              }
-              placeholder="מוזיקה, אמנות..."
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
-            />
+            <label className="block text-xs text-gray-600 mb-1 font-hebrew">חוג</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={chugimSearch}
+                onChange={(e) => {
+                  setChugimSearch(e.target.value);
+                  setChugimDropdownOpen(true);
+                }}
+                onFocus={() => setChugimDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setChugimDropdownOpen(false), 150)}
+                placeholder="הקלד לחיפוש (למשל: מוזיקה, mu...)"
+                className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+              />
+              {chugimDropdownOpen && (
+                <div className="absolute top-full start-0 end-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-gan-accent/50 bg-white shadow-lg z-50">
+                  {filteredChugim.length === 0 ? (
+                    <div className="px-4 py-2 text-sm text-gray-500 font-hebrew">
+                      {uniqueChugim.length === 0 ? "אין חוגים בנתונים" : "לא נמצא"}
+                    </div>
+                  ) : (
+                    filteredChugim.map((chug) => {
+                      const selected = (filters.chugim ?? []).some(
+                        (s) => s.trim().toLowerCase() === chug.trim().toLowerCase()
+                      );
+                      return (
+                        <label
+                          key={chug}
+                          className="flex items-center gap-2 px-4 py-2 hover:bg-gan-muted/30 cursor-pointer font-hebrew text-sm"
+                          onMouseDown={(e) => e.preventDefault()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => {
+                              const curr = filters.chugim ?? [];
+                              const next = selected
+                                ? curr.filter((s) => s.trim().toLowerCase() !== chug.trim().toLowerCase())
+                                : [...curr, chug];
+                              update({ chugim: next.length ? next : null });
+                            }}
+                          />
+                          {chug}
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+            {(filters.chugim ?? []).length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {(filters.chugim ?? []).map((chug) => (
+                  <span
+                    key={chug}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gan-muted/40 text-xs font-hebrew"
+                  >
+                    {chug}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = (filters.chugim ?? []).filter((s) => s !== chug);
+                        update({ chugim: next.length ? next : null });
+                      }}
+                      className="hover:text-gan-primary"
+                      aria-label="הסר"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

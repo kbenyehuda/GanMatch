@@ -25,6 +25,7 @@ interface SearchResultsPanelProps {
   filters: GanFilters;
   onFiltersChange: (f: GanFilters) => void;
   onSearchSelect?: (s: SearchSuggestion) => void;
+  allGanimInView?: Gan[]; // for chugim filter options (unfiltered list)
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
   onMobileOpenChange?: (open: boolean) => void;
@@ -37,6 +38,7 @@ export function SearchResultsPanel({
   filters,
   onFiltersChange,
   onSearchSelect,
+  allGanimInView,
   isMobileOpen = false,
   onCloseMobile,
   onMobileOpenChange,
@@ -162,6 +164,7 @@ export function SearchResultsPanel({
         onClear={() => onFiltersChange({ ...DEFAULT_FILTERS })}
         activeCount={countActiveFilters(filters)}
         onSearchSelect={onSearchSelect}
+        ganim={allGanimInView ?? ganim}
       />
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] space-y-3">
         {ganim.length === 0 ? (

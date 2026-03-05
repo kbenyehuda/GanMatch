@@ -64,10 +64,11 @@ export function applyFilters(
       const p = g.monthly_price_nis ?? 0;
       if (p > filters.max_price_nis) return false;
     }
-    if (filters.chugim_has != null && filters.chugim_has.trim() !== "") {
-      const chugim = g.chugim_types ?? [];
-      const q = filters.chugim_has.trim().toLowerCase();
-      const hasMatch = chugim.some((c) => c.toLowerCase().includes(q));
+    if (filters.chugim != null && filters.chugim.length > 0) {
+      const ganChugim = g.chugim_types ?? [];
+      const hasMatch = filters.chugim.some((selected) =>
+        ganChugim.some((c) => c.trim().toLowerCase() === selected.trim().toLowerCase())
+      );
       if (!hasMatch) return false;
     }
     if (filters.operating_hours != null && filters.operating_hours.trim() !== "") {
