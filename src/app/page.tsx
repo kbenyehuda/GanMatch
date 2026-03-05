@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
 import { SearchResultsPanel } from "@/components/layout/SearchResultsPanel";
 import { GanDetail } from "@/components/gan/GanDetail";
@@ -9,6 +9,7 @@ import { SuggestGanModal } from "@/components/gan/SuggestGanModal";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
 import { useViewportGanim } from "@/hooks/useViewportGanim";
+import { pointInBounds, type Bounds } from "@/lib/ganim-api";
 import type { Gan } from "@/types/ganim";
 import { Baby, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [pickingPin, setPickingPin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const [currentBounds, setCurrentBounds] = useState<Bounds | null>(null);
   const canViewReviews = !!user; // TODO: Wire to contribution check (Give-to-Get)
 
   const {
@@ -47,6 +49,38 @@ export default function HomePage() {
     }
   }, []);
 
+  const handleBoundsChange = useCallback(
+    (bounds: Bounds) => {
+      setCurrentBounds(bounds);
+      onBoundsChange(bounds);
+    },
+    [onBoundsChange]
+  );
+
+  // Filter ganim: 1) by current map bounds (sync map and list), 2) by search text.
+  // Always include selectedGan so it appears on map/list when zooming to a newly added gan.
+  const filteredGanim = useMemo(() => {
+    let out = ganim;
+    if (currentBounds) {
+      out = out.filter(
+        (g) =>
+          pointInBounds(g.lon, g.lat, currentBounds) ||
+          (selectedGan?.id === g.id)
+      );
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      out = out.filter(
+        (g) =>
+          g.name_he.toLowerCase().includes(q) ||
+          (g.name_en?.toLowerCase().includes(q)) ||
+          (g.city?.toLowerCase().includes(q)) ||
+          (g.address?.toLowerCase().includes(q))
+      );
+    }
+    return out;
+  }, [ganim, currentBounds, searchQuery, selectedGan?.id]);
+
   if (loading || skipLogin === null) {
     return <ConnectionGate loading />;
   }
@@ -65,17 +99,6 @@ export default function HomePage() {
     );
   }
 
-  // Filter ganim by search (client-side for now)
-  const filteredGanim = searchQuery
-    ? ganim.filter(
-        (g) =>
-          g.name_he.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (g.name_en?.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (g.city?.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (g.address?.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : ganim;
-
   return (
     <div className="relative w-full h-screen min-h-[100dvh] overflow-hidden" dir="rtl">
       {/* Map background - full screen */}
@@ -91,7 +114,7 @@ export default function HomePage() {
             setSelectedClusterGanim(list);
             setSelectedGan(null);
           }}
-          onBoundsChange={onBoundsChange}
+          onBoundsChange={handleBoundsChange}
           loading={ganimLoading}
           onMapClick={
             pickingPin

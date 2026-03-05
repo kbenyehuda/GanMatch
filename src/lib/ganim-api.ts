@@ -8,6 +8,10 @@ export interface Bounds {
   maxLat: number;
 }
 
+export function pointInBounds(lon: number, lat: number, b: Bounds): boolean {
+  return lon >= b.minLon && lon <= b.maxLon && lat >= b.minLat && lat <= b.maxLat;
+}
+
 export async function fetchAllGanim(): Promise<Gan[]> {
   // Fetch directly from Supabase; the API route's supabase.rpc() caps at 50 rows.
   const url = publicEnv.NEXT_PUBLIC_SUPABASE_URL;

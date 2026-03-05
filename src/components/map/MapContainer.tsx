@@ -196,10 +196,7 @@ export function MapContainer({
 
   const clusters = useMemo(() => {
     const [west, south, east, north] = viewport.bounds;
-    return index.getClusters(
-      [west - 0.01, south - 0.01, east + 0.01, north + 0.01],
-      viewport.zoom
-    );
+    return index.getClusters([west, south, east, north], viewport.zoom);
   }, [index, viewport]);
 
   const getClusterId = useCallback((clusterObj: unknown): number | null => {
