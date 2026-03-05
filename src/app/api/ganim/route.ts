@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     min_lat: minLat,
     max_lon: maxLon,
     max_lat: maxLat,
-    p_limit: 500,
+    p_limit: 1000,
   });
 
   if (error) {

@@ -8,7 +8,7 @@ import { GanClusterList } from "@/components/gan/GanClusterList";
 import { SuggestGanModal } from "@/components/gan/SuggestGanModal";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
-import { fetchAllGanim } from "@/lib/ganim-api";
+import { useViewportGanim } from "@/hooks/useViewportGanim";
 import type { Gan } from "@/types/ganim";
 import { Baby, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
@@ -16,7 +16,6 @@ import { useSession } from "@/lib/useSession";
 export default function HomePage() {
   const { user, loading } = useSession();
   const [skipLogin, setSkipLogin] = useState<boolean | null>(null);
-  const [ganim, setGanim] = useState<Gan[]>([]);
   const [selectedGan, setSelectedGan] = useState<Gan | null>(null);
   const [selectedClusterGanim, setSelectedClusterGanim] = useState<Gan[] | null>(
     null
@@ -30,9 +29,14 @@ export default function HomePage() {
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const canViewReviews = !!user; // TODO: Wire to contribution check (Give-to-Get)
 
-  const onBoundsChange = useCallback(() => {}, []);
-
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const {
+    ganim,
+    loading: ganimLoading,
+    error: fetchError,
+    onBoundsChange,
+    addGan,
+    refetchViewport,
+  } = useViewportGanim();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -42,29 +46,6 @@ export default function HomePage() {
       setSkipLogin(false);
     }
   }, []);
-
-  const reloadGanim = useCallback(async () => {
-    setFetchError(null);
-    try {
-      const data = await fetchAllGanim();
-      setGanim(data);
-      setSelectedGan((prev) => (prev ? data.find((g) => g.id === prev.id) ?? prev : prev));
-      setSelectedClusterGanim((prev) =>
-        prev
-          ? prev
-              .map((g) => data.find((x) => x.id === g.id) ?? g)
-              .filter(Boolean)
-          : prev
-      );
-    } catch (err) {
-      console.error("[GanMatch] Failed to fetch ganim:", err);
-      setFetchError(err instanceof Error ? err.message : "שגיאה בטעינת גנים");
-    }
-  }, []);
-
-  useEffect(() => {
-    reloadGanim();
-  }, [reloadGanim]);
 
   if (loading || skipLogin === null) {
     return <ConnectionGate loading />;
@@ -111,6 +92,7 @@ export default function HomePage() {
             setSelectedGan(null);
           }}
           onBoundsChange={onBoundsChange}
+          loading={ganimLoading}
           onMapClick={
             pickingPin
               ? (pos) => {
@@ -159,7 +141,7 @@ export default function HomePage() {
                 setSelectedClusterGanim(null);
               }}
               canViewReviews={canViewReviews}
-              onReviewSaved={reloadGanim}
+              onReviewSaved={refetchViewport}
             />
           ) : selectedClusterGanim ? (
             <GanClusterList
@@ -225,7 +207,7 @@ export default function HomePage() {
                 lat: r.lat,
                 lon: r.lon,
               };
-              setGanim((prev) => [newGan, ...prev]);
+              addGan(newGan);
               setSelectedGan(newGan);
               setSelectedClusterGanim(null);
               setSuggestOpen(false);
