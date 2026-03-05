@@ -12,6 +12,7 @@ import { useViewportGanim } from "@/hooks/useViewportGanim";
 import { pointInBounds, type Bounds } from "@/lib/ganim-api";
 import { applyFilters } from "@/lib/apply-filters";
 import { DEFAULT_FILTERS, type GanFilters } from "@/types/filters";
+import type { SearchSuggestion } from "@/components/layout/SearchResultsPanel";
 import type { Gan } from "@/types/ganim";
 import { Baby, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
@@ -29,6 +30,7 @@ export default function HomePage() {
   );
   const [pickingPin, setPickingPin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [fitToAddress, setFitToAddress] = useState<{ lon: number; lat: number } | null>(null);
   const [filters, setFilters] = useState<GanFilters>(DEFAULT_FILTERS);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [currentBounds, setCurrentBounds] = useState<Bounds | null>(null);
@@ -67,6 +69,27 @@ export default function HomePage() {
     [onBoundsChange]
   );
 
+  const handleSearchSelect = useCallback((s: SearchSuggestion) => {
+    const isCity = s.place_type?.includes("place") && !s.place_type?.includes("address");
+    const isAddressOrPoi =
+      s.place_type?.includes("address") || s.place_type?.includes("poi");
+    if (isAddressOrPoi || (!isCity && s.place_type?.length === 0)) {
+      setFitToAddress({ lon: s.lon, lat: s.lat });
+      setTimeout(() => setFitToAddress(null), 700);
+      setSearchQuery("");
+    }
+  }, []);
+
+  // Query looks like an address (street + number) - too specific to filter by; show all in view.
+  const skipSearchFilter = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return true;
+    if (/\d/.test(q)) return true;
+    if (/\b(רחוב|שדרות|שד׳|דרך|כיכר|סמטת)\b/.test(q)) return true;
+    if (q.length > 25) return true;
+    return false;
+  }, [searchQuery]);
+
   // Filter ganim: 1) by current map bounds (sync map and list), 2) by search text, 3) by attribute filters.
   // Always include selectedGan so it appears on map/list when zooming to a newly added gan.
   const filteredGanim = useMemo(() => {
@@ -78,7 +101,7 @@ export default function HomePage() {
           (selectedGan?.id === g.id)
       );
     }
-    if (searchQuery) {
+    if (searchQuery && !skipSearchFilter) {
       const q = searchQuery.toLowerCase();
       out = out.filter(
         (g) =>
@@ -90,7 +113,7 @@ export default function HomePage() {
     }
     out = applyFilters(out, filters);
     return out;
-  }, [ganim, currentBounds, searchQuery, selectedGan?.id, filters]);
+  }, [ganim, currentBounds, searchQuery, skipSearchFilter, selectedGan?.id, filters]);
 
   if (loading || skipLogin === null) {
     return <ConnectionGate loading />;
@@ -117,6 +140,7 @@ export default function HomePage() {
         <MapContainer
           ganim={filteredGanim}
           selectedGanId={selectedGan?.id ?? null}
+          fitToAddress={fitToAddress}
           onSelectGan={(g) => {
             setSelectedClusterGanim(null);
             setSelectedGan(g);
@@ -151,6 +175,7 @@ export default function HomePage() {
           }}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          onSearchSelect={handleSearchSelect}
           filters={filters}
           onFiltersChange={setFilters}
           isMobileOpen={mobilePanelOpen}

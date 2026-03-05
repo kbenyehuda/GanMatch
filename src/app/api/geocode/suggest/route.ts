@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   url.searchParams.set("language", "he");
   url.searchParams.set("autocomplete", "true");
   url.searchParams.set("limit", "5");
-  url.searchParams.set("types", "address,poi");
+  url.searchParams.set("types", "address,poi,place");
 
   const proximityLon = parseNumber(searchParams.get("proximityLon"));
   const proximityLat = parseNumber(searchParams.get("proximityLat"));
@@ -72,11 +72,13 @@ export async function GET(req: NextRequest) {
         const lon = Number(center?.[0]);
         const lat = Number(center?.[1]);
         if (!isFinite(lon) || !isFinite(lat)) return null;
+        const placeType = Array.isArray(f?.place_type) ? f.place_type : [];
         return {
           id: typeof f?.id === "string" ? f.id : `${lon},${lat}`,
           place_name: typeof f?.place_name === "string" ? f.place_name : "",
           lon,
           lat,
+          place_type: placeType as string[],
         };
       })
       .filter(Boolean);

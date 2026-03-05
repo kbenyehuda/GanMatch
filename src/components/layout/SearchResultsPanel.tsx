@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, MapPin, ExternalLink, Info } from "lucide-react";
 import { GanAttributeIcons } from "@/components/gan/GanAttributeIcons";
 import { FilterPanel } from "@/components/layout/FilterPanel";
@@ -16,12 +16,21 @@ import {
 } from "@/lib/gan-format";
 import { formatGanCategoryAddonLabelHe, formatGanCategoryHe } from "@/lib/gan-display";
 
+export interface SearchSuggestion {
+  id: string;
+  place_name: string;
+  lon: number;
+  lat: number;
+  place_type: string[];
+}
+
 interface SearchResultsPanelProps {
   ganim: Gan[];
   selectedGanId: string | null;
   onSelectGan: (gan: Gan) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  onSearchSelect?: (s: SearchSuggestion) => void;
   filters: GanFilters;
   onFiltersChange: (f: GanFilters) => void;
   isMobileOpen?: boolean;
@@ -35,6 +44,7 @@ export function SearchResultsPanel({
   onSelectGan,
   searchQuery,
   onSearchChange,
+  onSearchSelect,
   filters,
   onFiltersChange,
   isMobileOpen = false,
@@ -57,6 +67,10 @@ export function SearchResultsPanel({
 
   const [translateY, setTranslateY] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const normalizeWebsiteUrl = useMemo(() => {
     return (raw: string | null | undefined): string | null => {
@@ -154,6 +168,41 @@ export function SearchResultsPanel({
     return `translateY(${translateY}px)`;
   }, [translateY]);
 
+  // Fetch address/place suggestions when search query changes
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const t = window.setTimeout(async () => {
+      setSuggesting(true);
+      try {
+        const params = new URLSearchParams({ q });
+        const res = await fetch(`/api/geocode/suggest?${params}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { suggestions?: SearchSuggestion[] };
+        const next = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        setSuggestions(next);
+        setShowSuggestions(next.length > 0);
+      } finally {
+        setSuggesting(false);
+      }
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchQuery]);
+
+  const chooseSuggestion = useCallback(
+    (s: SearchSuggestion) => {
+      onSearchChange(s.place_name);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      onSearchSelect?.(s);
+    },
+    [onSearchChange, onSearchSelect]
+  );
+
   const content = (
     <div className="flex flex-col flex-1 min-h-0">
       <FilterPanel
@@ -166,12 +215,39 @@ export function SearchResultsPanel({
         <div className="relative">
           <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="search"
             placeholder="חיפוש גנים לפי עיר או כתובת..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            onBlur={() => {
+              // Delay to allow click on suggestion
+              setTimeout(() => setShowSuggestions(false), 150);
+            }}
             className="w-full pe-10 ps-10 py-2 rounded-lg border border-gan-accent/50 focus:outline-none focus:ring-2 focus:ring-gan-primary/50"
           />
+          {showSuggestions && suggestions.length > 0 && (
+            <div
+              className="absolute top-full start-0 end-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gan-accent/50 bg-white shadow-lg z-50"
+              role="listbox"
+            >
+              {suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="option"
+                  className="w-full text-start px-4 py-2.5 text-sm font-hebrew hover:bg-gan-muted/30 border-b border-gan-accent/20 last:border-b-0 first:rounded-t-lg last:rounded-b-lg"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    chooseSuggestion(s);
+                  }}
+                >
+                  {s.place_name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] space-y-3">

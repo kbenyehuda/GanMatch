@@ -41,6 +41,8 @@ export interface Bounds {
   maxLat: number;
 }
 
+const ADDRESS_FIT_RADIUS_M = 1000;
+
 interface MapContainerProps {
   ganim: Gan[];
   selectedGanId: string | null;
@@ -49,6 +51,7 @@ interface MapContainerProps {
   onBoundsChange: (bounds: Bounds) => void;
   onMapClick?: (pos: { lon: number; lat: number }) => void;
   pendingPin?: { lon: number; lat: number } | null;
+  fitToAddress?: { lon: number; lat: number } | null;
   loading?: boolean;
 }
 
@@ -60,6 +63,7 @@ export function MapContainer({
   onBoundsChange,
   onMapClick,
   pendingPin,
+  fitToAddress,
   loading = false,
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
@@ -76,14 +80,14 @@ export function MapContainer({
     setMounted(true);
   }, []);
 
-  const fitToUserRadius = useCallback((pos: { lon: number; lat: number }) => {
+  const fitToRadius = useCallback((pos: { lon: number; lat: number }, radiusM: number) => {
     const map = mapRef.current;
     if (!map) return;
 
     const { lon, lat } = pos;
     const metersPerDegreeLat = 111320;
-    const dLat = USER_RADIUS_M / metersPerDegreeLat;
-    const dLon = USER_RADIUS_M / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+    const dLat = radiusM / metersPerDegreeLat;
+    const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
 
     map.fitBounds(
       [
@@ -93,6 +97,11 @@ export function MapContainer({
       { padding: 80, duration: 650 }
     );
   }, []);
+
+  const fitToUserRadius = useCallback(
+    (pos: { lon: number; lat: number }) => fitToRadius(pos, USER_RADIUS_M),
+    [fitToRadius]
+  );
 
   // One-time geolocation lookup (if supported)
   useEffect(() => {
@@ -175,6 +184,30 @@ export function MapContainer({
     fitToUserRadius(userLocation);
     setHasCenteredOnUser(true);
   }, [userLocation, hasCenteredOnUser, fitToUserRadius]);
+
+  // When user selects an address from search, fit map to 1km around it and fetch ganim for that area.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!fitToAddress) return;
+
+    const { lon, lat } = fitToAddress;
+    const metersPerDegreeLat = 111320;
+    const dLat = ADDRESS_FIT_RADIUS_M / metersPerDegreeLat;
+    const dLon = ADDRESS_FIT_RADIUS_M / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+    const bounds: Bounds = {
+      minLon: lon - dLon,
+      minLat: lat - dLat,
+      maxLon: lon + dLon,
+      maxLat: lat + dLat,
+    };
+    onBoundsChange(bounds);
+    setViewport({
+      bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
+      zoom: 14,
+    });
+    fitToRadius(fitToAddress, ADDRESS_FIT_RADIUS_M);
+  }, [fitToAddress, fitToRadius, onBoundsChange]);
 
   const index = useMemo(() => {
     const sc = new Supercluster<GanPointProps>({ radius: 60, maxZoom: 18 });
