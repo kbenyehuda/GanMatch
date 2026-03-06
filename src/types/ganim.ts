@@ -81,8 +81,13 @@ export interface Review {
   id: string;
   user_id: string;
   gan_id: string;
-  rating: number;
+  rating: number | null;
   is_anonymous?: boolean;
+  is_private_reference?: boolean;
+  available_for_private_messages?: boolean;
+  enrollment_year?: number | null;
+  enrollment_years?: string | null;
+  reference_tags?: string[];
   cleanliness_rating?: number | null;
   staff_rating?: number | null;
   communication_rating?: number | null;
@@ -91,6 +96,5 @@ export interface Review {
   pros_text: string | null;
   cons_text: string | null;
   advice_to_parents_text: string | null;
-  enrollment_year: number | null;
   created_at: string;
 }

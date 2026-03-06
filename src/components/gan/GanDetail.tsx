@@ -6,21 +6,22 @@ import {
   X,
   Lock,
   ArrowRight,
-  Sparkles,
   Info,
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  UsersRound,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StarRating } from "@/components/ui/StarRating";
-import { StarRatingInput } from "@/components/ui/StarRatingInput";
 import type { Gan } from "@/types/ganim";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
+import { GanReviewModal } from "@/components/gan/GanReviewModal";
 import { GanAttributeIcons } from "@/components/gan/GanAttributeIcons";
 import {
   getGanCityForDisplay,
@@ -58,12 +59,8 @@ export function GanDetail({
 }: GanDetailProps) {
   const { user, session } = useSession();
   const [showAvgFacets, setShowAvgFacets] = useState(false);
-  const [showRecommendFacets, setShowRecommendFacets] = useState(false);
-  const [showRecommendForm, setShowRecommendForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<
@@ -72,13 +69,21 @@ export function GanDetail({
       user_id: string;
       rating: number;
       is_anonymous: boolean;
+      allow_contact: boolean;
       reviewer_public_name?: string | null;
       reviewer_public_email_masked?: string | null;
       advice_to_parents_text: string | null;
+      enrollment_years: string | null;
       created_at: string;
+      cleanliness_rating?: number | null;
+      staff_rating?: number | null;
+      safety_rating?: number | null;
     }>
   >([]);
   const [contactReviewId, setContactReviewId] = useState<string | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [refreshReviewsKey, setRefreshReviewsKey] = useState(0);
+  const [reviewSort, setReviewSort] = useState<"newest" | "year" | "rating_asc" | "rating_desc">("newest");
 
   const maskEmail = useMemo(() => {
     return (email: string): string => {
@@ -91,15 +96,6 @@ export function GanDetail({
       return `${keep}***@${domain}`;
     };
   }, []);
-
-  const [rating, setRating] = useState(4.0);
-  const [isAnonymous, setIsAnonymous] = useState(true);
-  const [comment, setComment] = useState("");
-  const [cleanliness, setCleanliness] = useState<number | null>(null);
-  const [staff, setStaff] = useState<number | null>(null);
-  const [communication, setCommunication] = useState<number | null>(null);
-  const [food, setFood] = useState<number | null>(null);
-  const [location, setLocation] = useState<number | null>(null);
 
   const formatReviewDate = useMemo(() => {
     return (iso: string) => {
@@ -209,9 +205,8 @@ export function GanDetail({
     setShowEditForm(false);
     setEditSaveError(null);
     setEditSaved(false);
-    setShowRecommendForm(false);
-    setShowRecommendFacets(false);
     setShowMissingDetails(false);
+    setShowReviewModal(false);
 
     setLocalWebsiteUrl(normalizeWebsiteUrl((gan as any).website_url));
 
@@ -456,78 +451,6 @@ export function GanDetail({
     });
   };
 
-  const submitRecommendation = async () => {
-    setSubmitError(null);
-    setSubmitted(false);
-    if (!supabase || !user) {
-      setSubmitError("נדרשת התחברות כדי לפרסם המלצה (אפשר לפרסם כאנונימי).");
-      return;
-    }
-    setSaving(true);
-    try {
-      const fullName =
-        typeof (user as any)?.user_metadata?.full_name === "string"
-          ? String((user as any).user_metadata.full_name).trim()
-          : "";
-      const email = typeof user?.email === "string" ? user.email.trim() : "";
-      const reviewerPublicName = !isAnonymous ? (fullName || null) : null;
-      const reviewerPublicEmailMasked = !isAnonymous && email ? maskEmail(email) : null;
-
-      const basePayload: Record<string, unknown> = {
-        user_id: user.id,
-        gan_id: gan.id,
-        rating,
-        is_anonymous: isAnonymous,
-        advice_to_parents_text: comment.trim() ? comment.trim() : null,
-        cleanliness_rating: cleanliness,
-        staff_rating: staff,
-        communication_rating: communication,
-        food_rating: food,
-        location_rating: location,
-      };
-
-      const identityPayload: Record<string, unknown> = {
-        reviewer_public_name: reviewerPublicName,
-        reviewer_public_email_masked: reviewerPublicEmailMasked,
-      };
-
-      let { error } = await supabase
-        .from("reviews")
-        .upsert({ ...basePayload, ...identityPayload }, { onConflict: "user_id,gan_id" });
-
-      // Backwards compatible: if the DB columns don't exist yet, retry without them.
-      if (error) {
-        const msg = typeof (error as any)?.message === "string" ? String((error as any).message) : "";
-        const missingCol =
-          msg.includes("does not exist") &&
-          (msg.includes("reviewer_public_name") || msg.includes("reviewer_public_email_masked"));
-        if (missingCol) {
-          ({ error } = await supabase.from("reviews").upsert(basePayload, { onConflict: "user_id,gan_id" }));
-        }
-      }
-      if (error) throw error;
-      setSubmitted(true);
-      onReviewSaved?.();
-    } catch (e: any) {
-      const msg = typeof e?.message === "string" ? e.message : "";
-      if (msg === "review_limit_reached") {
-        setSubmitError("אפשר לפרסם עד 10 המלצות בסך הכל.");
-      } else {
-        setSubmitError(msg || "שגיאה בפרסום המלצה");
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!showRecommendForm) {
-      setSubmitted(false);
-      setSubmitError(null);
-      setShowRecommendFacets(false);
-    }
-  }, [showRecommendForm]);
-
   useEffect(() => {
     if (!canViewReviews || !supabase) return;
     let cancelled = false;
@@ -536,27 +459,24 @@ export function GanDetail({
 
     (async () => {
       try {
+        const selectCols =
+          "id,user_id,rating,is_anonymous,allow_contact,reviewer_public_name,reviewer_public_email_masked,advice_to_parents_text,enrollment_years,created_at,cleanliness_rating,staff_rating,safety_rating";
         const queryNew = supabase
           .from("reviews")
-          .select(
-            "id,user_id,rating,is_anonymous,reviewer_public_name,reviewer_public_email_masked,advice_to_parents_text,created_at"
-          )
+          .select(selectCols)
           .eq("gan_id", gan.id)
           .order("created_at", { ascending: false });
         let data: any[] | null = null;
         let error: any = null;
         ({ data, error } = (await (queryNew as any)) as any);
 
-        // Backwards compatible: if the DB columns don't exist yet, retry without them.
+        // Backwards compatible: if allow_contact doesn't exist, retry without it
         if (error) {
           const msg = typeof (error as any)?.message === "string" ? String((error as any).message) : "";
-          const missingCol =
-            msg.includes("does not exist") &&
-            (msg.includes("reviewer_public_name") || msg.includes("reviewer_public_email_masked"));
-          if (missingCol) {
+          if (msg.includes("does not exist")) {
             ({ data, error } = (await (supabase
               .from("reviews")
-              .select("id,user_id,rating,is_anonymous,advice_to_parents_text,created_at")
+              .select("id,user_id,rating,is_anonymous,reviewer_public_name,reviewer_public_email_masked,advice_to_parents_text,created_at,available_for_private_messages,enrollment_years")
               .eq("gan_id", gan.id)
               .order("created_at", { ascending: false }) as any)) as any);
           }
@@ -569,12 +489,14 @@ export function GanDetail({
           return;
         }
 
+        const rows = data ?? [];
         setReviews(
-          (data ?? []).map((r: any) => ({
+          rows.map((r: any) => ({
             id: String(r.id),
             user_id: String(r.user_id),
-            rating: Number(r.rating),
+            rating: Number(r.rating ?? 0),
             is_anonymous: Boolean(r.is_anonymous),
+            allow_contact: r.allow_contact ?? r.available_for_private_messages ?? true,
             reviewer_public_name:
               typeof r.reviewer_public_name === "string" ? r.reviewer_public_name : null,
             reviewer_public_email_masked:
@@ -583,7 +505,12 @@ export function GanDetail({
                 : null,
             advice_to_parents_text:
               typeof r.advice_to_parents_text === "string" ? r.advice_to_parents_text : null,
+            enrollment_years:
+              typeof r.enrollment_years === "string" ? r.enrollment_years : null,
             created_at: String(r.created_at),
+            cleanliness_rating: r.cleanliness_rating,
+            staff_rating: r.staff_rating,
+            safety_rating: r.safety_rating,
           }))
         );
       } catch (err) {
@@ -599,7 +526,7 @@ export function GanDetail({
     return () => {
       cancelled = true;
     };
-  }, [canViewReviews, gan.id]);
+  }, [canViewReviews, gan.id, refreshReviewsKey]);
 
   return (
     <Card className="overflow-hidden">
@@ -1327,117 +1254,24 @@ export function GanDetail({
 
         {/* Give-to-Get: Reviews section - blurred if no contribution */}
         <div>
-          <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
             <h4 className="font-medium text-gan-dark">ביקורות הורים</h4>
             <Button
               size="sm"
               variant="ghost"
               className="gap-2 whitespace-nowrap h-8 px-2 text-xs text-gan-primary hover:text-gan-dark"
-              onClick={() => setShowRecommendForm((v) => !v)}
+              onClick={() => {
+                if (!user) {
+                  (onRequestLogin ?? signIn)();
+                } else {
+                  setShowReviewModal(true);
+                }
+              }}
             >
-              <Sparkles className="w-4 h-4" />
-              כתבו המלצה
+              <UsersRound className="w-4 h-4" />
+              הייתי הורה כאן
             </Button>
           </div>
-
-          {showRecommendForm && (
-            <div className="mb-3 rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3">
-              <div className="text-xs text-gray-600 font-hebrew">
-                כדי למנוע בוטים צריך להתחבר, אבל אפשר לפרסם כ״אנונימי״.
-              </div>
-
-              {!user ? (
-                <Button size="sm" onClick={onRequestLogin ?? signIn} className="gap-2">
-                  <Lock className="w-4 h-4" />
-                  התחברות עם Google
-                </Button>
-              ) : (
-                <>
-                  <StarRatingInput value={rating} onChange={setRating} label="דירוג כללי" />
-                  <button
-                    type="button"
-                    className="text-sm font-hebrew text-gan-primary hover:underline"
-                    onClick={() => setShowRecommendFacets((v) => !v)}
-                  >
-                    {showRecommendFacets ? "הסתר דירוג קטגוריות" : "הוסף דירוג קטגוריות"}
-                  </button>
-
-                  {showRecommendFacets && (
-                    <div className="grid grid-cols-1 gap-3">
-                      <StarRatingInput
-                        value={cleanliness}
-                        onChange={(v) => setCleanliness(v)}
-                        label="ניקיון"
-                      />
-                      <StarRatingInput
-                        value={staff}
-                        onChange={(v) => setStaff(v)}
-                        label="צוות"
-                      />
-                      <StarRatingInput
-                        value={communication}
-                        onChange={(v) => setCommunication(v)}
-                        label="תקשורת"
-                      />
-                      <StarRatingInput
-                        value={food}
-                        onChange={(v) => setFood(v)}
-                        label="אוכל"
-                      />
-                      <StarRatingInput
-                        value={location}
-                        onChange={(v) => setLocation(v)}
-                        label="מיקום"
-                      />
-                      <div className="text-[11px] text-gray-500 font-hebrew">
-                        אם לא תמלאו קטגוריות — רק הדירוג הכללי ייספר.
-                      </div>
-                    </div>
-                  )}
-
-                  <label className="flex items-center gap-2 text-sm font-hebrew">
-                    <input
-                      type="checkbox"
-                      checked={isAnonymous}
-                      onChange={(e) => setIsAnonymous(e.target.checked)}
-                    />
-                    פרסם כאנונימי
-                  </label>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1 font-hebrew">
-                      טקסט חופשי (אופציונלי)
-                    </label>
-                    <textarea
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      rows={3}
-                      disabled={submitted}
-                      className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew focus:outline-none focus:ring-2 focus:ring-gan-primary/40"
-                      placeholder="מה היה טוב/פחות טוב? טיפים להורים?"
-                    />
-                  </div>
-
-                  {submitError && (
-                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 font-hebrew">
-                      {submitError}
-                    </div>
-                  )}
-                  {submitted && (
-                    <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
-                      תודה! ההמלצה נשמרה.
-                    </div>
-                  )}
-
-                  {!submitted ? (
-                    <Button size="sm" onClick={submitRecommendation} disabled={saving}>
-                      {saving ? "שומר..." : "פרסם המלצה"}
-                    </Button>
-                  ) : null}
-                </>
-              )}
-            </div>
-          )}
           {canViewReviews ? (
             <div className="space-y-3">
               {reviewsLoading ? (
@@ -1449,78 +1283,108 @@ export function GanDetail({
               ) : reviews.length === 0 ? (
                 <div className="text-sm text-gray-600 font-hebrew">אין עדיין ביקורות.</div>
               ) : (
-                <div className="space-y-2">
-                  {reviews.map((r) => (
-                    <div
-                      key={r.id}
-                      className="rounded-lg border border-gan-accent/30 bg-white p-3"
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="text-xs font-hebrew text-gray-600">מיון:</label>
+                    <select
+                      value={reviewSort}
+                      onChange={(e) => setReviewSort(e.target.value as typeof reviewSort)}
+                      className="rounded border border-gan-accent/50 px-2 py-1 text-xs font-hebrew bg-white"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <StarRating value={r.rating} showValue />
-                            <span className="text-[11px] text-gray-500 font-hebrew">
-                              {r.is_anonymous
-                                ? "אנונימי"
-                                : r.user_id === user?.id
-                                  ? (() => {
-                                      const fullName =
-                                        typeof (user as any)?.user_metadata?.full_name === "string"
-                                          ? String((user as any).user_metadata.full_name).trim()
-                                          : "";
-                                      const email = typeof user?.email === "string" ? user.email.trim() : "";
-                                      if (fullName && email && fullName !== email) return `${fullName} (${email})`;
-                                      return fullName || email || "לא אנונימי";
-                                    })()
-                                  : r.reviewer_public_name || r.reviewer_public_email_masked
-                                    ? `${r.reviewer_public_name ?? ""}${
-                                        r.reviewer_public_name && r.reviewer_public_email_masked
-                                          ? ` (${r.reviewer_public_email_masked})`
-                                          : r.reviewer_public_email_masked
-                                            ? r.reviewer_public_email_masked
-                                            : ""
-                                      }`.trim()
-                                    : "לא אנונימי"}
-                            </span>
-                            <span className="text-[11px] text-gray-500 font-hebrew">
-                              {formatReviewDate(r.created_at)}
-                            </span>
-                          </div>
-                          {r.advice_to_parents_text ? (
-                            <div className="mt-2 text-sm text-gray-700 font-hebrew whitespace-pre-wrap">
-                              {r.advice_to_parents_text}
-                            </div>
-                          ) : (
-                            <div className="mt-2 text-sm text-gray-500 font-hebrew">
-                              (ללא טקסט חופשי)
-                            </div>
-                          )}
-                        </div>
+                      <option value="newest">חדש ביותר</option>
+                      <option value="year">לפי שנה</option>
+                      <option value="rating_desc">דירוג גבוה לנמוך</option>
+                      <option value="rating_asc">דירוג נמוך לגבוה</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    {[...reviews]
+                      .sort((a, b) => {
+                        if (reviewSort === "newest")
+                          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                        if (reviewSort === "year") {
+                          const ya = a.enrollment_years ?? "";
+                          const yb = b.enrollment_years ?? "";
+                          return yb.localeCompare(ya);
+                        }
+                        if (reviewSort === "rating_desc") return b.rating - a.rating;
+                        if (reviewSort === "rating_asc") return a.rating - b.rating;
+                        return 0;
+                      })
+                      .map((r) => {
+                        const isSilentRef = !r.advice_to_parents_text && r.allow_contact;
+                        const displayName = r.is_anonymous
+                          ? "הורה אנונימי"
+                          : r.user_id === user?.id
+                            ? (() => {
+                                const fullName =
+                                  typeof (user as any)?.user_metadata?.full_name === "string"
+                                    ? String((user as any).user_metadata.full_name).trim()
+                                    : "";
+                                const email = typeof user?.email === "string" ? user.email.trim() : "";
+                                if (fullName && email && fullName !== email) return `${fullName} (${email})`;
+                                return fullName || email || "לא אנונימי";
+                              })()
+                            : r.reviewer_public_name
+                              ? r.reviewer_public_email_masked
+                                ? `${r.reviewer_public_name} (${r.reviewer_public_email_masked})`
+                                : r.reviewer_public_name
+                              : r.reviewer_public_email_masked || "הורה";
 
-                        {user ? (
-                          <div className="flex flex-col items-end gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="whitespace-nowrap"
-                              disabled={r.user_id === user.id}
-                              title={r.user_id === user.id ? "אי אפשר לשלוח הודעה לעצמך" : "שלח שאלה לממליץ"}
-                              onClick={() => {
-                                if (r.user_id === user.id) return;
-                                setContactReviewId(r.id);
-                              }}
-                            >
-                              שלח שאלה
-                            </Button>
-                            {r.user_id === user.id ? (
-                              <div className="text-[11px] text-gray-500 font-hebrew">זו הביקורת שלך</div>
-                            ) : null}
+                        return (
+                          <div
+                            key={r.id}
+                            className={`rounded-lg p-3 ${
+                              isSilentRef
+                                ? "border border-dashed border-gan-accent/40 bg-gan-muted/10"
+                                : "border border-gan-accent/30 bg-white"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <StarRating value={r.rating} showValue />
+                                  <span className="text-[11px] text-gray-500 font-hebrew">
+                                    {displayName}
+                                  </span>
+                                  {r.enrollment_years ? (
+                                    <span className="text-[11px] text-gray-500 font-hebrew">
+                                      מחזור {r.enrollment_years}
+                                    </span>
+                                  ) : null}
+                                  <span className="text-[11px] text-gray-500 font-hebrew">
+                                    {formatReviewDate(r.created_at)}
+                                  </span>
+                                </div>
+                                {r.advice_to_parents_text ? (
+                                  <div className="mt-2 text-sm text-gray-700 font-hebrew whitespace-pre-wrap">
+                                    {r.advice_to_parents_text}
+                                  </div>
+                                ) : isSilentRef ? (
+                                  <div className="mt-2 text-sm text-gray-600 font-hebrew italic">
+                                    ההורה הזה לא כתב ביקורת ציבורית אך זמין/ה לשאלות פרטיות.
+                                  </div>
+                                ) : null}
+                              </div>
+                              {user && r.user_id !== user.id && r.allow_contact ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="shrink-0 gap-1"
+                                  onClick={() => setContactReviewId(r.id)}
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  שלח הודעה
+                                </Button>
+                              ) : r.user_id === user?.id ? (
+                                <div className="text-[11px] text-gray-500 font-hebrew">זו הביקורת שלך</div>
+                              ) : null}
+                            </div>
                           </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                        );
+                      })}
+                  </div>
+                </>
               )}
             </div>
           ) : (
@@ -1552,6 +1416,38 @@ export function GanDetail({
           reviewId={contactReviewId}
           ganName={gan.name_he}
           onClose={() => setContactReviewId(null)}
+        />
+      ) : null}
+      {showReviewModal ? (
+        <GanReviewModal
+          ganId={gan.id}
+          ganName={gan.name_he}
+          initialData={(() => {
+            const r = reviews.find((rev) => rev.user_id === user?.id);
+            if (!r) return null;
+            return {
+              rating: r.rating,
+              cleanliness_rating: r.cleanliness_rating ?? null,
+              staff_rating: r.staff_rating ?? null,
+              safety_rating: r.safety_rating ?? null,
+              advice_to_parents_text: r.advice_to_parents_text,
+              enrollment_years: r.enrollment_years,
+              is_anonymous: r.is_anonymous,
+              allow_contact: r.allow_contact,
+            };
+          })()}
+          onClose={() => setShowReviewModal(false)}
+          onSaved={() => {
+            setRefreshReviewsKey((k) => k + 1);
+            onReviewSaved?.();
+          }}
+          onOpenEditGan={() => {
+            setShowReviewModal(false);
+            setShowEditForm(true);
+            requestAnimationFrame(() => {
+              editFormTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+          }}
         />
       ) : null}
     </Card>

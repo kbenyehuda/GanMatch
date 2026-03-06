@@ -60,7 +60,13 @@ export function useViewportGanim(): UseViewportGanimResult {
 
       // Cache hit: find a cached entry that contains our bounds
       const cached = cacheRef.current.find((e) => boundsContains(e.bounds, bounds));
-      if (cached) {
+      // If cache hit the API limit (1000), it may be incomplete - don't use it when zoomed in
+      // to a smaller area; fetch fresh so we get ganim specific to the zoomed viewport.
+      const cacheMayBeIncomplete = cached && cached.ganim.length >= 999;
+      const boundsMuchSmaller =
+        cached &&
+        (bounds.maxLon - bounds.minLon) < (cached.bounds.maxLon - cached.bounds.minLon) * 0.5;
+      if (cached && !(cacheMayBeIncomplete && boundsMuchSmaller)) {
         const inView = cached.ganim.filter((g) =>
           pointInBounds(g.lon, g.lat, bounds)
         );
