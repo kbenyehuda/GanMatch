@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,8 +52,22 @@ export function GanReviewModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [showEditGan, setShowEditGan] = useState(false);
+  const prevGanIdRef = useRef<string | null>(null);
+  const hasInitialDataRef = useRef(false);
 
   useEffect(() => {
+    const ganChanged = ganId !== prevGanIdRef.current;
+    const initialDataJustLoaded = !!initialData && !hasInitialDataRef.current;
+
+    if (ganChanged) {
+      prevGanIdRef.current = ganId;
+      hasInitialDataRef.current = !!initialData;
+    } else if (initialDataJustLoaded) {
+      hasInitialDataRef.current = true;
+    } else {
+      return;
+    }
+
     if (initialData) {
       setRating(initialData.rating);
       setCleanliness(initialData.cleanliness_rating);
@@ -72,8 +86,19 @@ export function GanReviewModal({
           setToYear(parts[0].trim());
         }
       }
+    } else {
+      setRating(4);
+      setCleanliness(null);
+      setStaff(null);
+      setSafety(null);
+      setReviewText("");
+      setFromYear(String(CURRENT_YEAR - 2));
+      setToYear(String(CURRENT_YEAR - 1));
+      setIsAnonymous(true);
+      setAllowContact(true);
     }
-  }, [initialData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- initialData omitted to avoid infinite loop (new ref every parent render)
+  }, [ganId, !!initialData]);
 
   const maskEmail = (email: string): string => {
     const e = String(email ?? "").trim();
@@ -93,6 +118,13 @@ export function GanReviewModal({
     if (!supabase || !user) {
       setError("נדרשת התחברות.");
       return;
+    }
+
+    if (initialData && rating !== initialData.rating) {
+      const ok = window.confirm(
+        "דירגת בעבר אחרת. האם אתה בטוח שברצונך לשנות את הדירוג?"
+      );
+      if (!ok) return;
     }
 
     const fullName =
