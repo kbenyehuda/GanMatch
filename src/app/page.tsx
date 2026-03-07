@@ -14,7 +14,7 @@ import { applyFilters } from "@/lib/apply-filters";
 import { DEFAULT_FILTERS, type GanFilters } from "@/types/filters";
 import type { SearchSuggestion } from "@/types/search";
 import type { Gan } from "@/types/ganim";
-import { Baby, TriangleAlert } from "lucide-react";
+import { Baby, Loader2, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
 
 export default function HomePage() {
@@ -38,6 +38,7 @@ export default function HomePage() {
   const {
     ganim,
     loading: ganimLoading,
+    pending: ganimPending,
     error: fetchError,
     onBoundsChange,
     addGan,
@@ -110,6 +111,20 @@ export default function HomePage() {
 
   return (
     <div className="relative w-full h-screen min-h-[100dvh] overflow-hidden" dir="rtl">
+      {/* Loading indicator - centered, always on top */}
+      {(ganimLoading || ganimPending) && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="flex items-center gap-2 rounded-xl bg-white/95 backdrop-blur px-5 py-3 shadow-xl border border-gray-200 font-hebrew">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-gan-primary" />
+            <span className="text-sm font-semibold text-gray-800">טוען גנים...</span>
+          </div>
+        </div>
+      )}
+
       {/* Map background - full screen */}
       <div className="absolute inset-0">
         <MapContainer
@@ -125,7 +140,7 @@ export default function HomePage() {
             setSelectedGan(null);
           }}
           onBoundsChange={handleBoundsChange}
-          loading={ganimLoading}
+          loading={ganimLoading || ganimPending}
           onMapClick={
             pickingPin
               ? (pos) => {

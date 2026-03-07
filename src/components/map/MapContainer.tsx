@@ -9,7 +9,7 @@ import Map, {
 import type { MapRef } from "react-map-gl";
 import Supercluster from "supercluster";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Loader2, LocateFixed, MapPin } from "lucide-react";
+import { LocateFixed, MapPin } from "lucide-react";
 import type { Gan } from "@/types/ganim";
 import { publicEnv } from "@/lib/env/public";
 
@@ -390,12 +390,6 @@ export function MapContainer({
       onMoveEnd={handleMoveEnd}
       onClick={handleMapClick}
     >
-      {loading && (
-        <div className="absolute top-3 start-3 z-10 flex items-center gap-2 rounded-md bg-white/95 backdrop-blur px-3 py-2 shadow-md border border-gray-200">
-          <Loader2 className="h-4 w-4 animate-spin text-gan-primary" />
-          <span className="text-sm font-hebrew text-gray-600">טוען גנים...</span>
-        </div>
-      )}
       <NavigationControl position="bottom-right" />
       {canLocate ? (
         <div className="absolute bottom-[92px] end-3 z-10">

@@ -29,6 +29,8 @@ interface CacheEntry {
 export interface UseViewportGanimResult {
   ganim: Gan[];
   loading: boolean;
+  /** True when waiting for debounce or actively fetching - use to show "thinking" UI */
+  pending: boolean;
   error: string | null;
   onBoundsChange: (bounds: Bounds) => void;
   addGan: (gan: Gan) => void;
@@ -38,6 +40,7 @@ export interface UseViewportGanimResult {
 export function useViewportGanim(): UseViewportGanimResult {
   const [ganim, setGanim] = useState<Gan[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(true); // show loading until first fetch
   const [error, setError] = useState<string | null>(null);
   const currentBoundsRef = useRef<Bounds | null>(null);
 
@@ -72,6 +75,7 @@ export function useViewportGanim(): UseViewportGanimResult {
         );
         applyDelta(inView, bounds);
         setLoading(false);
+        setPending(false);
         setError(null);
         return;
       }
@@ -95,6 +99,7 @@ export function useViewportGanim(): UseViewportGanimResult {
         setError(err instanceof Error ? err.message : "שגיאה בטעינת גנים");
       } finally {
         setLoading(false);
+        setPending(false);
       }
     },
     [applyDelta]
@@ -103,6 +108,7 @@ export function useViewportGanim(): UseViewportGanimResult {
   const onBoundsChange = useCallback(
     (bounds: Bounds) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      setPending(true);
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
         fetchForBounds(bounds);
@@ -122,6 +128,7 @@ export function useViewportGanim(): UseViewportGanimResult {
   const refetchViewport = useCallback(() => {
     const b = currentBoundsRef.current;
     if (!b) return;
+    setPending(true);
     // Invalidate cache so we fetch fresh data (e.g. after user edits)
     cacheRef.current = cacheRef.current.filter(
       (e) => !boundsContains(e.bounds, b)
@@ -135,5 +142,5 @@ export function useViewportGanim(): UseViewportGanimResult {
     };
   }, []);
 
-  return { ganim, loading, error, onBoundsChange, addGan, refetchViewport };
+  return { ganim, loading, pending, error, onBoundsChange, addGan, refetchViewport };
 }
