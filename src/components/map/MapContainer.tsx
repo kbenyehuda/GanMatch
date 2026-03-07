@@ -51,7 +51,7 @@ interface MapContainerProps {
   onBoundsChange: (bounds: Bounds) => void;
   onMapClick?: (pos: { lon: number; lat: number }) => void;
   pendingPin?: { lon: number; lat: number } | null;
-  fitToAddress?: { lon: number; lat: number } | null;
+  fitToAddress?: { lon: number; lat: number; radiusM?: number } | null;
   loading?: boolean;
 }
 
@@ -185,16 +185,17 @@ export function MapContainer({
     setHasCenteredOnUser(true);
   }, [userLocation, hasCenteredOnUser, fitToUserRadius]);
 
-  // When user selects an address from search, fit map to 1km around it and fetch ganim for that area.
+  // When user selects an address or city from search, fit map and fetch ganim for that area.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     if (!fitToAddress) return;
 
     const { lon, lat } = fitToAddress;
+    const radiusM = fitToAddress.radiusM ?? ADDRESS_FIT_RADIUS_M;
     const metersPerDegreeLat = 111320;
-    const dLat = ADDRESS_FIT_RADIUS_M / metersPerDegreeLat;
-    const dLon = ADDRESS_FIT_RADIUS_M / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+    const dLat = radiusM / metersPerDegreeLat;
+    const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
     const bounds: Bounds = {
       minLon: lon - dLon,
       minLat: lat - dLat,
@@ -204,9 +205,9 @@ export function MapContainer({
     onBoundsChange(bounds);
     setViewport({
       bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
-      zoom: 14,
+      zoom: radiusM > 2000 ? 12 : 14,
     });
-    fitToRadius(fitToAddress, ADDRESS_FIT_RADIUS_M);
+    fitToRadius(fitToAddress, radiusM);
   }, [fitToAddress, fitToRadius, onBoundsChange]);
 
   const index = useMemo(() => {

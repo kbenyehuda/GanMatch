@@ -29,7 +29,11 @@ export default function HomePage() {
     null
   );
   const [pickingPin, setPickingPin] = useState(false);
-  const [fitToAddress, setFitToAddress] = useState<{ lon: number; lat: number } | null>(null);
+  const [fitToAddress, setFitToAddress] = useState<{
+    lon: number;
+    lat: number;
+    radiusM?: number;
+  } | null>(null);
   const [filters, setFilters] = useState<GanFilters>(DEFAULT_FILTERS);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [currentBounds, setCurrentBounds] = useState<Bounds | null>(null);
@@ -74,10 +78,16 @@ export default function HomePage() {
       const isCity = s.place_type?.includes("place") && !s.place_type?.includes("address");
       const isAddressOrPoi =
         s.place_type?.includes("address") || s.place_type?.includes("poi");
-      if (isAddressOrPoi || (!isCity && s.place_type?.length === 0)) {
-        setFitToAddress({ lon: s.lon, lat: s.lat });
+      if (isAddressOrPoi || isCity || (!isCity && (s.place_type?.length ?? 0) === 0)) {
+        setFitToAddress({
+          lon: s.lon,
+          lat: s.lat,
+          radiusM: isCity ? 5000 : 1000,
+        });
         setTimeout(() => setFitToAddress(null), 700);
-        setFilters((prev) => ({ ...prev, location_query: null }));
+        if (isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0)) {
+          setFilters((prev) => ({ ...prev, location_query: null }));
+        }
       }
     },
     []

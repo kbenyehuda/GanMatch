@@ -41,3 +41,4 @@ scripts/maintenance/out/*.csv
 scripts/maintenance/out/*.xlsx
 scripts/gov_import/out
 scripts/gov_import/__pycache__
+*.log

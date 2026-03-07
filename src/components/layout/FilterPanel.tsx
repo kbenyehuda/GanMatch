@@ -118,6 +118,7 @@ export function FilterPanel({
         onSearchSelect?.(s);
       } else {
         onFiltersChange({ ...filters, location_query: s.place_name });
+        onSearchSelect?.(s); // Move map to city center
       }
     },
     [filters, onFiltersChange, onSearchSelect]
@@ -133,6 +134,40 @@ export function FilterPanel({
 
   return (
     <div className="border-b border-gan-accent/30 shrink-0">
+      {/* Search bar - always visible */}
+      <div className="px-4 py-3">
+        <div className="relative">
+          <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-gray-400" />
+          <input
+            ref={searchInputRef}
+            type="search"
+            placeholder="חיפוש לפי עיר או כתובת..."
+            value={filters.location_query ?? ""}
+            onChange={(e) => update({ location_query: e.target.value || null })}
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            className="w-full pe-10 ps-10 py-2 rounded-lg border border-gan-accent/50 focus:outline-none focus:ring-2 focus:ring-gan-primary/50 text-sm font-hebrew"
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute top-full start-0 end-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-gan-accent/50 bg-white shadow-lg z-50">
+              {suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="w-full text-start px-4 py-2 text-sm font-hebrew hover:bg-gan-muted/30 border-b border-gan-accent/20 last:border-b-0"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    chooseSuggestion(s);
+                  }}
+                >
+                  {s.place_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -167,40 +202,6 @@ export function FilterPanel({
               נקה סינון
             </button>
           )}
-
-          <div>
-            <label className="block text-xs text-gray-600 mb-1 font-hebrew">מיקום (עיר / כתובת)</label>
-            <div className="relative">
-              <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-gray-400" />
-              <input
-                ref={searchInputRef}
-                type="search"
-                placeholder="חיפוש לפי עיר או כתובת..."
-                value={filters.location_query ?? ""}
-                onChange={(e) => update({ location_query: e.target.value || null })}
-                onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                className="w-full pe-10 ps-10 py-2 rounded-lg border border-gan-accent/50 focus:outline-none focus:ring-2 focus:ring-gan-primary/50 text-sm font-hebrew"
-              />
-              {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute top-full start-0 end-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-gan-accent/50 bg-white shadow-lg z-50">
-                  {suggestions.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className="w-full text-start px-4 py-2 text-sm font-hebrew hover:bg-gan-muted/30 border-b border-gan-accent/20 last:border-b-0"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        chooseSuggestion(s);
-                      }}
-                    >
-                      {s.place_name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
 
           <div>
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">ימי שישי</label>

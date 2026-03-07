@@ -6,9 +6,29 @@ import type { Gan } from "@/types/ganim";
 
 const DEBOUNCE_MS = 300;
 const MAX_CACHE_ENTRIES = 50;
+const MIN_MOVE_METERS_FOR_LOADING = 1500; // Zoom/small pan: no loading; only show when panning >1.5km
 
 function pointInBounds(lon: number, lat: number, b: Bounds): boolean {
   return lon >= b.minLon && lon <= b.maxLon && lat >= b.minLat && lat <= b.maxLat;
+}
+
+/** Approximate distance in meters between two points (Haversine) */
+function metersBetween(
+  lon1: number,
+  lat1: number,
+  lon2: number,
+  lat2: number
+): number {
+  const R = 6371e3;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 /** Returns true if outer fully contains inner */
@@ -46,6 +66,8 @@ export function useViewportGanim(): UseViewportGanimResult {
 
   const cacheRef = useRef<CacheEntry[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevCenterRef = useRef<{ lon: number; lat: number } | null>(null);
+  const hasFetchedOnceRef = useRef(false);
 
   const applyDelta = useCallback((newData: Gan[], bounds: Bounds) => {
     setGanim((prev) => {
@@ -58,8 +80,24 @@ export function useViewportGanim(): UseViewportGanimResult {
   }, []);
 
   const fetchForBounds = useCallback(
-    async (bounds: Bounds) => {
+    async (
+      bounds: Bounds,
+      center?: { centerLon: number; centerLat: number },
+      forceShowLoading?: boolean
+    ) => {
       currentBoundsRef.current = bounds;
+
+      // Only show loading for significant moves (not zoom-only or small pan)
+      const centerLon = center?.centerLon ?? (bounds.minLon + bounds.maxLon) / 2;
+      const centerLat = center?.centerLat ?? (bounds.minLat + bounds.maxLat) / 2;
+      const prev = prevCenterRef.current;
+      const isFirstLoad = !hasFetchedOnceRef.current;
+      const movedFar =
+        !prev ||
+        metersBetween(prev.lon, prev.lat, centerLon, centerLat) >
+          MIN_MOVE_METERS_FOR_LOADING;
+      const shouldShowLoading =
+        forceShowLoading || isFirstLoad || movedFar;
 
       // Cache hit: find a cached entry that contains our bounds
       const cached = cacheRef.current.find((e) => boundsContains(e.bounds, bounds));
@@ -74,13 +112,15 @@ export function useViewportGanim(): UseViewportGanimResult {
           pointInBounds(g.lon, g.lat, bounds)
         );
         applyDelta(inView, bounds);
+        prevCenterRef.current = { lon: centerLon, lat: centerLat };
         setLoading(false);
         setPending(false);
         setError(null);
+        hasFetchedOnceRef.current = true;
         return;
       }
 
-      setLoading(true);
+      if (shouldShowLoading) setLoading(true);
       setError(null);
 
       try {
@@ -94,10 +134,12 @@ export function useViewportGanim(): UseViewportGanimResult {
 
         applyDelta(data, bounds);
         setError(null);
+        hasFetchedOnceRef.current = true;
       } catch (err) {
         console.error("[useViewportGanim] Fetch error:", err);
         setError(err instanceof Error ? err.message : "שגיאה בטעינת גנים");
       } finally {
+        prevCenterRef.current = { lon: centerLon, lat: centerLat };
         setLoading(false);
         setPending(false);
       }
@@ -107,11 +149,25 @@ export function useViewportGanim(): UseViewportGanimResult {
 
   const onBoundsChange = useCallback(
     (bounds: Bounds) => {
+      const centerLon = (bounds.minLon + bounds.maxLon) / 2;
+      const centerLat = (bounds.minLat + bounds.maxLat) / 2;
+      const prev = prevCenterRef.current;
+      const isFirstLoad = !hasFetchedOnceRef.current;
+      const distanceM = prev
+        ? metersBetween(prev.lon, prev.lat, centerLon, centerLat)
+        : Infinity;
+      const movedFar = !prev || distanceM > MIN_MOVE_METERS_FOR_LOADING;
+      const shouldShowLoading = isFirstLoad || movedFar;
+
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      setPending(true);
+      if (shouldShowLoading) {
+        setPending(true);
+      } else {
+        setPending(false); // Zoom or small pan - clear immediately
+      }
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
-        fetchForBounds(bounds);
+        fetchForBounds(bounds, { centerLon, centerLat });
       }, DEBOUNCE_MS);
     },
     [fetchForBounds]
@@ -133,7 +189,7 @@ export function useViewportGanim(): UseViewportGanimResult {
     cacheRef.current = cacheRef.current.filter(
       (e) => !boundsContains(e.bounds, b)
     );
-    fetchForBounds(b);
+    fetchForBounds(b, undefined, true); // force show loading for refetch
   }, [fetchForBounds]);
 
   useEffect(() => {
