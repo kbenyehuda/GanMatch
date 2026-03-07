@@ -206,6 +206,11 @@ export default function HomePage() {
               setPickingPin(false);
             }}
             onSuggested={(r) => {
+              setSuggestOpen(false);
+              setPickingPin(false);
+              if ((r as { pending?: boolean }).pending) {
+                return;
+              }
               const suggestedHasCctv = r.cctv_access === "online" || r.cctv_access === "exceptional";
               const suggestedStreamedOnline = r.cctv_access === "online" ? true : r.cctv_access === "exceptional" ? false : null;
               const newGan: Gan = {
@@ -245,8 +250,6 @@ export default function HomePage() {
               addGan(newGan);
               setSelectedGan(newGan);
               setSelectedClusterGanim(null);
-              setSuggestOpen(false);
-              setPickingPin(false);
             }}
           />
         </div>

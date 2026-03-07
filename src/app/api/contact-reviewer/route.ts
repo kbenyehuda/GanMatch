@@ -60,7 +60,7 @@ export async function POST(req: Request) {
   });
 
   const { data: review, error: reviewErr } = await supabaseAdmin
-    .from("reviews")
+    .from("confirmed_reviews")
     .select("id,user_id,gan_id")
     .eq("id", reviewId)
     .single();
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
   }
 
   const { data: gan } = await supabaseAdmin
-    .from("ganim")
+    .from("ganim_v2")
     .select("name_he,address,city")
     .eq("id", review.gan_id)
     .maybeSingle();

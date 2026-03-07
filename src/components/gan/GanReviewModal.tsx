@@ -137,26 +137,25 @@ export function GanReviewModal({
 
     setSaving(true);
     try {
-      const payload = {
+      const { error: err } = await supabase.from("user_inputs").insert({
         user_id: user.id,
         gan_id: ganId,
-        rating,
-        cleanliness_rating: cleanliness,
-        staff_rating: staff,
-        safety_rating: safety,
-        advice_to_parents_text: reviewText.trim() || null,
-        enrollment_years: enrollmentYears,
-        is_anonymous: isAnonymous,
-        allow_contact: allowContact,
-        is_private_reference: false,
-        reviewer_public_name: reviewerPublicName,
-        reviewer_public_email_masked: reviewerPublicEmailMasked,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: err } = await supabase
-        .from("reviews")
-        .upsert(payload, { onConflict: "user_id,gan_id" });
+        is_new_gan: false,
+        input_type: "review",
+        parent_in_gan: true,
+        anonymous: isAnonymous,
+        allows_messages: allowContact,
+        free_text_rec: reviewText.trim() || null,
+        metadata: {
+          rating,
+          cleanliness_rating: cleanliness,
+          staff_rating: staff,
+          safety_rating: safety,
+          enrollment_years: enrollmentYears,
+          reviewer_public_name: reviewerPublicName,
+          reviewer_public_email_masked: reviewerPublicEmailMasked,
+        },
+      });
 
       if (err) throw err;
       setSuccess(true);

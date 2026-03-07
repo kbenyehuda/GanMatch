@@ -18,6 +18,8 @@ export type VacancyStatus = "Available" | "Limited" | "Full" | "UNKNOWN";
 
 export interface GanMetadata {
   phone?: string[];
+  /** Explicit list of phone numbers that have WhatsApp. If absent, inferred from category (private = WhatsApp). */
+  phone_whatsapp?: string[];
   age_groups?: string[];
   hours?: string;
   /**

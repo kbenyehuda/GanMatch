@@ -180,6 +180,24 @@ export async function POST(req: Request) {
     else nextMetadata.pikuach_ironi = Boolean(patch.pikuach_ironi);
   }
 
+  const phoneArr = coerceStringArray(patch.phone);
+  if (phoneArr !== undefined) {
+    if (phoneArr === null || phoneArr.length === 0) {
+      delete nextMetadata.phone;
+      delete nextMetadata.phone_whatsapp;
+    } else {
+      nextMetadata.phone = phoneArr;
+      const whatsappArr = coerceStringArray(patch.phone_whatsapp);
+      if (whatsappArr !== undefined && whatsappArr && whatsappArr.length > 0) {
+        nextMetadata.phone_whatsapp = whatsappArr.filter((w) =>
+          phoneArr.some((p) => p.replace(/\D/g, "").slice(-9) === w.replace(/\D/g, "").slice(-9))
+        );
+      } else {
+        delete nextMetadata.phone_whatsapp;
+      }
+    }
+  }
+
   // CCTV: keep columns as source of truth, but also maintain metadata.cctv_access for compatibility.
   const hasCctv = patch.has_cctv === undefined ? undefined : Boolean(patch.has_cctv);
   const streamedOnline =
@@ -198,133 +216,64 @@ export async function POST(req: Request) {
     }
   }
 
-  const updatePayload: Record<string, unknown> = {
+  const operatingHours = coerceTrimmedOrNull(patch.operating_hours);
+  const kosherCertifier = coerceTrimmedOrNull(patch.kosher_certifier);
+  const chugimTypes = coerceStringArray(patch.chugim_types);
+  const languagesSpoken = coerceSpokenLanguages(patch.languages_spoken);
+
+  // Ledger: insert into user_inputs only. Python script consumes and updates ganim_v2.
+  const userInputRow: Record<string, unknown> = {
+    user_id: userData.user.id,
+    gan_id: ganId,
+    is_new_gan: false,
+    input_type: "edit",
     metadata: nextMetadata,
   };
-  if (address !== undefined) updatePayload.address = address;
-  if (city !== undefined) updatePayload.city = city;
-  if (priceNotes !== undefined) updatePayload.price_notes = priceNotes;
-  if (websiteUrl !== undefined) updatePayload.website_url = websiteUrl;
-
-  if (patch.category !== undefined && isGanCategory(patch.category)) {
-    updatePayload.category = patch.category;
-  }
-
-  // Enforce "dependent add-on" fields by category so we never save mismatched combos.
-  const nextCategory: GanCategory = (updatePayload.category as GanCategory) ?? (existing as any).category;
-  if (nextCategory === "MAON_SYMBOL") {
-    updatePayload.maon_symbol_code = coerceTrimmedOrNull(patch.maon_symbol_code);
-    updatePayload.private_supervision = null;
-    updatePayload.mishpachton_affiliation = null;
-    updatePayload.municipal_grade = null;
-  } else if (nextCategory === "PRIVATE_GAN") {
-    updatePayload.maon_symbol_code = null;
-    updatePayload.private_supervision =
-      patch.private_supervision !== undefined && isPrivateSupervision(patch.private_supervision)
-        ? patch.private_supervision
-        : "UNKNOWN";
-    updatePayload.mishpachton_affiliation = null;
-    updatePayload.municipal_grade = null;
-  } else if (nextCategory === "MISHPACHTON") {
-    updatePayload.maon_symbol_code = null;
-    updatePayload.private_supervision = null;
-    updatePayload.mishpachton_affiliation =
-      patch.mishpachton_affiliation !== undefined && isMishpachtonAffiliation(patch.mishpachton_affiliation)
-        ? patch.mishpachton_affiliation
-        : "UNKNOWN";
-    updatePayload.municipal_grade = null;
-  } else if (nextCategory === "MUNICIPAL_GAN") {
-    updatePayload.maon_symbol_code = null;
-    updatePayload.private_supervision = null;
-    updatePayload.mishpachton_affiliation = null;
-    updatePayload.municipal_grade =
-      patch.municipal_grade !== undefined && isMunicipalGrade(patch.municipal_grade)
-        ? patch.municipal_grade
-        : "UNKNOWN";
-  } else {
-    // UNSPECIFIED: clear all dependent add-ons
-    updatePayload.maon_symbol_code = null;
-    updatePayload.private_supervision = null;
-    updatePayload.mishpachton_affiliation = null;
-    updatePayload.municipal_grade = null;
-  }
-  if (patch.monthly_price_nis !== undefined) {
-    updatePayload.monthly_price_nis =
-      patch.monthly_price_nis === null ? null : Number(patch.monthly_price_nis);
-  }
-  if (patch.min_age_months !== undefined) {
-    updatePayload.min_age_months = patch.min_age_months === null ? null : Number(patch.min_age_months);
-  }
-  if (patch.max_age_months !== undefined) {
-    updatePayload.max_age_months = patch.max_age_months === null ? null : Number(patch.max_age_months);
-  }
-  if (hasCctv !== undefined) updatePayload.has_cctv = hasCctv;
-  if (streamedOnline !== undefined) updatePayload.cctv_streamed_online = streamedOnline;
-
-  // Filter fields
-  const operatingHours = coerceTrimmedOrNull(patch.operating_hours);
-  if (operatingHours !== undefined) updatePayload.operating_hours = operatingHours;
-  if (patch.friday_schedule !== undefined && isFridaySchedule(patch.friday_schedule)) {
-    updatePayload.friday_schedule = patch.friday_schedule;
-  }
-  if (patch.meal_type !== undefined && isMealType(patch.meal_type)) {
-    updatePayload.meal_type = patch.meal_type;
-  }
-  if (patch.vegan_friendly !== undefined) {
-    updatePayload.vegan_friendly = patch.vegan_friendly === null ? null : Boolean(patch.vegan_friendly);
-  }
-  if (patch.vegetarian_friendly !== undefined) {
-    updatePayload.vegetarian_friendly =
-      patch.vegetarian_friendly === null ? null : Boolean(patch.vegetarian_friendly);
-  }
-  if (patch.meat_served !== undefined) {
-    updatePayload.meat_served = patch.meat_served === null ? null : Boolean(patch.meat_served);
-  }
-  if (patch.allergy_friendly !== undefined) {
-    updatePayload.allergy_friendly =
-      patch.allergy_friendly === null ? null : Boolean(patch.allergy_friendly);
-  }
-  if (patch.kosher_status !== undefined && isKosherStatus(patch.kosher_status)) {
-    updatePayload.kosher_status = patch.kosher_status;
-  }
-  const kosherCertifier = coerceTrimmedOrNull(patch.kosher_certifier);
-  if (kosherCertifier !== undefined) updatePayload.kosher_certifier = kosherCertifier;
-  if (patch.staff_child_ratio !== undefined) {
-    updatePayload.staff_child_ratio =
-      patch.staff_child_ratio === null ? null : Number(patch.staff_child_ratio);
-  }
-  if (patch.first_aid_trained !== undefined) {
-    updatePayload.first_aid_trained =
-      patch.first_aid_trained === null ? null : Boolean(patch.first_aid_trained);
-  }
-  const languagesSpoken = coerceSpokenLanguages(patch.languages_spoken);
-  if (languagesSpoken !== undefined) updatePayload.languages_spoken = languagesSpoken;
-  if (patch.has_outdoor_space !== undefined) {
-    updatePayload.has_outdoor_space =
-      patch.has_outdoor_space === null ? null : Boolean(patch.has_outdoor_space);
-  }
-  if (patch.has_mamad !== undefined) {
-    updatePayload.has_mamad =
-      patch.has_mamad === null ? null : Boolean(patch.has_mamad);
-  }
-  const chugimTypes = coerceStringArray(patch.chugim_types);
-  if (chugimTypes !== undefined) updatePayload.chugim_types = chugimTypes;
-  if (patch.vacancy_status !== undefined && isVacancyStatus(patch.vacancy_status)) {
-    updatePayload.vacancy_status = patch.vacancy_status;
-  }
-
-  // Log request (best-effort)
-  await supabaseAdmin.from("gan_edit_requests").insert({
-    gan_id: ganId,
-    user_id: userData.user.id,
-    patch,
-    approved: true,
-    approved_at: new Date().toISOString(),
-  });
-
-  const { error: updErr } = await supabaseAdmin.from("ganim_v2").update(updatePayload).eq("id", ganId);
-  if (updErr) {
-    return NextResponse.json({ error: updErr.message }, { status: 500 });
+  if (address !== undefined) userInputRow.address = address;
+  if (city !== undefined) userInputRow.city = city;
+  if (priceNotes !== undefined) userInputRow.price_notes = priceNotes;
+  if (websiteUrl !== undefined) userInputRow.website_url = websiteUrl;
+  if (patch.category !== undefined && isGanCategory(patch.category)) userInputRow.category = patch.category;
+  if (coerceTrimmedOrNull(patch.maon_symbol_code) !== undefined) userInputRow.maon_symbol_code = coerceTrimmedOrNull(patch.maon_symbol_code);
+  if (patch.private_supervision !== undefined && isPrivateSupervision(patch.private_supervision))
+    userInputRow.private_supervision = patch.private_supervision;
+  if (patch.mishpachton_affiliation !== undefined && isMishpachtonAffiliation(patch.mishpachton_affiliation))
+    userInputRow.mishpachton_affiliation = patch.mishpachton_affiliation;
+  if (patch.municipal_grade !== undefined && isMunicipalGrade(patch.municipal_grade))
+    userInputRow.municipal_grade = patch.municipal_grade;
+  if (patch.monthly_price_nis !== undefined)
+    userInputRow.monthly_price_nis = patch.monthly_price_nis === null ? null : Number(patch.monthly_price_nis);
+  if (patch.min_age_months !== undefined) userInputRow.min_age_months = patch.min_age_months;
+  if (patch.max_age_months !== undefined) userInputRow.max_age_months = patch.max_age_months;
+  if (hasCctv !== undefined) userInputRow.has_cctv = hasCctv;
+  if (streamedOnline !== undefined) userInputRow.cctv_streamed_online = streamedOnline;
+  if (operatingHours !== undefined) userInputRow.operating_hours = operatingHours;
+  if (patch.friday_schedule !== undefined && isFridaySchedule(patch.friday_schedule))
+    userInputRow.friday_schedule = patch.friday_schedule;
+  if (patch.meal_type !== undefined && isMealType(patch.meal_type)) userInputRow.meal_type = patch.meal_type;
+  if (patch.vegan_friendly !== undefined) userInputRow.vegan_friendly = patch.vegan_friendly;
+  if (patch.vegetarian_friendly !== undefined) userInputRow.vegetarian_friendly = patch.vegetarian_friendly;
+  if (patch.meat_served !== undefined) userInputRow.meat_served = patch.meat_served;
+  if (patch.allergy_friendly !== undefined) userInputRow.allergy_friendly = patch.allergy_friendly;
+  if (patch.kosher_status !== undefined && isKosherStatus(patch.kosher_status))
+    userInputRow.kosher_status = patch.kosher_status;
+  if (kosherCertifier !== undefined) userInputRow.kosher_certifier = kosherCertifier;
+  if (patch.staff_child_ratio !== undefined)
+    userInputRow.staff_child_ratio = patch.staff_child_ratio === null ? null : Number(patch.staff_child_ratio);
+  if (patch.first_aid_trained !== undefined) userInputRow.first_aid_trained = patch.first_aid_trained;
+  if (languagesSpoken !== undefined) userInputRow.languages_spoken = languagesSpoken;
+  if (patch.has_outdoor_space !== undefined) userInputRow.has_outdoor_space = patch.has_outdoor_space;
+  if (patch.has_mamad !== undefined) userInputRow.has_mamad = patch.has_mamad;
+  if (chugimTypes !== undefined) userInputRow.chugim_types = chugimTypes;
+  if (patch.vacancy_status !== undefined && isVacancyStatus(patch.vacancy_status))
+    userInputRow.vacancy_status = patch.vacancy_status;
+  // Filter out undefined; Supabase/Postgres expects null for empty, not undefined
+  const cleanRow = Object.fromEntries(
+    Object.entries(userInputRow).filter(([, v]) => v !== undefined)
+  ) as Record<string, unknown>;
+  const { error: insertErr } = await supabaseAdmin.from("user_inputs").insert(cleanRow);
+  if (insertErr) {
+    return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
   return NextResponse.json({ success: true, approved: true });

@@ -12,6 +12,8 @@ import {
   ExternalLink,
   UsersRound,
   MessageCircle,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +30,8 @@ import {
   getGanNeighborhoodForDisplay,
   getGanStreetAddressForDisplay,
 } from "@/lib/gan-format";
+import { getWhatsAppUrl, isPhoneWhatsApp } from "@/lib/phone-utils";
+import { cn } from "@/lib/utils";
 import {
   formatAgesHe,
   formatGanCategoryAddonLabelHe,
@@ -39,6 +43,20 @@ import {
   formatSpokenLanguageHe,
   formatVacancyStatusHe,
 } from "@/lib/gan-display";
+
+/** Small WhatsApp-style icon for links */
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={cn("text-[#25D366]", className)}
+      aria-hidden
+    >
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.865 9.865 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
 
 interface GanDetailProps {
   gan: Gan;
@@ -194,6 +212,7 @@ export function GanDetail({
   const [editHasMamad, setEditHasMamad] = useState<boolean | null>(null);
   const [editChugimTypes, setEditChugimTypes] = useState<string>("");
   const [editVacancyStatus, setEditVacancyStatus] = useState<NonNullable<Gan["vacancy_status"]>>("UNKNOWN");
+  const [editPhones, setEditPhones] = useState<Array<{ number: string; whatsapp: boolean }>>([]);
   const [editSaveError, setEditSaveError] = useState<string | null>(null);
   const [editSaved, setEditSaved] = useState(false);
   const editFormTopRef = useRef<HTMLDivElement | null>(null);
@@ -252,6 +271,14 @@ export function GanDetail({
     setEditHasMamad(gan.has_mamad ?? null);
     setEditChugimTypes(Array.isArray(gan.chugim_types) ? gan.chugim_types.join(", ") : "");
     setEditVacancyStatus((gan.vacancy_status ?? "UNKNOWN") as any);
+    const ph = Array.isArray(gan.metadata?.phone)
+      ? gan.metadata.phone
+      : gan.metadata?.phone
+        ? [String(gan.metadata.phone)]
+        : [];
+    setEditPhones(
+      ph.map((n) => ({ number: String(n).trim(), whatsapp: isPhoneWhatsApp(gan, n) }))
+    );
   }, [gan, normalizeWebsiteUrl]);
 
   const missingInfo = useMemo(() => {
@@ -401,6 +428,12 @@ export function GanDetail({
       patch.chugim_types = chugimArr.length ? chugimArr : null;
       patch.vacancy_status = editVacancyStatus === "UNKNOWN" ? null : editVacancyStatus;
 
+      const phoneNumbers = editPhones.map((p) => p.number.trim()).filter(Boolean);
+      patch.phone = phoneNumbers.length ? phoneNumbers : null;
+      patch.phone_whatsapp = phoneNumbers.length
+        ? editPhones.filter((p) => p.number.trim() && p.whatsapp).map((p) => p.number.trim())
+        : null;
+
       const res = await fetch("/api/ganim/edit", {
         method: "POST",
         headers: {
@@ -422,7 +455,7 @@ export function GanDetail({
       setLocalWebsiteUrl(normalizeWebsiteUrl(editWebsiteUrl));
       setEditSaved(true);
       setShowEditForm(false);
-      onReviewSaved?.(); // refresh gan list/details
+      onReviewSaved?.(); // refresh gan list/details (Python script updates ganim_v2)
     } catch (e: any) {
       setEditSaveError(typeof e?.message === "string" ? e.message : "שגיאה בשמירת פרטים");
     } finally {
@@ -462,7 +495,7 @@ export function GanDetail({
         const selectCols =
           "id,user_id,rating,is_anonymous,allow_contact,reviewer_public_name,reviewer_public_email_masked,advice_to_parents_text,enrollment_years,created_at,cleanliness_rating,staff_rating,safety_rating";
         const queryNew = supabase
-          .from("reviews")
+          .from("confirmed_reviews")
           .select(selectCols)
           .eq("gan_id", gan.id)
           .order("created_at", { ascending: false });
@@ -475,8 +508,8 @@ export function GanDetail({
           const msg = typeof (error as any)?.message === "string" ? String((error as any).message) : "";
           if (msg.includes("does not exist")) {
             ({ data, error } = (await (supabase
-              .from("reviews")
-              .select("id,user_id,rating,is_anonymous,reviewer_public_name,reviewer_public_email_masked,advice_to_parents_text,created_at,available_for_private_messages,enrollment_years")
+              .from("confirmed_reviews")
+              .select("id,user_id,rating,is_anonymous,reviewer_public_name,reviewer_public_email_masked,advice_to_parents_text,created_at,allow_contact,enrollment_years")
               .eq("gan_id", gan.id)
               .order("created_at", { ascending: false }) as any)) as any);
           }
@@ -681,6 +714,40 @@ export function GanDetail({
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm min-w-0">
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">כתובת</dt>
             <dd className="text-gray-600 font-hebrew min-w-0 break-words">{getGanStreetAddressForDisplay(gan)}</dd>
+            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">טלפון</dt>
+            <dd className="text-gray-600 min-w-0 break-words">
+              {phones.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {phones.map((p) => {
+                    const useWhatsApp = isPhoneWhatsApp(gan, p);
+                    return useWhatsApp ? (
+                      <a
+                        key={p}
+                        href={getWhatsAppUrl(p)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-gan-primary hover:underline"
+                        title="שלח הודעה בוואטסאפ"
+                      >
+                        <WhatsAppIcon className="w-3.5 h-3.5" />
+                        {p}
+                      </a>
+                    ) : (
+                      <a
+                        key={p}
+                        href={`tel:${p}`}
+                        className="inline-flex items-center gap-1 text-gan-primary hover:underline"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        {p}
+                      </a>
+                    );
+                  })}
+                </div>
+              ) : (
+                "—"
+              )}
+            </dd>
             <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">עיר</dt>
             <dd className="text-gray-600 font-hebrew min-w-0 break-words">{getGanCityForDisplay(gan)}</dd>
             {localWebsiteUrl ? (
@@ -773,25 +840,6 @@ export function GanDetail({
             <div className="col-span-2 min-w-0">
               <GanAttributeIcons gan={gan} />
             </div>
-            <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">טלפון</dt>
-            <dd className="text-gray-600 min-w-0 break-words">
-              {phones.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {phones.map((p) => (
-                    <a
-                      key={p}
-                      href={`tel:${p}`}
-                      className="inline-flex items-center gap-1 text-gan-primary hover:underline"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      {p}
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                "—"
-              )}
-            </dd>
           </dl>
 
           {showEditForm && (
@@ -1009,6 +1057,65 @@ export function GanDetail({
                       />
                       <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
                         נשמר כקישור (http/https). אם אין https:// נוסיף אוטומטית.
+                      </div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1 font-hebrew">טלפון</label>
+                      <div className="space-y-2">
+                        {editPhones.map((entry, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              value={entry.number}
+                              onChange={(e) =>
+                                setEditPhones((prev) =>
+                                  prev.map((p, i) =>
+                                    i === idx ? { ...p, number: e.target.value } : p
+                                  )
+                                )
+                              }
+                              className="flex-1 rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew"
+                              placeholder="050-1234567"
+                              inputMode="tel"
+                            />
+                            <label className="flex items-center gap-1.5 shrink-0 cursor-pointer font-hebrew text-sm text-gray-600">
+                              <input
+                                type="checkbox"
+                                checked={entry.whatsapp}
+                                onChange={(e) =>
+                                  setEditPhones((prev) =>
+                                    prev.map((p, i) =>
+                                      i === idx ? { ...p, whatsapp: e.target.checked } : p
+                                    )
+                                  )
+                                }
+                                className="rounded border-gan-accent/50"
+                              />
+                              <span>וואטסאפ</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditPhones((prev) => prev.filter((_, i) => i !== idx))
+                              }
+                              className="p-1.5 text-gray-500 hover:text-red-600 rounded"
+                              title="הסר"
+                              aria-label="הסר"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setEditPhones((prev) => [...prev, { number: "", whatsapp: true }])}
+                          className="inline-flex items-center gap-1.5 text-sm text-gan-primary hover:underline font-hebrew"
+                        >
+                          <Plus className="w-4 h-4" />
+                          הוסף מספר
+                        </button>
+                      </div>
+                      <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
+                        סמן וואטסאפ אם אפשר לשלוח הודעה במספר הזה.
                       </div>
                     </div>
                     <div className="col-span-2">
