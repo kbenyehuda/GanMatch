@@ -19,6 +19,8 @@ export interface SuggestGanResult {
   suggested_type?: string;
   pikuach_ironi?: boolean | null;
   cctv_access?: "none" | "exceptional" | "online" | null;
+  /** True when suggestion is queued for moderation (not yet visible on map) */
+  pending?: boolean;
 }
 
 type GeocodeSuggestion = {
