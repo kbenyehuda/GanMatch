@@ -46,6 +46,11 @@ interface CacheEntry {
   ganim: Gan[];
 }
 
+export interface UseViewportGanimOptions {
+  /** Gan IDs to always keep in view (e.g. newly added, selected) - never filtered out by bounds */
+  preserveGanIds?: Set<string>;
+}
+
 export interface UseViewportGanimResult {
   ganim: Gan[];
   loading: boolean;
@@ -57,7 +62,8 @@ export interface UseViewportGanimResult {
   refetchViewport: () => void;
 }
 
-export function useViewportGanim(): UseViewportGanimResult {
+export function useViewportGanim(options?: UseViewportGanimOptions): UseViewportGanimResult {
+  const preserveGanIds = options?.preserveGanIds;
   const [ganim, setGanim] = useState<Gan[]>([]);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(true); // show loading until first fetch
@@ -69,15 +75,20 @@ export function useViewportGanim(): UseViewportGanimResult {
   const prevCenterRef = useRef<{ lon: number; lat: number } | null>(null);
   const hasFetchedOnceRef = useRef(false);
 
-  const applyDelta = useCallback((newData: Gan[], bounds: Bounds) => {
-    setGanim((prev) => {
-      const byId = new Map(prev.map((g) => [g.id, g]));
-      for (const g of newData) byId.set(g.id, g);
-      return Array.from(byId.values()).filter((g) =>
-        pointInBounds(g.lon, g.lat, bounds)
-      );
-    });
-  }, []);
+  const applyDelta = useCallback(
+    (newData: Gan[], bounds: Bounds) => {
+      setGanim((prev) => {
+        const byId = new Map(prev.map((g) => [g.id, g]));
+        for (const g of newData) byId.set(g.id, g);
+        return Array.from(byId.values()).filter(
+          (g) =>
+            (preserveGanIds?.has(g.id) ?? false) ||
+            pointInBounds(g.lon, g.lat, bounds)
+        );
+      });
+    },
+    [preserveGanIds]
+  );
 
   const fetchForBounds = useCallback(
     async (

@@ -433,6 +433,35 @@ export function MapContainer({
           </div>
         </Marker>
       ) : null}
+      {selectedGanId &&
+        (() => {
+          const sel = ganim.find((g) => g.id === selectedGanId);
+          if (!sel || typeof sel.lat !== "number" || typeof sel.lon !== "number") return null;
+          const inClusters = (clusters as ClusterOrPoint[]).some(
+            (c) => !isClusterFeature(c) && (c.properties as { gan?: Gan })?.gan?.id === selectedGanId
+          );
+          if (inClusters) return null;
+          return (
+            <Marker
+              key={`selected-${sel.id}`}
+              longitude={sel.lon}
+              latitude={sel.lat}
+              anchor="bottom"
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+                onSelectGan(sel);
+              }}
+              className="cursor-pointer"
+            >
+              <div
+                title={sel.name_he}
+                className="flex items-center justify-center rounded-full bg-gan-primary text-white ring-4 ring-gan-primary/40 shadow-lg scale-125"
+              >
+                <MapPin className="w-5 h-5" />
+              </div>
+            </Marker>
+          );
+        })()}
       {(clusters as ClusterOrPoint[]).map((cluster) => {
         const [lon, lat] = cluster.geometry.coordinates;
         if (isClusterFeature(cluster)) {

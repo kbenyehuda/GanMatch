@@ -206,6 +206,33 @@ python import_from_csv.py your_data.csv
 
 See `scripts/scraper/README.md` for full details.
 
+## User inputs processor (user_inputs → ganim_v2)
+
+User suggestions (new ganim), edits, and reviews are stored in `user_inputs`. A Python script processes them into `ganim_v2` and `confirmed_reviews`:
+
+```bash
+cd scripts/user_inputs
+# Or from repo root:
+pip install supabase python-dotenv  # if not already installed
+```
+
+**Run once:**
+```bash
+python process_user_inputs.py
+```
+
+**Run every 60 seconds (for development):**
+```bash
+python process_user_inputs.py --watch
+```
+
+**Run on each new row (Realtime – requires migration 20260307100008):**
+```bash
+python process_user_inputs.py --realtime
+```
+
+Requires `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`.
+
 ## Next steps
 
 1. **Auth** – Supabase Auth for login; wire `canViewReviews` to contribution check

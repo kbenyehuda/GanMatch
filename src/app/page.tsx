@@ -39,6 +39,11 @@ export default function HomePage() {
   const [currentBounds, setCurrentBounds] = useState<Bounds | null>(null);
   const canViewReviews = !!user; // TODO: Wire to contribution check (Give-to-Get)
 
+  const preserveGanIds = useMemo(
+    () => (selectedGan?.id ? new Set([selectedGan.id]) : undefined),
+    [selectedGan?.id]
+  );
+
   const {
     ganim,
     loading: ganimLoading,
@@ -47,7 +52,7 @@ export default function HomePage() {
     onBoundsChange,
     addGan,
     refetchViewport,
-  } = useViewportGanim();
+  } = useViewportGanim({ preserveGanIds });
 
   // Keep selectedGan in sync with refetched data so edits appear immediately.
   useEffect(() => {
@@ -75,17 +80,19 @@ export default function HomePage() {
 
   const handleSearchSelect = useCallback(
     (s: SearchSuggestion) => {
+      const isGan = s.place_type?.includes("gan");
       const isCity = s.place_type?.includes("place") && !s.place_type?.includes("address");
       const isAddressOrPoi =
         s.place_type?.includes("address") || s.place_type?.includes("poi");
-      if (isAddressOrPoi || isCity || (!isCity && (s.place_type?.length ?? 0) === 0)) {
+      const shouldPan = isGan || isAddressOrPoi || isCity || (!isCity && (s.place_type?.length ?? 0) === 0);
+      if (shouldPan) {
         setFitToAddress({
           lon: s.lon,
           lat: s.lat,
           radiusM: isCity ? 5000 : 1000,
         });
         setTimeout(() => setFitToAddress(null), 700);
-        if (isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0)) {
+        if (!isGan && (isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0))) {
           setFilters((prev) => ({ ...prev, location_query: null }));
         }
       }
@@ -217,10 +224,17 @@ export default function HomePage() {
 
       {/* Suggest gan overlay */}
       {suggestOpen && (
-        <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] start-4 end-4 top-[calc(3.5rem+env(safe-area-inset-top))] md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 z-30 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg shadow-xl">
+        <div
+          className={`absolute z-30 rounded-lg shadow-xl transition-all ${
+            pickingPin
+              ? "bottom-[calc(1rem+env(safe-area-inset-bottom))] start-4 end-4 md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-72"
+              : "bottom-[calc(1rem+env(safe-area-inset-bottom))] start-4 end-4 top-[calc(3.5rem+env(safe-area-inset-top))] md:end-[calc(24rem+1rem)] md:start-auto md:top-4 md:bottom-auto md:w-96 max-h-[calc(100dvh-6rem)] overflow-y-auto"
+          }`}
+        >
           <SuggestGanModal
             pin={suggestPin}
             onPinChange={setSuggestPin}
+            pickingPin={pickingPin}
             onRequestPin={() => {
               setSelectedGan(null);
               setSelectedClusterGanim(null);
@@ -233,9 +247,8 @@ export default function HomePage() {
             onSuggested={(r) => {
               setSuggestOpen(false);
               setPickingPin(false);
-              if ((r as { pending?: boolean }).pending) {
-                return;
-              }
+              setFitToAddress({ lon: r.lon, lat: r.lat, radiusM: 500 });
+              setTimeout(() => setFitToAddress(null), 800);
               const suggestedHasCctv = r.cctv_access === "online" || r.cctv_access === "exceptional";
               const suggestedStreamedOnline = r.cctv_access === "online" ? true : r.cctv_access === "exceptional" ? false : null;
               const newGan: Gan = {
@@ -275,6 +288,9 @@ export default function HomePage() {
               addGan(newGan);
               setSelectedGan(newGan);
               setSelectedClusterGanim(null);
+              // Refetch viewport so the real gan (from ganim_v2) appears once the processor runs
+              setTimeout(refetchViewport, 3000);
+              setTimeout(refetchViewport, 10000);
             }}
           />
         </div>

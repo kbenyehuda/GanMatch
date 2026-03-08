@@ -2,13 +2,12 @@
 """
 Process user_inputs and update ganim_v2 + confirmed_reviews.
 
-Flow:
-1. Read all user_inputs (or since last run)
-2. For edits (input_type=edit, gan_id set): merge into ganim_v2 using "last inserted per field"
-3. For suggest_gan (input_type=suggest_gan, gan_id null): create new ganim_v2 row
-4. For reviews (input_type=review): insert into confirmed_reviews (verification logic here)
-
-Current logic: last inserted per field. Can be extended (voting, moderation, etc.).
+Handles:
+1. suggest_gan  – Create new ganim_v2 rows from user suggestions
+2. edit         – Merge edits into ganim_v2 (last value per field)
+3. review       – Upsert into confirmed_reviews (full recommendations with ratings)
+4. visit_note   – Upsert into confirmed_reviews (recommendations with or without text)
+5. waitlist_report – Update ganim_v2.vacancy_status from community reports
 
 Requires: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY in .env.local
 """
@@ -16,15 +15,57 @@ Requires: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY in .env.local
 from __future__ import annotations
 
 import argparse
+import asyncio
+import logging
 import os
+import sys
+import time
 import uuid
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from supabase import create_client
+from supabase import acreate_client, create_client
+
+# -----------------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------------
+
+LOG = logging.getLogger(__name__)
+
+GANIM_FIELDS = [
+    "address", "city", "website_url", "category", "maon_symbol_code",
+    "private_supervision", "mishpachton_affiliation", "municipal_grade",
+    "monthly_price_nis", "min_age_months", "max_age_months", "price_notes",
+    "has_cctv", "cctv_streamed_online", "operating_hours", "friday_schedule",
+    "meal_type", "vegan_friendly", "vegetarian_friendly", "meat_served",
+    "allergy_friendly", "kosher_status", "kosher_certifier", "staff_child_ratio",
+    "first_aid_trained", "languages_spoken", "has_outdoor_space", "has_mamad",
+    "chugim_types", "vacancy_status",
+]
+
+VALID_VACANCY_STATUS = frozenset({"Available", "Limited", "Full", "UNKNOWN"})
+
+
+def sanitize_category_subfields(payload: dict[str, Any], category: str | None) -> None:
+    """Enforce ganim_v2_category_subfields_check: clear subfields that don't apply to category."""
+    cat = (category or "").strip().upper() or "UNSPECIFIED"
+    if cat != "MAON_SYMBOL":
+        payload["maon_symbol_code"] = None
+    if cat != "PRIVATE_GAN":
+        payload["private_supervision"] = None
+    if cat != "MISHPACHTON":
+        payload["mishpachton_affiliation"] = None
+    if cat != "MUNICIPAL_GAN":
+        payload["municipal_grade"] = None
+
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 
 
 def repo_root() -> Path:
@@ -32,7 +73,9 @@ def repo_root() -> Path:
 
 
 def load_env() -> None:
-    load_dotenv(repo_root() / ".env.local")
+    root = repo_root()
+    load_dotenv(root / ".env")
+    load_dotenv(root / ".env.local", override=True)
 
 
 def env_trim(name: str) -> str | None:
@@ -74,6 +117,11 @@ def merge_metadata(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
+# -----------------------------------------------------------------------------
+# Processors
+# -----------------------------------------------------------------------------
+
+
 def process_edits(supabase: Any, dry_run: bool) -> int:
     """Process edit inputs: merge into ganim_v2."""
     r = supabase.table("user_inputs").select("*").eq("input_type", "edit").not_.is_("gan_id", "null").execute()
@@ -84,31 +132,25 @@ def process_edits(supabase: Any, dry_run: bool) -> int:
         if gid:
             by_gan[str(gid)].append(row)
 
-    ganim_fields = [
-        "address", "city", "website_url", "category", "maon_symbol_code",
-        "private_supervision", "mishpachton_affiliation", "municipal_grade",
-        "monthly_price_nis", "min_age_months", "max_age_months", "price_notes",
-        "has_cctv", "cctv_streamed_online", "operating_hours", "friday_schedule",
-        "meal_type", "vegan_friendly", "vegetarian_friendly", "meat_served",
-        "allergy_friendly", "kosher_status", "kosher_certifier", "staff_child_ratio",
-        "first_aid_trained", "languages_spoken", "has_outdoor_space", "has_mamad",
-        "chugim_types", "vacancy_status",
-    ]
     updated = 0
     for gan_id, inputs in by_gan.items():
-        merged = last_per_field(inputs, ganim_fields)
+        merged = last_per_field(inputs, GANIM_FIELDS)
         meta = merge_metadata(inputs)
         if not merged and not meta:
             continue
         payload: dict[str, Any] = {"updated_at": datetime.now(timezone.utc).isoformat()}
         payload.update(merged)
-        if meta:
-            if not dry_run:
-                ex = supabase.table("ganim_v2").select("metadata").eq("id", gan_id).single().execute()
-                base = (ex.data or {}).get("metadata") or {}
+        if not dry_run:
+            ex = supabase.table("ganim_v2").select("metadata", "category").eq("id", gan_id).single().execute()
+            row_data = ex.data or {}
+            payload.setdefault("category", row_data.get("category"))
+            if meta:
+                base = row_data.get("metadata") or {}
                 if isinstance(base, dict):
                     meta = {**base, **meta}
+        if meta:
             payload["metadata"] = meta
+        sanitize_category_subfields(payload, payload.get("category"))
         if not dry_run:
             supabase.table("ganim_v2").update(payload).eq("id", gan_id).execute()
         updated += 1
@@ -116,7 +158,7 @@ def process_edits(supabase: Any, dry_run: bool) -> int:
 
 
 def process_suggest_gan(supabase: Any, dry_run: bool) -> int:
-    """Process suggest_gan inputs: create new ganim_v2 rows with all user-provided fields."""
+    """Process suggest_gan inputs: create new ganim_v2 rows."""
     r = supabase.table("user_inputs").select("*").eq("input_type", "suggest_gan").is_("gan_id", "null").execute()
     rows = r.data or []
     created = 0
@@ -125,6 +167,7 @@ def process_suggest_gan(supabase: Any, dry_run: bool) -> int:
         lat = row.get("lat")
         lon = row.get("lon")
         if not name_he or lat is None or lon is None:
+            LOG.warning("Skipping suggest_gan id=%s: missing name_he, lat, or lon", row.get("id"))
             continue
         gan_id = uuid.uuid4()
         meta = row.get("metadata") or {}
@@ -147,7 +190,6 @@ def process_suggest_gan(supabase: Any, dry_run: bool) -> int:
                     "p_is_fallback": False,
                 },
             ).execute()
-            # Update with all extra columns from user_inputs
             extra: dict[str, Any] = {
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "website_url": row.get("website_url"),
@@ -178,14 +220,44 @@ def process_suggest_gan(supabase: Any, dry_run: bool) -> int:
                 "municipal_grade": row.get("municipal_grade"),
             }
             update_payload = {k: v for k, v in extra.items() if v is not None or k in ("has_cctv", "updated_at")}
+            sanitize_category_subfields(update_payload, category)
             supabase.table("ganim_v2").update(update_payload).eq("id", str(gan_id)).execute()
             supabase.table("user_inputs").update({"gan_id": str(gan_id)}).eq("id", row["id"]).execute()
         created += 1
     return created
 
 
+def _row_to_review_payload(row: dict[str, Any], default_rating: float = 3.0) -> dict[str, Any]:
+    """Build confirmed_reviews payload from user_inputs row (review or visit_note)."""
+    meta = row.get("metadata") or {}
+    rating = meta.get("rating")
+    if rating is None:
+        rating = default_rating
+    try:
+        rating = float(rating)
+    except (TypeError, ValueError):
+        rating = default_rating
+    return {
+        "user_id": row["user_id"],
+        "gan_id": row["gan_id"],
+        "rating": rating,
+        "cleanliness_rating": meta.get("cleanliness_rating"),
+        "staff_rating": meta.get("staff_rating"),
+        "communication_rating": meta.get("communication_rating"),
+        "food_rating": meta.get("food_rating"),
+        "location_rating": meta.get("location_rating"),
+        "safety_rating": meta.get("safety_rating"),
+        "advice_to_parents_text": (row.get("free_text_rec") or "").strip() or None,
+        "enrollment_years": meta.get("enrollment_years"),
+        "is_anonymous": row.get("anonymous", True),
+        "allow_contact": row.get("allows_messages", True),
+        "reviewer_public_name": meta.get("reviewer_public_name"),
+        "reviewer_public_email_masked": meta.get("reviewer_public_email_masked"),
+    }
+
+
 def process_reviews(supabase: Any, dry_run: bool) -> int:
-    """Process review inputs: insert into confirmed_reviews (current: approve all)."""
+    """Process review inputs: upsert into confirmed_reviews (full recommendations with ratings)."""
     r = supabase.table("user_inputs").select("*").eq("input_type", "review").not_.is_("gan_id", "null").execute()
     rows = r.data or []
     inserted = 0
@@ -193,44 +265,215 @@ def process_reviews(supabase: Any, dry_run: bool) -> int:
         gan_id = row.get("gan_id")
         user_id = row.get("user_id")
         if not gan_id or not user_id:
+            LOG.warning("Skipping review id=%s: missing gan_id or user_id", row.get("id"))
             continue
-        meta = row.get("metadata") or {}
-        payload = {
-            "user_id": user_id,
-            "gan_id": gan_id,
-            "rating": meta.get("rating") or 3,
-            "cleanliness_rating": meta.get("cleanliness_rating"),
-            "staff_rating": meta.get("staff_rating"),
-            "safety_rating": meta.get("safety_rating"),
-            "advice_to_parents_text": row.get("free_text_rec"),
-            "enrollment_years": meta.get("enrollment_years"),
-            "is_anonymous": row.get("anonymous", True),
-            "allow_contact": row.get("allows_messages", True),
-            "reviewer_public_name": meta.get("reviewer_public_name"),
-            "reviewer_public_email_masked": meta.get("reviewer_public_email_masked"),
-        }
+        payload = _row_to_review_payload(row)
         if not dry_run:
             supabase.table("confirmed_reviews").upsert(payload, on_conflict="user_id,gan_id").execute()
         inserted += 1
     return inserted
 
 
+def process_visit_notes(supabase: Any, dry_run: bool) -> int:
+    """Process visit_note inputs: upsert into confirmed_reviews (recommendations with or without text)."""
+    r = supabase.table("user_inputs").select("*").eq("input_type", "visit_note").not_.is_("gan_id", "null").execute()
+    rows = r.data or []
+    inserted = 0
+    for row in rows:
+        gan_id = row.get("gan_id")
+        user_id = row.get("user_id")
+        if not gan_id or not user_id:
+            LOG.warning("Skipping visit_note id=%s: missing gan_id or user_id", row.get("id"))
+            continue
+        payload = _row_to_review_payload(row, default_rating=3.0)
+        if not dry_run:
+            supabase.table("confirmed_reviews").upsert(payload, on_conflict="user_id,gan_id").execute()
+        inserted += 1
+    return inserted
+
+
+def process_waitlist_reports(supabase: Any, dry_run: bool) -> int:
+    """Process waitlist_report inputs: update ganim_v2.vacancy_status (last per gan)."""
+    r = supabase.table("user_inputs").select("*").eq("input_type", "waitlist_report").not_.is_("gan_id", "null").execute()
+    rows = r.data or []
+    by_gan: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        gid = row.get("gan_id")
+        if gid:
+            by_gan[str(gid)].append(row)
+
+    updated = 0
+    for gan_id, inputs in by_gan.items():
+        sorted_rows = sorted(inputs, key=lambda r: r.get("created_at") or "")
+        status = None
+        for row in sorted_rows:
+            meta = row.get("metadata") or {}
+            s = meta.get("status")
+            if isinstance(s, str) and s in VALID_VACANCY_STATUS:
+                status = s
+        if status is None:
+            continue
+        if not dry_run:
+            supabase.table("ganim_v2").update({
+                "vacancy_status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", gan_id).execute()
+        updated += 1
+    return updated
+
+
+def run_once(supabase: Any, dry_run: bool) -> dict[str, int]:
+    """Run a single processing pass. Returns counts per type."""
+    counts = {
+        "edits": process_edits(supabase, dry_run),
+        "suggests": process_suggest_gan(supabase, dry_run),
+        "reviews": process_reviews(supabase, dry_run),
+        "visit_notes": process_visit_notes(supabase, dry_run),
+        "waitlist_reports": process_waitlist_reports(supabase, dry_run),
+    }
+    return counts
+
+
+def format_counts(counts: dict[str, int]) -> str:
+    parts = []
+    if counts["edits"]:
+        parts.append(f"{counts['edits']} gan edits")
+    if counts["suggests"]:
+        parts.append(f"{counts['suggests']} new ganim")
+    if counts["reviews"]:
+        parts.append(f"{counts['reviews']} reviews")
+    if counts["visit_notes"]:
+        parts.append(f"{counts['visit_notes']} visit notes")
+    if counts["waitlist_reports"]:
+        parts.append(f"{counts['waitlist_reports']} waitlist reports")
+    return ", ".join(parts) if parts else "nothing"
+
+
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
+
+
 def main() -> None:
     load_env()
     parser = argparse.ArgumentParser(description="Process user_inputs → ganim_v2, confirmed_reviews")
     parser.add_argument("--dry-run", action="store_true", help="No DB writes")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Run every 60 seconds; also run immediately on startup",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=60,
+        metavar="SEC",
+        help="Seconds between runs when --watch (default: 60)",
+    )
+    parser.add_argument(
+        "--realtime",
+        action="store_true",
+        help="Listen for new user_inputs rows via Supabase Realtime; run on each INSERT",
+    )
     args = parser.parse_args()
 
-    url = require_env("SUPABASE_URL") or require_env("NEXT_PUBLIC_SUPABASE_URL")
-    key = require_env("SUPABASE_SERVICE_ROLE_KEY")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+    )
+
+    url = env_trim("SUPABASE_URL") or env_trim("NEXT_PUBLIC_SUPABASE_URL")
+    key = env_trim("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        print("Missing env vars. Add to .env or .env.local:", file=sys.stderr)
+        if not url:
+            print("  SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL", file=sys.stderr)
+        if not key:
+            print("  SUPABASE_SERVICE_ROLE_KEY (from Supabase Dashboard → Settings → API)", file=sys.stderr)
+        sys.exit(1)
     supabase = create_client(url, key)
 
-    edits = process_edits(supabase, args.dry_run)
-    suggests = process_suggest_gan(supabase, args.dry_run)
-    reviews = process_reviews(supabase, args.dry_run)
-
     mode = " [DRY RUN]" if args.dry_run else ""
-    print(f"Processed{mode}: {edits} gan edits, {suggests} new ganim, {reviews} reviews")
+
+    if args.realtime:
+        _run_realtime(supabase, args.dry_run, mode)
+    elif args.watch:
+        print(f"Watching user_inputs (interval={args.interval}s){mode}. Ctrl+C to stop.")
+        while True:
+            try:
+                counts = run_once(supabase, args.dry_run)
+                if any(counts.values()):
+                    print(f"[{datetime.now(timezone.utc).isoformat()}] Processed{mode}: {format_counts(counts)}")
+            except Exception as e:
+                LOG.exception("Error during watch run")
+                print(f"[{datetime.now(timezone.utc).isoformat()}] Error: {e}")
+            time.sleep(args.interval)
+    else:
+        counts = run_once(supabase, args.dry_run)
+        print(f"Processed{mode}: {format_counts(counts)}")
+
+
+def _run_realtime(sync_supabase: Any, dry_run: bool, mode: str) -> None:
+    """Subscribe to user_inputs INSERT events via async client; run processing in thread pool."""
+    asyncio.run(_run_realtime_async(sync_supabase, dry_run, mode))
+
+
+async def _run_realtime_async(sync_supabase: Any, dry_run: bool, mode: str) -> None:
+    """Async realtime listener. Realtime requires the async client; run_once uses sync client in executor."""
+    url = env_trim("SUPABASE_URL") or env_trim("NEXT_PUBLIC_SUPABASE_URL")
+    key = env_trim("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        return
+    async_supabase = await acreate_client(url, key)
+    executor = ThreadPoolExecutor(max_workers=1)
+    last_run = 0.0
+    debounce_sec = 2.0
+
+    def on_insert(_payload: Any) -> None:
+        nonlocal last_run
+        now = time.time()
+        if now - last_run < debounce_sec:
+            return
+        last_run = now
+
+        def do_run() -> None:
+            try:
+                counts = run_once(sync_supabase, dry_run)
+                if any(counts.values()):
+                    print(f"[{datetime.now(timezone.utc).isoformat()}] Processed{mode}: {format_counts(counts)}")
+            except Exception as e:
+                LOG.exception("Error during realtime run")
+                print(f"[{datetime.now(timezone.utc).isoformat()}] Error: {e}")
+
+        asyncio.get_running_loop().run_in_executor(executor, do_run)
+
+    from realtime.types import RealtimePostgresChangesListenEvent
+
+    channel = async_supabase.channel("user_inputs_processor")
+    channel.on_postgres_changes(
+        RealtimePostgresChangesListenEvent.Insert,
+        on_insert,
+        table="user_inputs",
+        schema="public",
+    )
+    await channel.subscribe()
+    # Process any existing rows that were inserted before the listener started
+    try:
+        counts = run_once(sync_supabase, dry_run)
+        if any(counts.values()):
+            print(f"[{datetime.now(timezone.utc).isoformat()}] Initial pass{mode}: {format_counts(counts)}")
+    except Exception as e:
+        LOG.exception("Error during initial pass")
+        print(f"[{datetime.now(timezone.utc).isoformat()}] Initial pass error: {e}")
+    print(f"Listening for user_inputs INSERT events{mode}. Ctrl+C to stop.")
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

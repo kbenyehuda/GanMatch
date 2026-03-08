@@ -85,40 +85,66 @@ export function FilterPanel({
 
   useEffect(() => {
     const q = (filters.location_query ?? "").trim();
-    if (q.length < 3) {
+    if (q.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
+    const qLower = q.toLowerCase();
+    const ganSuggestions: SearchSuggestion[] = (ganim ?? [])
+      .filter(
+        (g) =>
+          g.name_he?.toLowerCase().includes(qLower) ||
+          g.name_en?.toLowerCase().includes(qLower) ||
+          g.city?.toLowerCase().includes(qLower) ||
+          g.address?.toLowerCase().includes(qLower)
+      )
+      .slice(0, 5)
+      .map((g) => ({
+        id: `gan:${g.id}`,
+        place_name: g.name_he ?? "",
+        lon: g.lon ?? 0,
+        lat: g.lat ?? 0,
+        place_type: ["gan"],
+      }));
+
     const t = window.setTimeout(async () => {
       try {
         const params = new URLSearchParams({ q });
         const res = await fetch(`/api/geocode/suggest?${params}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { suggestions?: SearchSuggestion[] };
-        const next = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        let mapboxList: SearchSuggestion[] = [];
+        if (res.ok) {
+          const data = (await res.json()) as { suggestions?: SearchSuggestion[] };
+          mapboxList = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        }
+        const next = [...ganSuggestions, ...mapboxList].slice(0, 10);
         setSuggestions(next);
         setShowSuggestions(next.length > 0);
       } catch {
-        setSuggestions([]);
+        setSuggestions(ganSuggestions);
+        setShowSuggestions(ganSuggestions.length > 0);
       }
     }, 300);
     return () => window.clearTimeout(t);
-  }, [filters.location_query]);
+  }, [filters.location_query, ganim]);
 
   const chooseSuggestion = useCallback(
     (s: SearchSuggestion) => {
       setSuggestions([]);
       setShowSuggestions(false);
+      const isGan = s.place_type?.includes("gan");
       const isCity = s.place_type?.includes("place") && !s.place_type?.includes("address");
       const isAddressOrPoi =
         s.place_type?.includes("address") || s.place_type?.includes("poi");
-      if (isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0)) {
+      if (isGan) {
+        onFiltersChange({ ...filters, location_query: s.place_name });
+        onSearchSelect?.(s);
+      } else if (isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0)) {
         onFiltersChange({ ...filters, location_query: null });
         onSearchSelect?.(s);
       } else {
         onFiltersChange({ ...filters, location_query: s.place_name });
-        onSearchSelect?.(s); // Move map to city center
+        onSearchSelect?.(s);
       }
     },
     [filters, onFiltersChange, onSearchSelect]
@@ -141,7 +167,7 @@ export function FilterPanel({
           <input
             ref={searchInputRef}
             type="search"
-            placeholder="חיפוש לפי עיר או כתובת..."
+            placeholder="חיפוש לפי עיר, כתובת או שם גן..."
             value={filters.location_query ?? ""}
             onChange={(e) => update({ location_query: e.target.value || null })}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}

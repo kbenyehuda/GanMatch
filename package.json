@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "process-user-inputs": "python scripts/user_inputs/process_user_inputs.py",
+    "process-user-inputs:watch": "python scripts/user_inputs/process_user_inputs.py --watch",
+    "process-user-inputs:realtime": "python scripts/user_inputs/process_user_inputs.py --realtime"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.0",
