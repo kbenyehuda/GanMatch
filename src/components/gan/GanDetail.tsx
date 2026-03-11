@@ -215,6 +215,7 @@ export function GanDetail({
   const [editPhones, setEditPhones] = useState<Array<{ number: string; whatsapp: boolean }>>([]);
   const [editSaveError, setEditSaveError] = useState<string | null>(null);
   const [editSaved, setEditSaved] = useState(false);
+  const [editSavedStatus, setEditSavedStatus] = useState<"approved" | "pending">("pending");
   const [pendingPreview, setPendingPreview] = useState<Record<string, unknown> | null>(null);
   const [ownLatestEditStatus, setOwnLatestEditStatus] = useState<"pending" | "rejected" | null>(
     null
@@ -232,6 +233,7 @@ export function GanDetail({
       setShowEditForm(false);
       setEditSaveError(null);
       setEditSaved(false);
+      setEditSavedStatus("pending");
       setPendingPreview(null);
       setOwnLatestEditStatus(null);
       setShowMissingDetails(false);
@@ -401,6 +403,7 @@ export function GanDetail({
   const submitGanEdit = async () => {
     setEditSaveError(null);
     setEditSaved(false);
+    setEditSavedStatus("pending");
     if (!supabase || !user) {
       setEditSaveError("נדרשת התחברות כדי לערוך פרטים.");
       return;
@@ -583,8 +586,16 @@ export function GanDetail({
       }
       // Update link immediately (don’t wait for a full reload).
       setLocalWebsiteUrl(normalizeWebsiteUrl(editWebsiteUrl));
-      setPendingPreview(patch);
-      setOwnLatestEditStatus("pending");
+      const savedStatus =
+        data?.status === "approved" ? "approved" : "pending";
+      if (savedStatus === "approved") {
+        setPendingPreview(null);
+        setOwnLatestEditStatus(null);
+      } else {
+        setPendingPreview(patch);
+        setOwnLatestEditStatus("pending");
+      }
+      setEditSavedStatus(savedStatus);
       setEditSaved(true);
       setShowEditForm(false);
       onReviewSaved?.(); // refresh gan list/details (Python script updates ganim_v2)
@@ -1614,7 +1625,9 @@ export function GanDetail({
                   ) : null}
                   {editSaved ? (
                     <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
-                      השינויים נשמרו וממתינים לאימות לפני פרסום.
+                      {editSavedStatus === "approved"
+                        ? "השינויים נשמרו ואושרו אוטומטית."
+                        : "השינויים נשמרו וממתינים לאימות לפני פרסום."}
                     </div>
                   ) : null}
 

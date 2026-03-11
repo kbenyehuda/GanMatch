@@ -36,6 +36,17 @@ type QueueItem = {
   } | null;
   diffs?: Array<{ field: string; label: string; before: string; after: string }>;
   requested_changes?: Array<{ field: string; label: string; value: string }>;
+  guardrail_checks?: Array<{
+    key: string;
+    label: string;
+    direction: string;
+    baseThreshold: string;
+    multiplier: string;
+    threshold: string;
+    actual: string;
+    exceededBy: string;
+    passed: boolean;
+  }>;
 };
 
 function formatDate(iso: string | null): string {
@@ -237,16 +248,99 @@ export default function AdminTriagePage() {
                 </div>
               ) : (
                 <div className="divide-y">
-                  {(item.diffs ?? []).map((d) => (
-                    <div key={`${item.id}-${d.field}`} className="grid grid-cols-12 gap-2 px-3 py-2 text-sm">
-                      <div className="col-span-4 font-medium">{d.label}</div>
-                      <div className="col-span-4 text-gray-600 break-words">{d.before}</div>
-                      <div className="col-span-4 text-emerald-700 break-words">{d.after}</div>
-                    </div>
-                  ))}
+                  {(item.diffs ?? []).map((d) => {
+                    const failedChecks = (item.guardrail_checks ?? []).filter((c) => {
+                      if (c.passed) return false;
+                      const k = c.key.toLowerCase();
+                      const f = d.field.toLowerCase();
+                      if (k.includes(f)) return true;
+                      // directional/derived mapping
+                      if (f === "monthly_price_nis" && k.includes("price_change")) return true;
+                      if (f === "operating_hours" && k.includes("operating_hours_change")) return true;
+                      if (f === "staff_child_ratio" && k.includes("staff_ratio_change")) return true;
+                      if ((f === "min_age_months" || f === "max_age_months") && k.includes("age_logic")) return true;
+                      if ((f === "price_notes" || f === "suggested_type") && k.includes("min_length")) return true;
+                      return false;
+                    });
+                    const hasFailure = failedChecks.length > 0;
+                    const hoverText = failedChecks
+                      .map(
+                        (c) =>
+                          `Check: ${c.label} | Actual: ${c.actual} | Allowed: ${c.threshold} | Exceeded by: ${c.exceededBy}`
+                      )
+                      .join("\n");
+                    return (
+                      <div
+                        key={`${item.id}-${d.field}`}
+                        className={`grid grid-cols-12 gap-2 px-3 py-2 text-sm ${
+                          hasFailure ? "bg-rose-50" : "bg-white"
+                        }`}
+                        title={hasFailure ? hoverText : undefined}
+                      >
+                        <div className={`col-span-4 font-medium ${hasFailure ? "text-rose-800" : ""}`}>
+                          {d.label}
+                        </div>
+                        <div className={`col-span-4 break-words ${hasFailure ? "text-rose-700" : "text-gray-600"}`}>
+                          {d.before}
+                        </div>
+                        <div
+                          className={`col-span-4 break-words font-medium ${
+                            hasFailure ? "text-rose-700" : "text-emerald-700"
+                          }`}
+                        >
+                          {d.after}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
+
+            {(item.guardrail_checks ?? []).length > 0 ? (
+              <details className="rounded-lg border overflow-hidden">
+                <summary className="bg-gray-100 text-xs font-semibold px-3 py-2 cursor-pointer">
+                  Threshold checks ({(item.guardrail_checks ?? []).filter((c) => !c.passed).length} failed)
+                </summary>
+                <div className="grid grid-cols-14 bg-gray-50 text-[11px] font-semibold px-3 py-2">
+                  <div className="col-span-3">Check</div>
+                  <div className="col-span-2">Direction</div>
+                  <div className="col-span-2">Base</div>
+                  <div className="col-span-2">Multiplier</div>
+                  <div className="col-span-2">Effective</div>
+                  <div className="col-span-2">Actual / Exceeded</div>
+                  <div className="col-span-1">Result</div>
+                </div>
+                <div className="divide-y">
+                  {(item.guardrail_checks ?? []).map((c) => (
+                    <div
+                      key={`${item.id}-check-${c.key}`}
+                      className={`grid grid-cols-14 gap-2 px-3 py-2 text-sm ${
+                        c.passed ? "bg-white" : "bg-rose-50"
+                      }`}
+                      title={`Actual: ${c.actual} | Allowed: ${c.threshold} | Exceeded by: ${c.exceededBy}`}
+                    >
+                      <div className="col-span-3 font-medium">{c.label}</div>
+                      <div className={`col-span-2 ${c.direction === "worse" ? "text-rose-700 font-medium" : c.direction === "better" ? "text-emerald-700 font-medium" : "text-gray-700"}`}>
+                        {c.direction}
+                      </div>
+                      <div className="col-span-2 text-gray-700">{c.baseThreshold}</div>
+                      <div className="col-span-2 text-gray-700">{c.multiplier}</div>
+                      <div className="col-span-2 font-medium">{c.threshold}</div>
+                      <div className="col-span-2">
+                        <div className="font-medium">{c.actual}</div>
+                        <div className={`text-xs ${c.passed ? "text-gray-500" : "text-rose-700 font-medium"}`}>
+                          exceeded: {c.exceededBy}
+                        </div>
+                      </div>
+                      <div className={`col-span-1 font-semibold ${c.passed ? "text-emerald-700" : "text-rose-700"}`}>
+                        {c.passed ? "OK" : "FAIL"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
 
             {(item.requested_changes ?? []).length > 0 ? (
               <details className="rounded-lg border overflow-hidden">

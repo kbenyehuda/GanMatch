@@ -14,6 +14,11 @@ function csvLowerSet(v: string | undefined): Set<string> {
   return set;
 }
 
+function numberOr(v: string | undefined, fallback: number): number {
+  const n = Number(String(v ?? "").trim());
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function getTrimmed(name: string): string | null {
   const v = process.env[name];
   if (typeof v !== "string") return null;
@@ -39,6 +44,13 @@ export const serverEnv = {
   RESEND_API_KEY: getTrimmed("RESEND_API_KEY"),
   RESEND_FROM_EMAIL: getTrimmed("RESEND_FROM_EMAIL"),
   ADMIN_EMAILS: csvLowerSet(process.env.ADMIN_EMAILS),
+  MODERATION_BLACKLIST_TERMS: csvLowerSet(process.env.MODERATION_BLACKLIST_TERMS),
+  MODERATION_PRICE_CHANGE_THRESHOLD_PCT: numberOr(process.env.MODERATION_PRICE_CHANGE_THRESHOLD_PCT, 35),
+  MODERATION_LOCATION_CHANGE_KM: numberOr(process.env.MODERATION_LOCATION_CHANGE_KM, 2),
+  MODERATION_MIN_APPROVED_EDITS_FOR_AUTO_APPROVE: numberOr(
+    process.env.MODERATION_MIN_APPROVED_EDITS_FOR_AUTO_APPROVE,
+    3
+  ),
 } as const;
 
 export function requireContactReviewerConfig() {

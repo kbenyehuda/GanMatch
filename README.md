@@ -37,6 +37,10 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 RESEND_API_KEY=re_your_resend_key
 RESEND_FROM_EMAIL="GanMatch <noreply@yourdomain.com>"
 ADMIN_EMAILS="admin1@example.com,admin2@example.com"
+MODERATION_BLACKLIST_TERMS="competitor_name,bad_word"
+MODERATION_PRICE_CHANGE_THRESHOLD_PCT=35
+MODERATION_LOCATION_CHANGE_KM=2
+MODERATION_MIN_APPROVED_EDITS_FOR_AUTO_APPROVE=3
 
 # Feature toggles
 # Server-side toggle (API route)
@@ -52,7 +56,26 @@ NEXT_PUBLIC_CONTACT_REVIEWER_ENABLED=true
 - **Where to store secrets**: put all values from `.env.example` into your hosting provider’s Environment Variables UI (Vercel: Project → Settings → Environment Variables). Do **not** commit `.env.local` / `.env.production` etc.
 - **Public vs secret**:
   - `NEXT_PUBLIC_*` variables are **exposed in the browser bundle**.
-  - Keep **secrets** server-only (no `NEXT_PUBLIC_` prefix): `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAILS`.
+  - Keep **secrets** server-only (no `NEXT_PUBLIC_` prefix): `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAILS`, `MODERATION_*`.
+
+### Moderation CFG (editable file)
+
+You can tune moderation thresholds in `config/moderation.json` without changing code:
+
+```json
+{
+  "blacklist_terms": [],
+  "thresholds": {
+    "price_change_pct": 35,
+    "location_change_km": 2
+  },
+  "reputation": {
+    "min_approved_edits_for_auto_approve": 3
+  }
+}
+```
+
+`MODERATION_*` env vars remain as fallback defaults if the JSON file is missing or partial.
 - **Env separation**:
   - Use separate values for **Preview** and **Production** where needed (Vercel supports per-environment vars).
   - Consider a separate Supabase project for production vs dev.

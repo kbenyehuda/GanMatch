@@ -1,0 +1,25 @@
+{
+  "blacklist_terms": ["scam", "cheap-viagra", "link-in-bio"],
+  "thresholds": {
+    "price_change_pct": 35,
+    "location_change_km": 2,
+    "min_review_length": 40,
+    "max_edits_per_minute": 3,
+    "operating_hours_change_minutes": 30,
+    "staff_ratio_change_pct": 20
+  },
+  "reputation": {
+    "min_approved_edits_for_auto_approve": 3,
+    "trusted_oauth_providers": ["google"],
+    "require_email_verified": true
+  },
+  "logic_guards": {
+    "validate_phone_format": "IL",
+    "prevent_empty_text_diffs": true,
+    "enforce_age_logic": true
+  },
+  "directionality": {
+    "worse_multiplier": 0.7,
+    "better_multiplier": 1.3
+  }
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
+import { loadModerationConfig } from "@/lib/moderation/moderation-config";
 
 function parseLimit(raw: string | null, fallback = 100): number {
   const n = Number(raw);
@@ -59,6 +60,163 @@ function pretty(v: unknown): string {
   if (Array.isArray(v)) return v.join(", ");
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
+}
+
+function toNum(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseHours(raw: unknown): { open: number; close: number } | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const m = s.match(/(\d{1,2}):(\d{2}).*?(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const open = Number(m[1]) * 60 + Number(m[2]);
+  const close = Number(m[3]) * 60 + Number(m[4]);
+  if (!Number.isFinite(open) || !Number.isFinite(close)) return null;
+  return { open, close };
+}
+
+function effectiveThreshold(base: number, isWorse: boolean, worseMul: number, betterMul: number): number {
+  return base * (isWorse ? worseMul : betterMul);
+}
+
+function buildGuardrailChecks(inputRow: any): Array<{
+  key: string;
+  label: string;
+  direction: string;
+  baseThreshold: string;
+  multiplier: string;
+  threshold: string;
+  actual: string;
+  exceededBy: string;
+  passed: boolean;
+}> {
+  const cfg = loadModerationConfig();
+  const checks: Array<{
+    key: string;
+    label: string;
+    direction: string;
+    baseThreshold: string;
+    multiplier: string;
+    threshold: string;
+    actual: string;
+    exceededBy: string;
+    passed: boolean;
+  }> = [];
+  const gan = inputRow?.ganim_v2 ?? null;
+
+  const prevPrice = toNum(gan?.monthly_price_nis);
+  const nextPrice = toNum(inputRow?.monthly_price_nis);
+  if (prevPrice != null && prevPrice > 0 && nextPrice != null) {
+    const deltaPct = Math.abs((nextPrice - prevPrice) / prevPrice) * 100;
+    const isWorse = nextPrice > prevPrice;
+    const mult = isWorse ? cfg.worseDirectionMultiplier : cfg.betterDirectionMultiplier;
+    const threshold = effectiveThreshold(cfg.priceChangePct, isWorse, cfg.worseDirectionMultiplier, cfg.betterDirectionMultiplier);
+    checks.push({
+      key: "price_change_pct",
+      label: "Price change %",
+      direction: isWorse ? "worse" : "better",
+      baseThreshold: `${cfg.priceChangePct.toFixed(2)}%`,
+      multiplier: `x${mult.toFixed(2)}`,
+      threshold: `${threshold.toFixed(2)}%`,
+      actual: `${deltaPct.toFixed(2)}%`,
+      exceededBy: deltaPct > threshold ? `${(deltaPct - threshold).toFixed(2)}%` : "0%",
+      passed: deltaPct <= threshold,
+    });
+  }
+
+  const oldHours = parseHours(gan?.operating_hours);
+  const newHours = parseHours(inputRow?.operating_hours);
+  if (oldHours && newHours) {
+    const closeDelta = newHours.close - oldHours.close;
+    if (closeDelta !== 0) {
+      const isWorse = closeDelta < 0;
+      const mult = isWorse ? cfg.worseDirectionMultiplier : cfg.betterDirectionMultiplier;
+      const threshold = effectiveThreshold(
+        cfg.operatingHoursChangeMinutes,
+        isWorse,
+        cfg.worseDirectionMultiplier,
+        cfg.betterDirectionMultiplier
+      );
+      checks.push({
+        key: "operating_hours_change_minutes",
+        label: "Close time delta (minutes)",
+        direction: isWorse ? "worse" : "better",
+        baseThreshold: `${cfg.operatingHoursChangeMinutes} min`,
+        multiplier: `x${mult.toFixed(2)}`,
+        threshold: `${threshold.toFixed(2)} min`,
+        actual: `${Math.abs(closeDelta)} min`,
+        exceededBy: Math.abs(closeDelta) > threshold ? `${(Math.abs(closeDelta) - threshold).toFixed(2)} min` : "0",
+        passed: Math.abs(closeDelta) <= threshold,
+      });
+    }
+  }
+
+  const oldRatio = toNum(gan?.staff_child_ratio);
+  const newRatio = toNum(inputRow?.staff_child_ratio);
+  if (oldRatio != null && oldRatio > 0 && newRatio != null) {
+    const pct = Math.abs((newRatio - oldRatio) / oldRatio) * 100;
+    const isWorse = newRatio < oldRatio;
+    const mult = isWorse ? cfg.worseDirectionMultiplier : cfg.betterDirectionMultiplier;
+    const threshold = effectiveThreshold(
+      cfg.staffRatioChangePct,
+      isWorse,
+      cfg.worseDirectionMultiplier,
+      cfg.betterDirectionMultiplier
+    );
+    checks.push({
+      key: "staff_ratio_change_pct",
+      label: "Staff ratio change %",
+      direction: isWorse ? "worse" : "better",
+      baseThreshold: `${cfg.staffRatioChangePct.toFixed(2)}%`,
+      multiplier: `x${mult.toFixed(2)}`,
+      threshold: `${threshold.toFixed(2)}%`,
+      actual: `${pct.toFixed(2)}%`,
+      exceededBy: pct > threshold ? `${(pct - threshold).toFixed(2)}%` : "0%",
+      passed: pct <= threshold,
+    });
+  }
+
+  const textFields = ["price_notes", "suggested_type", "operating_hours"];
+  for (const f of textFields) {
+    const val = typeof inputRow?.[f] === "string" ? String(inputRow[f]).trim() : "";
+    if (!val) continue;
+    const minLen = cfg.minReviewLength;
+    checks.push({
+      key: `min_length_${f}`,
+      label: `Min text length (${f})`,
+      direction: "neutral",
+      baseThreshold: `>= ${minLen} chars`,
+      multiplier: "x1.00",
+      threshold: `>= ${minLen} chars`,
+      actual: `${val.length} chars`,
+      exceededBy: val.length >= minLen ? "0" : `${minLen - val.length} chars short`,
+      passed: val.length >= minLen,
+    });
+  }
+
+  if (cfg.enforceAgeLogic) {
+    const minAge = toNum(inputRow?.min_age_months ?? gan?.min_age_months);
+    const maxAge = toNum(inputRow?.max_age_months ?? gan?.max_age_months);
+    if (minAge != null && maxAge != null) {
+      const ok = minAge <= maxAge;
+      checks.push({
+        key: "age_logic",
+        label: "Age range logic",
+        direction: "neutral",
+        baseThreshold: "min_age <= max_age",
+        multiplier: "x1.00",
+        threshold: "min_age <= max_age",
+        actual: `${minAge} <= ${maxAge}`,
+        exceededBy: ok ? "0" : `${minAge - maxAge} months`,
+        passed: ok,
+      });
+    }
+  }
+
+  return checks;
 }
 
 function buildRequestedChanges(inputRow: any): Array<{ field: string; label: string; value: string }> {
@@ -171,7 +329,8 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const status = (searchParams.get("status") ?? "pending").trim();
-  const allowedStatus = status === "pending" || status === "approved" || status === "rejected";
+  const allowedStatus =
+    status === "pending" || status === "approved" || status === "rejected";
   const limit = parseLimit(searchParams.get("limit"));
 
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
@@ -255,6 +414,7 @@ export async function GET(req: Request) {
           },
     diffs: buildDiffs(row),
     requested_changes: buildRequestedChanges(row),
+    guardrail_checks: buildGuardrailChecks(row),
   }));
 
   return NextResponse.json({ items });

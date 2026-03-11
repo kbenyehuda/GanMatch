@@ -131,23 +131,102 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
-  const approval = await approveGanEditPatch({ userId: userData.user.id, ganId, patch });
-  if (!approval.approved) {
-    return NextResponse.json({ error: approval.reason }, { status: 403 });
-  }
-
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
-  // Ensure gan exists before writing to ledger.
+  // Ensure gan exists before writing to ledger + read moderation baseline fields.
   const { data: existing, error: exErr } = await supabaseAdmin
     .from("ganim_v2")
-    .select("id")
+    .select("id,monthly_price_nis,address,city,min_age_months,max_age_months,website_url,operating_hours,friday_schedule,staff_child_ratio,vegetarian_friendly,vegan_friendly,allergy_friendly,has_mamad,first_aid_trained,metadata")
     .eq("id", ganId)
     .single();
   if (exErr || !existing) {
     return NextResponse.json({ error: "Gan not found" }, { status: 404 });
+  }
+
+  const { count: approvedEditsCount, error: reputationErr } = await supabaseAdmin
+    .from("user_inputs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userData.user.id)
+    .eq("input_type", "edit")
+    .eq("status", "approved");
+  if (reputationErr) {
+    return NextResponse.json({ error: reputationErr.message }, { status: 500 });
+  }
+
+  const sinceIso = new Date(Date.now() - 60_000).toISOString();
+  const { count: recentEditCountLastMinute, error: velocityErr } = await supabaseAdmin
+    .from("user_inputs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userData.user.id)
+    .eq("input_type", "edit")
+    .gte("created_at", sinceIso);
+  if (velocityErr) {
+    return NextResponse.json({ error: velocityErr.message }, { status: 500 });
+  }
+
+  const oauthProvider =
+    typeof (userData.user as any)?.app_metadata?.provider === "string"
+      ? String((userData.user as any).app_metadata.provider)
+      : null;
+
+  const moderation = await approveGanEditPatch({
+    userId: userData.user.id,
+    ganId,
+    patch,
+    approvedEditsCount: approvedEditsCount ?? 0,
+    recentEditCountLastMinute: recentEditCountLastMinute ?? 0,
+    userEmail: userData.user.email ?? null,
+    emailConfirmed: Boolean(userData.user.email_confirmed_at),
+    oauthProvider,
+    existingGan: {
+      monthly_price_nis:
+        existing.monthly_price_nis == null ? null : Number(existing.monthly_price_nis),
+      address: existing.address ?? null,
+      city: existing.city ?? null,
+      operating_hours: (existing as any).operating_hours ?? null,
+      friday_schedule: (existing as any).friday_schedule ?? null,
+      staff_child_ratio:
+        (existing as any).staff_child_ratio == null ? null : Number((existing as any).staff_child_ratio),
+      vegetarian_friendly:
+        typeof (existing as any).vegetarian_friendly === "boolean"
+          ? (existing as any).vegetarian_friendly
+          : null,
+      vegan_friendly:
+        typeof (existing as any).vegan_friendly === "boolean"
+          ? (existing as any).vegan_friendly
+          : null,
+      allergy_friendly:
+        typeof (existing as any).allergy_friendly === "boolean"
+          ? (existing as any).allergy_friendly
+          : null,
+      has_mamad:
+        typeof (existing as any).has_mamad === "boolean" ? (existing as any).has_mamad : null,
+      first_aid_trained:
+        typeof (existing as any).first_aid_trained === "boolean"
+          ? (existing as any).first_aid_trained
+          : null,
+      min_age_months: existing.min_age_months ?? null,
+      max_age_months: existing.max_age_months ?? null,
+      website_url: existing.website_url ?? null,
+      phone:
+        Array.isArray((existing as any)?.metadata?.phone)
+          ? ((existing as any).metadata.phone as string[])
+          : null,
+      lat: null,
+      lon: null,
+    },
+  });
+
+  if (moderation.skipInsert) {
+    return NextResponse.json({
+      success: true,
+      status: "approved",
+      moderation_reason_codes: moderation.reasonCodes,
+      message: "No meaningful change detected.",
+      skipped: true,
+    });
   }
 
   // Keep user_inputs as a true delta ledger: store only metadata keys touched by this request.
@@ -224,7 +303,8 @@ export async function POST(req: Request) {
     gan_id: ganId,
     is_new_gan: false,
     input_type: "edit",
-    status: "pending",
+    status: moderation.status,
+    moderation_reason: moderation.reasonCodes.length ? moderation.reasonCodes.join(",") : null,
   };
   if (Object.keys(metadataPatch).length > 0) userInputRow.metadata = metadataPatch;
   if (address !== undefined) userInputRow.address = address;
@@ -274,10 +354,79 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
+  // Fast path: if moderation auto-approved this edit, materialize immediately so UI reflects it
+  // even when the background worker is not running.
+  if (moderation.status === "approved") {
+    const directFields: Array<keyof typeof cleanRow> = [
+      "address",
+      "city",
+      "website_url",
+      "category",
+      "maon_symbol_code",
+      "private_supervision",
+      "mishpachton_affiliation",
+      "municipal_grade",
+      "monthly_price_nis",
+      "min_age_months",
+      "max_age_months",
+      "price_notes",
+      "has_cctv",
+      "cctv_streamed_online",
+      "operating_hours",
+      "friday_schedule",
+      "meal_type",
+      "vegan_friendly",
+      "vegetarian_friendly",
+      "meat_served",
+      "allergy_friendly",
+      "kosher_status",
+      "kosher_certifier",
+      "staff_child_ratio",
+      "first_aid_trained",
+      "languages_spoken",
+      "has_outdoor_space",
+      "has_mamad",
+      "chugim_types",
+      "vacancy_status",
+    ];
+    const materializePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    for (const field of directFields) {
+      const v = cleanRow[field];
+      if (v !== undefined && v !== null) materializePayload[field] = v;
+    }
+    if (cleanRow.metadata && typeof cleanRow.metadata === "object") {
+      const mergedMeta: Record<string, unknown> = {
+        ...((existing as any).metadata && typeof (existing as any).metadata === "object"
+          ? ((existing as any).metadata as Record<string, unknown>)
+          : {}),
+      };
+      for (const [k, v] of Object.entries(cleanRow.metadata as Record<string, unknown>)) {
+        if (v !== undefined && v !== null) mergedMeta[k] = v;
+      }
+      if (Object.keys(mergedMeta).length > 0) {
+        materializePayload.metadata = mergedMeta;
+      }
+    }
+    const { error: materializeErr } = await supabaseAdmin
+      .from("ganim_v2")
+      .update(materializePayload)
+      .eq("id", ganId);
+    if (materializeErr) {
+      return NextResponse.json({ error: materializeErr.message }, { status: 500 });
+    }
+  }
+
   return NextResponse.json({
     success: true,
-    status: "pending",
-    message: "השינוי נשמר וממתין לאימות לפני פרסום.",
+    status: moderation.status,
+    moderation_reason_codes: moderation.reasonCodes,
+    materialized: moderation.status === "approved",
+    message:
+      moderation.status === "approved"
+        ? "השינוי נשמר ואושר אוטומטית."
+        : "השינוי נשמר וממתין לאימות לפני פרסום.",
   });
 }
 
