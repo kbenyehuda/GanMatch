@@ -51,7 +51,7 @@ interface MapContainerProps {
   onBoundsChange: (bounds: Bounds) => void;
   onMapClick?: (pos: { lon: number; lat: number }) => void;
   pendingPin?: { lon: number; lat: number } | null;
-  fitToAddress?: { lon: number; lat: number; radiusM?: number } | null;
+  fitToAddress?: { lon: number; lat: number; radiusM?: number; zoom?: number } | null;
   loading?: boolean;
 }
 
@@ -193,21 +193,37 @@ export function MapContainer({
 
     const { lon, lat } = fitToAddress;
     const radiusM = fitToAddress.radiusM ?? ADDRESS_FIT_RADIUS_M;
-    const metersPerDegreeLat = 111320;
-    const dLat = radiusM / metersPerDegreeLat;
-    const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
-    const bounds: Bounds = {
-      minLon: lon - dLon,
-      minLat: lat - dLat,
-      maxLon: lon + dLon,
-      maxLat: lat + dLat,
-    };
-    onBoundsChange(bounds);
-    setViewport({
-      bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
-      zoom: radiusM > 2000 ? 12 : 14,
-    });
-    fitToRadius(fitToAddress, radiusM);
+    const targetZoom = fitToAddress.zoom;
+
+    if (targetZoom != null) {
+      map.easeTo({ center: [lon, lat], zoom: targetZoom, duration: 650 });
+      const metersPerDegreeLat = 111320;
+      const dLat = 100 / metersPerDegreeLat;
+      const dLon = 100 / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+      onBoundsChange({
+        minLon: lon - dLon,
+        minLat: lat - dLat,
+        maxLon: lon + dLon,
+        maxLat: lat + dLat,
+      });
+      setViewport({ bounds: [lon - dLon, lat - dLat, lon + dLon, lat + dLat], zoom: targetZoom });
+    } else {
+      const metersPerDegreeLat = 111320;
+      const dLat = radiusM / metersPerDegreeLat;
+      const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+      const bounds: Bounds = {
+        minLon: lon - dLon,
+        minLat: lat - dLat,
+        maxLon: lon + dLon,
+        maxLat: lat + dLat,
+      };
+      onBoundsChange(bounds);
+      setViewport({
+        bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
+        zoom: radiusM > 2000 ? 12 : 14,
+      });
+      fitToRadius(fitToAddress, radiusM);
+    }
   }, [fitToAddress, fitToRadius, onBoundsChange]);
 
   const index = useMemo(() => {

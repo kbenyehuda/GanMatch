@@ -33,6 +33,7 @@ export default function HomePage() {
     lon: number;
     lat: number;
     radiusM?: number;
+    zoom?: number;
   } | null>(null);
   const [filters, setFilters] = useState<GanFilters>(DEFAULT_FILTERS);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -85,14 +86,16 @@ export default function HomePage() {
       const isAddressOrPoi =
         s.place_type?.includes("address") || s.place_type?.includes("poi");
       const shouldPan = isGan || isAddressOrPoi || isCity || (!isCity && (s.place_type?.length ?? 0) === 0);
+
       if (shouldPan) {
         setFitToAddress({
           lon: s.lon,
           lat: s.lat,
           radiusM: isCity ? 5000 : 1000,
+          ...(isGan && { zoom: 18 }),
         });
         setTimeout(() => setFitToAddress(null), 700);
-        if (!isGan && (isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0))) {
+        if (isGan || isAddressOrPoi || (!isCity && (s.place_type?.length ?? 0) === 0)) {
           setFilters((prev) => ({ ...prev, location_query: null }));
         }
       }
