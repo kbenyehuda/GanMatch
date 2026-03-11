@@ -139,9 +139,11 @@ export function GanReviewModal({
     try {
       const { error: err } = await supabase.from("user_inputs").insert({
         user_id: user.id,
+        email: user.email ?? null,
         gan_id: ganId,
         is_new_gan: false,
         input_type: "review",
+        status: "pending",
         parent_in_gan: true,
         anonymous: isAnonymous,
         allows_messages: allowContact,
@@ -309,7 +311,7 @@ export function GanReviewModal({
           ) : null}
           {success ? (
             <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
-              נשמר בהצלחה.
+              הביקורת נשמרה וממתינה לאימות לפני פרסום.
             </div>
           ) : null}
 

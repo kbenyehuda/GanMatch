@@ -140,19 +140,18 @@ export async function POST(req: Request) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
-  // Read existing metadata so we can merge without wiping.
+  // Ensure gan exists before writing to ledger.
   const { data: existing, error: exErr } = await supabaseAdmin
     .from("ganim_v2")
-    .select("id,category,metadata")
+    .select("id")
     .eq("id", ganId)
     .single();
   if (exErr || !existing) {
     return NextResponse.json({ error: "Gan not found" }, { status: 404 });
   }
 
-  const nextMetadata: Record<string, unknown> = {
-    ...(existing.metadata && typeof existing.metadata === "object" ? (existing.metadata as any) : {}),
-  };
+  // Keep user_inputs as a true delta ledger: store only metadata keys touched by this request.
+  const metadataPatch: Record<string, unknown> = {};
 
   const address = coerceTrimmedOrNull(patch.address);
   const city = coerceTrimmedOrNull(patch.city);
@@ -163,37 +162,34 @@ export async function POST(req: Request) {
   const websiteUrl = coerceHttpUrlOrNull(patch.website_url);
 
   if (neighborhood !== undefined) {
-    if (neighborhood === null) delete nextMetadata.neighborhood;
-    else nextMetadata.neighborhood = neighborhood;
+    metadataPatch.neighborhood = neighborhood;
   }
   if (suggestedType !== undefined) {
-    if (suggestedType === null) delete nextMetadata.suggested_type;
-    else nextMetadata.suggested_type = suggestedType;
+    metadataPatch.suggested_type = suggestedType;
   }
   if (addressExtra !== undefined) {
-    if (addressExtra === null) delete nextMetadata.address_extra;
-    else nextMetadata.address_extra = addressExtra;
+    metadataPatch.address_extra = addressExtra;
   }
 
   if (patch.pikuach_ironi !== undefined) {
-    if (patch.pikuach_ironi === null) nextMetadata.pikuach_ironi = null;
-    else nextMetadata.pikuach_ironi = Boolean(patch.pikuach_ironi);
+    if (patch.pikuach_ironi === null) metadataPatch.pikuach_ironi = null;
+    else metadataPatch.pikuach_ironi = Boolean(patch.pikuach_ironi);
   }
 
   const phoneArr = coerceStringArray(patch.phone);
   if (phoneArr !== undefined) {
     if (phoneArr === null || phoneArr.length === 0) {
-      delete nextMetadata.phone;
-      delete nextMetadata.phone_whatsapp;
+      metadataPatch.phone = null;
+      metadataPatch.phone_whatsapp = null;
     } else {
-      nextMetadata.phone = phoneArr;
+      metadataPatch.phone = phoneArr;
       const whatsappArr = coerceStringArray(patch.phone_whatsapp);
       if (whatsappArr !== undefined && whatsappArr && whatsappArr.length > 0) {
-        nextMetadata.phone_whatsapp = whatsappArr.filter((w) =>
+        metadataPatch.phone_whatsapp = whatsappArr.filter((w) =>
           phoneArr.some((p) => p.replace(/\D/g, "").slice(-9) === w.replace(/\D/g, "").slice(-9))
         );
       } else {
-        delete nextMetadata.phone_whatsapp;
+        metadataPatch.phone_whatsapp = null;
       }
     }
   }
@@ -208,11 +204,11 @@ export async function POST(req: Request) {
         : Boolean(patch.cctv_streamed_online);
   if (hasCctv !== undefined) {
     if (!hasCctv) {
-      nextMetadata.cctv_access = "none";
+      metadataPatch.cctv_access = "none";
     } else if (streamedOnline === true) {
-      nextMetadata.cctv_access = "online";
+      metadataPatch.cctv_access = "online";
     } else if (streamedOnline === false) {
-      nextMetadata.cctv_access = "exceptional";
+      metadataPatch.cctv_access = "exceptional";
     }
   }
 
@@ -224,11 +220,13 @@ export async function POST(req: Request) {
   // Ledger: insert into user_inputs only. Python script consumes and updates ganim_v2.
   const userInputRow: Record<string, unknown> = {
     user_id: userData.user.id,
+    email: userData.user.email ?? null,
     gan_id: ganId,
     is_new_gan: false,
     input_type: "edit",
-    metadata: nextMetadata,
+    status: "pending",
   };
+  if (Object.keys(metadataPatch).length > 0) userInputRow.metadata = metadataPatch;
   if (address !== undefined) userInputRow.address = address;
   if (city !== undefined) userInputRow.city = city;
   if (priceNotes !== undefined) userInputRow.price_notes = priceNotes;
@@ -276,6 +274,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, approved: true });
+  return NextResponse.json({
+    success: true,
+    status: "pending",
+    message: "השינוי נשמר וממתין לאימות לפני פרסום.",
+  });
 }
 

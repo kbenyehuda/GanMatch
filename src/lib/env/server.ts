@@ -5,6 +5,15 @@ function truthy(v: string | undefined) {
   return s === "true" || s === "1" || s === "yes";
 }
 
+function csvLowerSet(v: string | undefined): Set<string> {
+  const set = new Set<string>();
+  for (const part of String(v ?? "").split(",")) {
+    const t = part.trim().toLowerCase();
+    if (t) set.add(t);
+  }
+  return set;
+}
+
 function getTrimmed(name: string): string | null {
   const v = process.env[name];
   if (typeof v !== "string") return null;
@@ -29,6 +38,7 @@ export const serverEnv = {
   SUPABASE_SERVICE_ROLE_KEY: getTrimmed("SUPABASE_SERVICE_ROLE_KEY"),
   RESEND_API_KEY: getTrimmed("RESEND_API_KEY"),
   RESEND_FROM_EMAIL: getTrimmed("RESEND_FROM_EMAIL"),
+  ADMIN_EMAILS: csvLowerSet(process.env.ADMIN_EMAILS),
 } as const;
 
 export function requireContactReviewerConfig() {

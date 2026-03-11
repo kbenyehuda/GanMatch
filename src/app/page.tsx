@@ -16,6 +16,7 @@ import type { SearchSuggestion } from "@/types/search";
 import type { Gan } from "@/types/ganim";
 import { Baby, Loader2, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
+import { supabase } from "@/lib/supabase";
 
 export default function HomePage() {
   const { user, loading } = useSession();
@@ -38,6 +39,7 @@ export default function HomePage() {
   const [filters, setFilters] = useState<GanFilters>(DEFAULT_FILTERS);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [currentBounds, setCurrentBounds] = useState<Bounds | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const canViewReviews = !!user; // TODO: Wire to contribution check (Give-to-Get)
 
   const preserveGanIds = useMemo(
@@ -70,6 +72,34 @@ export default function HomePage() {
       setSkipLogin(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!supabase || !user) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
+        if (!token) {
+          if (!cancelled) setIsAdmin(false);
+          return;
+        }
+        const res = await fetch("/api/admin/me", {
+          headers: { authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled) setIsAdmin(Boolean(data?.is_admin));
+      } catch {
+        if (!cancelled) setIsAdmin(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const handleBoundsChange = useCallback(
     (bounds: Bounds) => {
@@ -326,6 +356,18 @@ export default function HomePage() {
             </div>
           )}
           <AuthButton />
+          {isAdmin && (
+            <button
+              type="button"
+              className="inline-flex bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg font-hebrew text-sm border border-gan-accent/30 hover:bg-white"
+              onClick={() => {
+                window.location.href = "/admin/triage";
+              }}
+              title="Admin triage"
+            >
+              ניהול בקשות
+            </button>
+          )}
           <button
             type="button"
             className="hidden md:inline-flex bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg font-hebrew text-sm border border-gan-accent/30 hover:bg-white"

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Process user_inputs and update ganim_v2 + confirmed_reviews.
+Process approved user_inputs and update ganim_v2 + confirmed_reviews.
 
 Handles:
-1. suggest_gan  – Create new ganim_v2 rows from user suggestions
-2. edit         – Merge edits into ganim_v2 (last value per field)
-3. review       – Upsert into confirmed_reviews (full recommendations with ratings)
-4. visit_note   – Upsert into confirmed_reviews (recommendations with or without text)
-5. waitlist_report – Update ganim_v2.vacancy_status from community reports
+1. suggest_gan     – Create new ganim_v2 rows from approved user suggestions
+2. edit            – Merge approved edits into ganim_v2 (last value per field)
+3. review          – Upsert approved reviews into confirmed_reviews
+4. visit_note      – Upsert approved visit notes into confirmed_reviews
+5. waitlist_report – Update vacancy status from approved community reports
 
 Requires: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY in .env.local
 """
@@ -124,7 +124,14 @@ def merge_metadata(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def process_edits(supabase: Any, dry_run: bool) -> int:
     """Process edit inputs: merge into ganim_v2."""
-    r = supabase.table("user_inputs").select("*").eq("input_type", "edit").not_.is_("gan_id", "null").execute()
+    r = (
+        supabase.table("user_inputs")
+        .select("*")
+        .eq("input_type", "edit")
+        .eq("status", "approved")
+        .not_.is_("gan_id", "null")
+        .execute()
+    )
     rows = r.data or []
     by_gan: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -159,7 +166,14 @@ def process_edits(supabase: Any, dry_run: bool) -> int:
 
 def process_suggest_gan(supabase: Any, dry_run: bool) -> int:
     """Process suggest_gan inputs: create new ganim_v2 rows."""
-    r = supabase.table("user_inputs").select("*").eq("input_type", "suggest_gan").is_("gan_id", "null").execute()
+    r = (
+        supabase.table("user_inputs")
+        .select("*")
+        .eq("input_type", "suggest_gan")
+        .eq("status", "approved")
+        .is_("gan_id", "null")
+        .execute()
+    )
     rows = r.data or []
     created = 0
     for row in rows:
@@ -185,7 +199,8 @@ def process_suggest_gan(supabase: Any, dry_run: bool) -> int:
                     "p_city": row.get("city"),
                     "p_category": category,
                     "p_maon_symbol_code": maon,
-                    "p_is_verified": False,
+                    # This path now processes only approved suggestions.
+                    "p_is_verified": True,
                     "p_metadata": meta,
                     "p_is_fallback": False,
                 },
@@ -227,6 +242,35 @@ def process_suggest_gan(supabase: Any, dry_run: bool) -> int:
     return created
 
 
+def process_approved_suggest_verifications(supabase: Any, dry_run: bool) -> int:
+    """
+    Ensure ganim created from approved suggest_gan rows are marked verified.
+    This backfills rows created before verification logic was introduced.
+    """
+    r = (
+        supabase.table("user_inputs")
+        .select("gan_id")
+        .eq("input_type", "suggest_gan")
+        .eq("status", "approved")
+        .not_.is_("gan_id", "null")
+        .execute()
+    )
+    rows = r.data or []
+    gan_ids = sorted({str(row.get("gan_id")) for row in rows if row.get("gan_id")})
+    if not gan_ids:
+        return 0
+
+    updated = 0
+    for gan_id in gan_ids:
+        if not dry_run:
+            supabase.table("ganim_v2").update({
+                "is_verified": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", gan_id).eq("is_verified", False).execute()
+        updated += 1
+    return updated
+
+
 def _row_to_review_payload(row: dict[str, Any], default_rating: float = 3.0) -> dict[str, Any]:
     """Build confirmed_reviews payload from user_inputs row (review or visit_note)."""
     meta = row.get("metadata") or {}
@@ -258,7 +302,14 @@ def _row_to_review_payload(row: dict[str, Any], default_rating: float = 3.0) -> 
 
 def process_reviews(supabase: Any, dry_run: bool) -> int:
     """Process review inputs: upsert into confirmed_reviews (full recommendations with ratings)."""
-    r = supabase.table("user_inputs").select("*").eq("input_type", "review").not_.is_("gan_id", "null").execute()
+    r = (
+        supabase.table("user_inputs")
+        .select("*")
+        .eq("input_type", "review")
+        .eq("status", "approved")
+        .not_.is_("gan_id", "null")
+        .execute()
+    )
     rows = r.data or []
     inserted = 0
     for row in rows:
@@ -276,7 +327,14 @@ def process_reviews(supabase: Any, dry_run: bool) -> int:
 
 def process_visit_notes(supabase: Any, dry_run: bool) -> int:
     """Process visit_note inputs: upsert into confirmed_reviews (recommendations with or without text)."""
-    r = supabase.table("user_inputs").select("*").eq("input_type", "visit_note").not_.is_("gan_id", "null").execute()
+    r = (
+        supabase.table("user_inputs")
+        .select("*")
+        .eq("input_type", "visit_note")
+        .eq("status", "approved")
+        .not_.is_("gan_id", "null")
+        .execute()
+    )
     rows = r.data or []
     inserted = 0
     for row in rows:
@@ -294,7 +352,14 @@ def process_visit_notes(supabase: Any, dry_run: bool) -> int:
 
 def process_waitlist_reports(supabase: Any, dry_run: bool) -> int:
     """Process waitlist_report inputs: update ganim_v2.vacancy_status (last per gan)."""
-    r = supabase.table("user_inputs").select("*").eq("input_type", "waitlist_report").not_.is_("gan_id", "null").execute()
+    r = (
+        supabase.table("user_inputs")
+        .select("*")
+        .eq("input_type", "waitlist_report")
+        .eq("status", "approved")
+        .not_.is_("gan_id", "null")
+        .execute()
+    )
     rows = r.data or []
     by_gan: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -325,6 +390,7 @@ def process_waitlist_reports(supabase: Any, dry_run: bool) -> int:
 def run_once(supabase: Any, dry_run: bool) -> dict[str, int]:
     """Run a single processing pass. Returns counts per type."""
     counts = {
+        "verified_suggests": process_approved_suggest_verifications(supabase, dry_run),
         "edits": process_edits(supabase, dry_run),
         "suggests": process_suggest_gan(supabase, dry_run),
         "reviews": process_reviews(supabase, dry_run),
@@ -336,6 +402,8 @@ def run_once(supabase: Any, dry_run: bool) -> dict[str, int]:
 
 def format_counts(counts: dict[str, int]) -> str:
     parts = []
+    if counts["verified_suggests"]:
+        parts.append(f"{counts['verified_suggests']} verified suggested ganim")
     if counts["edits"]:
         parts.append(f"{counts['edits']} gan edits")
     if counts["suggests"]:
@@ -374,7 +442,7 @@ def main() -> None:
     parser.add_argument(
         "--realtime",
         action="store_true",
-        help="Listen for new user_inputs rows via Supabase Realtime; run on each INSERT",
+        help="Listen for user_inputs INSERT/UPDATE via Supabase Realtime; run when relevant",
     )
     args = parser.parse_args()
 
@@ -417,7 +485,7 @@ def main() -> None:
 
 
 def _run_realtime(sync_supabase: Any, dry_run: bool, mode: str) -> None:
-    """Subscribe to user_inputs INSERT events via async client; run processing in thread pool."""
+    """Subscribe to user_inputs realtime changes via async client; run processing in thread pool."""
     asyncio.run(_run_realtime_async(sync_supabase, dry_run, mode))
 
 
@@ -432,8 +500,29 @@ async def _run_realtime_async(sync_supabase: Any, dry_run: bool, mode: str) -> N
     last_run = 0.0
     debounce_sec = 2.0
 
-    def on_insert(_payload: Any) -> None:
+    def _should_run_for_payload(payload: Any) -> bool:
+        """Run processor only when an event can affect materialized output."""
+        if not isinstance(payload, dict):
+            return True
+        new_row = payload.get("new") if isinstance(payload.get("new"), dict) else {}
+        event_type = str(payload.get("eventType") or "").upper()
+        # INSERT: only interesting if row is already approved.
+        if event_type == "INSERT":
+            return str(new_row.get("status") or "").lower() == "approved"
+        # UPDATE: run when status is approved (e.g. triage approve) or gan_id got populated.
+        if event_type == "UPDATE":
+            status = str(new_row.get("status") or "").lower()
+            if status == "approved":
+                return True
+            # If gan_id is now present, downstream processors may need to merge.
+            return bool(new_row.get("gan_id"))
+        # Fallback: run.
+        return True
+
+    def on_change(payload: Any) -> None:
         nonlocal last_run
+        if not _should_run_for_payload(payload):
+            return
         now = time.time()
         if now - last_run < debounce_sec:
             return
@@ -455,7 +544,13 @@ async def _run_realtime_async(sync_supabase: Any, dry_run: bool, mode: str) -> N
     channel = async_supabase.channel("user_inputs_processor")
     channel.on_postgres_changes(
         RealtimePostgresChangesListenEvent.Insert,
-        on_insert,
+        on_change,
+        table="user_inputs",
+        schema="public",
+    )
+    channel.on_postgres_changes(
+        RealtimePostgresChangesListenEvent.Update,
+        on_change,
         table="user_inputs",
         schema="public",
     )
@@ -468,7 +563,7 @@ async def _run_realtime_async(sync_supabase: Any, dry_run: bool, mode: str) -> N
     except Exception as e:
         LOG.exception("Error during initial pass")
         print(f"[{datetime.now(timezone.utc).isoformat()}] Initial pass error: {e}")
-    print(f"Listening for user_inputs INSERT events{mode}. Ctrl+C to stop.")
+    print(f"Listening for user_inputs INSERT/UPDATE events{mode}. Ctrl+C to stop.")
     try:
         while True:
             await asyncio.sleep(3600)

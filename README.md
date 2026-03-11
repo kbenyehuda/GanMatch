@@ -36,6 +36,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 RESEND_API_KEY=re_your_resend_key
 RESEND_FROM_EMAIL="GanMatch <noreply@yourdomain.com>"
+ADMIN_EMAILS="admin1@example.com,admin2@example.com"
 
 # Feature toggles
 # Server-side toggle (API route)
@@ -51,7 +52,7 @@ NEXT_PUBLIC_CONTACT_REVIEWER_ENABLED=true
 - **Where to store secrets**: put all values from `.env.example` into your hosting provider’s Environment Variables UI (Vercel: Project → Settings → Environment Variables). Do **not** commit `.env.local` / `.env.production` etc.
 - **Public vs secret**:
   - `NEXT_PUBLIC_*` variables are **exposed in the browser bundle**.
-  - Keep **secrets** server-only (no `NEXT_PUBLIC_` prefix): `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`.
+  - Keep **secrets** server-only (no `NEXT_PUBLIC_` prefix): `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAILS`.
 - **Env separation**:
   - Use separate values for **Preview** and **Production** where needed (Vercel supports per-environment vars).
   - Consider a separate Supabase project for production vs dev.
@@ -226,10 +227,13 @@ python process_user_inputs.py
 python process_user_inputs.py --watch
 ```
 
-**Run on each new row (Realtime – requires migration 20260307100008):**
+**Run on relevant user_inputs changes in realtime (requires migration 20260307100008):**
 ```bash
 python process_user_inputs.py --realtime
 ```
+
+Realtime mode listens to `user_inputs` INSERT/UPDATE events and processes when rows can affect output
+(for example when triage changes `status` to `approved`).
 
 Requires `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`.
 

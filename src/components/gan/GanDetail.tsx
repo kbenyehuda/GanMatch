@@ -215,17 +215,28 @@ export function GanDetail({
   const [editPhones, setEditPhones] = useState<Array<{ number: string; whatsapp: boolean }>>([]);
   const [editSaveError, setEditSaveError] = useState<string | null>(null);
   const [editSaved, setEditSaved] = useState(false);
+  const [pendingPreview, setPendingPreview] = useState<Record<string, unknown> | null>(null);
+  const [ownLatestEditStatus, setOwnLatestEditStatus] = useState<"pending" | "rejected" | null>(
+    null
+  );
   const editFormTopRef = useRef<HTMLDivElement | null>(null);
   const editFirstMissingFieldRef = useRef<HTMLElement | null>(null);
+  const prevGanIdRef = useRef<string | null>(null);
   const [showMissingDetails, setShowMissingDetails] = useState(false);
 
   useEffect(() => {
-    // When changing gan, reset edit form fields to current values.
-    setShowEditForm(false);
-    setEditSaveError(null);
-    setEditSaved(false);
-    setShowMissingDetails(false);
-    setShowReviewModal(false);
+    // Reset transient UI state only when moving to a different gan id.
+    const ganChanged = prevGanIdRef.current !== gan.id;
+    if (ganChanged) {
+      prevGanIdRef.current = gan.id;
+      setShowEditForm(false);
+      setEditSaveError(null);
+      setEditSaved(false);
+      setPendingPreview(null);
+      setOwnLatestEditStatus(null);
+      setShowMissingDetails(false);
+      setShowReviewModal(false);
+    }
 
     setLocalWebsiteUrl(normalizeWebsiteUrl((gan as any).website_url));
 
@@ -280,6 +291,61 @@ export function GanDetail({
       ph.map((n) => ({ number: String(n).trim(), whatsapp: isPhoneWhatsApp(gan, n) }))
     );
   }, [gan, normalizeWebsiteUrl]);
+
+  useEffect(() => {
+    if (!supabase || !user?.id || !gan.id) {
+      setOwnLatestEditStatus(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("user_inputs")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("gan_id", gan.id)
+          .eq("input_type", "edit")
+          .in("status", ["pending", "rejected"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          setOwnLatestEditStatus(null);
+          return;
+        }
+        if (data) {
+          const status = data.status === "pending" ? "pending" : data.status === "rejected" ? "rejected" : null;
+          setOwnLatestEditStatus(status);
+          if (status === "pending") {
+            const raw = data as Record<string, unknown>;
+            const cleaned: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(raw)) {
+              if (k === "status" || k === "created_at" || k === "id" || k === "user_id" || k === "gan_id") continue;
+              if (v !== null) cleaned[k] = v;
+            }
+            const meta = raw.metadata;
+            if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+              for (const [k, v] of Object.entries(meta as Record<string, unknown>)) {
+                if (v !== null && v !== undefined) cleaned[k] = v;
+              }
+            }
+            setPendingPreview((prev) => prev ?? cleaned);
+          } else {
+            setPendingPreview(null);
+          }
+        } else {
+          setOwnLatestEditStatus(null);
+        }
+      } catch {
+        if (!cancelled) setOwnLatestEditStatus(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gan.id, user?.id]);
 
   const missingInfo = useMemo(() => {
     const items: Array<{ key: string; label: string; focus?: "category" | "addon" | "ages" | "price" | "neighborhood" }> = [];
@@ -383,7 +449,7 @@ export function GanDetail({
         return;
       }
 
-      const patch: Record<string, unknown> = {
+      const draftPatch: Record<string, unknown> = {
         address: editAddress.trim() ? editAddress.trim() : null,
         city: editCity.trim() ? editCity.trim() : null,
         neighborhood: editNeighborhood.trim() ? editNeighborhood.trim() : null,
@@ -402,37 +468,101 @@ export function GanDetail({
       };
 
       if (editCctv !== "unknown") {
-        patch.has_cctv = editCctv !== "none";
-        patch.cctv_streamed_online = editCctv === "online" ? true : editCctv === "exceptional" ? false : null;
+        draftPatch.has_cctv = editCctv !== "none";
+        draftPatch.cctv_streamed_online = editCctv === "online" ? true : editCctv === "exceptional" ? false : null;
       }
 
-      patch.operating_hours = editOperatingHours.trim() ? editOperatingHours.trim() : null;
-      patch.friday_schedule = editFridaySchedule === "UNKNOWN" ? null : editFridaySchedule;
-      patch.meal_type = editMealType === "UNKNOWN" ? null : editMealType;
-      patch.vegan_friendly = editVeganFriendly;
-      patch.vegetarian_friendly = editVegetarianFriendly;
-      patch.meat_served = editMeatServed;
-      patch.allergy_friendly = editAllergyFriendly;
-      patch.kosher_status = editKosherStatus === "UNKNOWN" ? null : editKosherStatus;
-      patch.kosher_certifier = editKosherCertifier.trim() ? editKosherCertifier.trim() : null;
+      draftPatch.operating_hours = editOperatingHours.trim() ? editOperatingHours.trim() : null;
+      draftPatch.friday_schedule = editFridaySchedule === "UNKNOWN" ? null : editFridaySchedule;
+      draftPatch.meal_type = editMealType === "UNKNOWN" ? null : editMealType;
+      draftPatch.vegan_friendly = editVeganFriendly;
+      draftPatch.vegetarian_friendly = editVegetarianFriendly;
+      draftPatch.meat_served = editMeatServed;
+      draftPatch.allergy_friendly = editAllergyFriendly;
+      draftPatch.kosher_status = editKosherStatus === "UNKNOWN" ? null : editKosherStatus;
+      draftPatch.kosher_certifier = editKosherCertifier.trim() ? editKosherCertifier.trim() : null;
       const ratioNum = editStaffChildRatio.trim() ? Number(editStaffChildRatio.replace(",", ".")) : null;
-      patch.staff_child_ratio = ratioNum != null && Number.isFinite(ratioNum) ? ratioNum : null;
-      patch.first_aid_trained = editFirstAidTrained;
-      patch.languages_spoken = editLanguagesSpoken.length ? editLanguagesSpoken : null;
-      patch.has_outdoor_space = editHasOutdoorSpace;
-      patch.has_mamad = editHasMamad;
+      draftPatch.staff_child_ratio = ratioNum != null && Number.isFinite(ratioNum) ? ratioNum : null;
+      draftPatch.first_aid_trained = editFirstAidTrained;
+      draftPatch.languages_spoken = editLanguagesSpoken.length ? editLanguagesSpoken : null;
+      draftPatch.has_outdoor_space = editHasOutdoorSpace;
+      draftPatch.has_mamad = editHasMamad;
       const chugimArr = editChugimTypes
         .split(/[,;]/)
         .map((s) => s.trim())
         .filter(Boolean);
-      patch.chugim_types = chugimArr.length ? chugimArr : null;
-      patch.vacancy_status = editVacancyStatus === "UNKNOWN" ? null : editVacancyStatus;
+      draftPatch.chugim_types = chugimArr.length ? chugimArr : null;
+      draftPatch.vacancy_status = editVacancyStatus === "UNKNOWN" ? null : editVacancyStatus;
 
       const phoneNumbers = editPhones.map((p) => p.number.trim()).filter(Boolean);
-      patch.phone = phoneNumbers.length ? phoneNumbers : null;
-      patch.phone_whatsapp = phoneNumbers.length
+      draftPatch.phone = phoneNumbers.length ? phoneNumbers : null;
+      draftPatch.phone_whatsapp = phoneNumbers.length
         ? editPhones.filter((p) => p.number.trim() && p.whatsapp).map((p) => p.number.trim())
         : null;
+
+      const normalizeForCompare = (key: string, value: unknown): unknown => {
+        if (Array.isArray(value)) {
+          return [...value]
+            .map((v) => String(v ?? "").trim())
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, "he"));
+        }
+        if (typeof value === "string") return value.trim() || null;
+        return value ?? null;
+      };
+      const currentComparable: Record<string, unknown> = {
+        address: gan.address ?? null,
+        city: gan.city ?? null,
+        neighborhood: typeof gan.metadata?.neighborhood === "string" ? gan.metadata.neighborhood : null,
+        pikuach_ironi:
+          typeof gan.metadata?.pikuach_ironi === "boolean" ? gan.metadata.pikuach_ironi : null,
+        suggested_type:
+          typeof gan.metadata?.suggested_type === "string" ? gan.metadata.suggested_type : null,
+        price_notes: gan.price_notes ?? null,
+        website_url: gan.website_url ?? null,
+        category: gan.category,
+        maon_symbol_code: gan.maon_symbol_code ?? null,
+        private_supervision: gan.private_supervision ?? "UNKNOWN",
+        mishpachton_affiliation: gan.mishpachton_affiliation ?? "UNKNOWN",
+        municipal_grade: gan.municipal_grade ?? "UNKNOWN",
+        monthly_price_nis: gan.monthly_price_nis == null ? null : Math.round(Number(gan.monthly_price_nis)),
+        min_age_months: gan.min_age_months ?? null,
+        max_age_months: gan.max_age_months ?? null,
+        has_cctv: gan.has_cctv,
+        cctv_streamed_online: gan.cctv_streamed_online ?? null,
+        operating_hours: gan.operating_hours ?? null,
+        friday_schedule: gan.friday_schedule && gan.friday_schedule !== "UNKNOWN" ? gan.friday_schedule : null,
+        meal_type: gan.meal_type && gan.meal_type !== "UNKNOWN" ? gan.meal_type : null,
+        vegan_friendly: gan.vegan_friendly ?? null,
+        vegetarian_friendly: gan.vegetarian_friendly ?? null,
+        meat_served: gan.meat_served ?? null,
+        allergy_friendly: gan.allergy_friendly ?? null,
+        kosher_status: gan.kosher_status && gan.kosher_status !== "UNKNOWN" ? gan.kosher_status : null,
+        kosher_certifier: gan.kosher_certifier ?? null,
+        staff_child_ratio: gan.staff_child_ratio ?? null,
+        first_aid_trained: gan.first_aid_trained ?? null,
+        languages_spoken: gan.languages_spoken ?? null,
+        has_outdoor_space: gan.has_outdoor_space ?? null,
+        has_mamad: gan.has_mamad ?? null,
+        chugim_types: gan.chugim_types ?? null,
+        vacancy_status: gan.vacancy_status && gan.vacancy_status !== "UNKNOWN" ? gan.vacancy_status : null,
+        phone: Array.isArray(gan.metadata?.phone) ? gan.metadata.phone : null,
+        phone_whatsapp: Array.isArray(gan.metadata?.phone_whatsapp) ? gan.metadata.phone_whatsapp : null,
+      };
+      const patch: Record<string, unknown> = {};
+      for (const [key, nextRaw] of Object.entries(draftPatch)) {
+        const next = normalizeForCompare(key, nextRaw);
+        const current = normalizeForCompare(key, currentComparable[key]);
+        const changed = JSON.stringify(next) !== JSON.stringify(current);
+        // No delete semantics in this flow: null means "no update", not "clear".
+        if (!changed) continue;
+        if (nextRaw === null) continue;
+        patch[key] = nextRaw;
+      }
+      if (Object.keys(patch).length === 0) {
+        setEditSaveError("לא זוהו שינויים לשמירה.");
+        return;
+      }
 
       const res = await fetch("/api/ganim/edit", {
         method: "POST",
@@ -453,6 +583,8 @@ export function GanDetail({
       }
       // Update link immediately (don’t wait for a full reload).
       setLocalWebsiteUrl(normalizeWebsiteUrl(editWebsiteUrl));
+      setPendingPreview(patch);
+      setOwnLatestEditStatus("pending");
       setEditSaved(true);
       setShowEditForm(false);
       onReviewSaved?.(); // refresh gan list/details (Python script updates ganim_v2)
@@ -473,6 +605,120 @@ export function GanDetail({
     ],
     [gan]
   );
+
+  const pendingPreviewEntries = useMemo(() => {
+    if (!pendingPreview) return [];
+    const entries: Array<{ key: string; label: string; value: string }> = [];
+    const yesNo = (v: unknown) => (v === true ? "כן" : v === false ? "לא" : "לא ידוע");
+    const push = (key: string, label: string, value: string) => {
+      entries.push({ key, label, value });
+    };
+    const formatValue = (key: string, value: unknown): string => {
+      if (value === null) return "";
+      if (key === "friday_schedule") return formatFridayScheduleHe(value as any) ?? "לא ידוע";
+      if (key === "vacancy_status") return formatVacancyStatusHe(value as any) ?? "לא ידוע";
+      if (key === "meal_type") return formatMealTypeHe(value as any) ?? "לא ידוע";
+      if (key === "kosher_status") return formatKosherStatusHe(value as any) ?? "לא ידוע";
+      if (key === "category") return formatGanCategoryHe(value as any);
+      if (key === "monthly_price_nis") return `${Number(value).toLocaleString("he-IL")}₪`;
+      if (key === "has_mamad" || key === "has_outdoor_space" || key === "first_aid_trained") return yesNo(value);
+      if (key === "vegan_friendly" || key === "vegetarian_friendly" || key === "meat_served" || key === "allergy_friendly") return yesNo(value);
+      if (key === "languages_spoken" && Array.isArray(value)) {
+        const labels = value.map((v) => formatSpokenLanguageHe(v as any)).filter(Boolean);
+        return labels.length ? labels.join(", ") : "לא ידוע";
+      }
+      if ((key === "phone" || key === "phone_whatsapp" || key === "chugim_types") && Array.isArray(value)) {
+        return value.map((v) => String(v)).join(", ");
+      }
+      if (key === "cctv_streamed_online" || key === "has_cctv") {
+        const has =
+          key === "has_cctv" ? value === true : pendingPreview.has_cctv === true;
+        const streamed =
+          key === "cctv_streamed_online" ? value : pendingPreview.cctv_streamed_online;
+        if (!has) return "אין";
+        if (streamed === true) return "יש ואפשר להתחבר אונליין";
+        if (streamed === false) return "יש (פתוח למקרים חריגים)";
+        return "יש";
+      }
+      if (value === undefined) return "";
+      return String(value).trim();
+    };
+    const labels: Record<string, string> = {
+      address: "כתובת",
+      city: "עיר",
+      neighborhood: "שכונה",
+      website_url: "אתר",
+      category: "סוג",
+      maon_symbol_code: "סמל מעון",
+      private_supervision: "פיקוח פרטי",
+      mishpachton_affiliation: "שיוך משפחתון",
+      municipal_grade: "שכבה",
+      monthly_price_nis: "מחיר חודשי",
+      price_notes: "הערת מחיר",
+      min_age_months: "גיל מינימום (חודשים)",
+      max_age_months: "גיל מקסימום (חודשים)",
+      operating_hours: "שעות פעילות",
+      friday_schedule: "ימי שישי",
+      meal_type: "סוג אוכל",
+      vegan_friendly: "טבעוני",
+      vegetarian_friendly: "צמחוני",
+      meat_served: "מגיש בשר",
+      allergy_friendly: "ידידותי לאלרגיות",
+      kosher_status: "כשרות",
+      kosher_certifier: "גוף כשרות",
+      staff_child_ratio: "יחס צוות-ילד",
+      first_aid_trained: "עזרה ראשונה",
+      languages_spoken: "שפות",
+      has_outdoor_space: "חצר חיצונית",
+      has_mamad: "ממ\"ד / מיקלט",
+      chugim_types: "חוגים",
+      vacancy_status: "מקום פנוי",
+      phone: "טלפון",
+      phone_whatsapp: "טלפון וואטסאפ",
+      has_cctv: "CCTV",
+      cctv_streamed_online: "CCTV",
+    };
+    const shownCctv = new Set<string>();
+    for (const [key, label] of Object.entries(labels)) {
+      if (!(key in pendingPreview)) continue;
+      if ((key === "has_cctv" || key === "cctv_streamed_online") && shownCctv.size > 0) continue;
+      const raw = (pendingPreview as Record<string, unknown>)[key];
+      const val = formatValue(key, raw);
+      if (!val) continue;
+      push(key, label, val);
+      if (key === "has_cctv" || key === "cctv_streamed_online") {
+        shownCctv.add("cctv");
+      }
+    }
+    return entries;
+  }, [pendingPreview, gan]);
+
+  const displayOperatingHours =
+    ownLatestEditStatus === "pending" && typeof pendingPreview?.operating_hours === "string"
+      ? pendingPreview.operating_hours
+      : gan.operating_hours;
+  const displayFridaySchedule =
+    ownLatestEditStatus === "pending" && pendingPreview?.friday_schedule != null
+      ? (pendingPreview.friday_schedule as Gan["friday_schedule"])
+      : gan.friday_schedule;
+  const displayPriceText =
+    ownLatestEditStatus === "pending"
+      ? formatPriceHe({
+          ...gan,
+          monthly_price_nis:
+            typeof pendingPreview?.monthly_price_nis === "number"
+              ? Number(pendingPreview.monthly_price_nis)
+              : gan.monthly_price_nis ?? null,
+          price_notes:
+            typeof pendingPreview?.price_notes === "string"
+              ? pendingPreview.price_notes
+              : gan.price_notes ?? null,
+        })
+      : priceText;
+  const displayPriceNotes =
+    ownLatestEditStatus === "pending" && typeof pendingPreview?.price_notes === "string"
+      ? pendingPreview.price_notes
+      : gan.price_notes;
 
   const signIn = async () => {
     if (!supabase) return;
@@ -649,6 +895,35 @@ export function GanDetail({
 
         {/* Unified info block (same style as search cards) */}
         <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3 min-w-0">
+          {ownLatestEditStatus === "rejected" ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+              <div className="text-xs font-hebrew font-semibold text-rose-900">
+                העדכון האחרון ששלחת נדחה. אפשר לערוך ולשלוח שוב.
+              </div>
+            </div>
+          ) : null}
+          {ownLatestEditStatus === "pending" && pendingPreviewEntries.length === 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <div className="text-xs font-hebrew font-semibold text-amber-900">
+                יש לך עדכון ממתין לאימות בגן הזה.
+              </div>
+            </div>
+          ) : null}
+          {pendingPreviewEntries.length > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <div className="text-xs font-hebrew font-semibold text-amber-900">
+                העדכון שלך ממתין לאימות (מוצג לך בלבד)
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-1">
+                {pendingPreviewEntries.map((e) => (
+                  <div key={e.key} className="text-xs font-hebrew text-amber-900">
+                    <span className="font-semibold">{e.label}: </span>
+                    <span>{e.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {missingInfo.length > 0 ? (
             <div className="rounded-lg border border-gan-accent/30 bg-gan-muted/20 px-3 py-2">
               <div className="flex items-center justify-between gap-3">
@@ -705,7 +980,7 @@ export function GanDetail({
                     ))}
                   </div>
                   <div className="mt-2 text-[11px] text-gray-500 font-hebrew">
-                    בשלב הזה השינויים נשמרים מיידית (לניפוי שגיאות). בהמשך נוכל לעבור לאישור/אגרגציה.
+                    שינויים חדשים נשמרים קודם במצב ממתין לאימות ורק לאחר אישור מפורסמים לכולם.
                   </div>
                 </>
               ) : null}
@@ -793,16 +1068,20 @@ export function GanDetail({
                 <dd className="text-gray-600 font-hebrew min-w-0 break-words">{agesText}</dd>
               </>
             ) : null}
-            {gan.operating_hours && String(gan.operating_hours).trim() ? (
+            {displayOperatingHours && String(displayOperatingHours).trim() ? (
               <>
                 <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">שעות פעילות</dt>
-                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{gan.operating_hours}</dd>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{displayOperatingHours}</dd>
               </>
             ) : null}
-            {gan.friday_schedule && gan.friday_schedule !== "UNKNOWN" && formatFridayScheduleHe(gan.friday_schedule) ? (
+            {displayFridaySchedule &&
+            displayFridaySchedule !== "UNKNOWN" &&
+            formatFridayScheduleHe(displayFridaySchedule) ? (
               <>
                 <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">ימי שישי</dt>
-                <dd className="text-gray-600 font-hebrew min-w-0 break-words">{formatFridayScheduleHe(gan.friday_schedule)}</dd>
+                <dd className="text-gray-600 font-hebrew min-w-0 break-words">
+                  {formatFridayScheduleHe(displayFridaySchedule)}
+                </dd>
               </>
             ) : null}
             {gan.staff_child_ratio != null && Number.isFinite(Number(gan.staff_child_ratio)) ? (
@@ -822,14 +1101,14 @@ export function GanDetail({
                 <dd className="text-gray-600 font-hebrew min-w-0 break-words">{gan.chugim_types.join(", ")}</dd>
               </>
             ) : null}
-            {priceText ? (
+            {displayPriceText ? (
               <>
                 <dt className="font-hebrew font-semibold text-gan-dark whitespace-nowrap shrink-0">מחיר</dt>
                 <dd className="text-gray-600 font-hebrew min-w-0 break-words">
-                  <div>{priceText}</div>
-                  {gan.price_notes ? (
+                  <div>{displayPriceText}</div>
+                  {displayPriceNotes ? (
                     <div className="mt-1 text-[12px] text-gray-500 font-hebrew whitespace-pre-wrap">
-                      {gan.price_notes}
+                      {displayPriceNotes}
                     </div>
                   ) : null}
                 </dd>
@@ -1335,7 +1614,7 @@ export function GanDetail({
                   ) : null}
                   {editSaved ? (
                     <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
-                      השינויים נשמרו.
+                      השינויים נשמרו וממתינים לאימות לפני פרסום.
                     </div>
                   ) : null}
 
