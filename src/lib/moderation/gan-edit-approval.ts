@@ -7,6 +7,14 @@ type ExistingGanSnapshot = {
   monthly_price_nis?: number | null;
   address?: string | null;
   city?: string | null;
+  operating_hours?: string | null;
+  friday_schedule?: string | null;
+  staff_child_ratio?: number | null;
+  vegetarian_friendly?: boolean | null;
+  vegan_friendly?: boolean | null;
+  allergy_friendly?: boolean | null;
+  has_mamad?: boolean | null;
+  first_aid_trained?: boolean | null;
   min_age_months?: number | null;
   max_age_months?: number | null;
   phone?: string[] | null;

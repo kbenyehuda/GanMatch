@@ -63,8 +63,8 @@ function similarity(a: string, b: string): number {
   const sa = new Set(a.split(" "));
   const sb = new Set(b.split(" "));
   let inter = 0;
-  for (const t of sa) if (sb.has(t)) inter += 1;
-  const union = new Set([...sa, ...sb]).size;
+  for (const t of Array.from(sa)) if (sb.has(t)) inter += 1;
+  const union = new Set([...Array.from(sa), ...Array.from(sb)]).size;
   return union === 0 ? 0 : inter / union;
 }
 

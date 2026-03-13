@@ -278,7 +278,7 @@ function buildDiffs(inputRow: any): Array<{ field: string; label: string; before
     if (v !== null && v !== undefined) changedKeys.add(k);
   }
 
-  for (const key of changedKeys) {
+  for (const key of Array.from(changedKeys)) {
     // "after" from user input row or metadata delta.
     const hasDirect = Object.prototype.hasOwnProperty.call(inputRow ?? {}, key);
     const afterRaw = hasDirect && inputRow[key] != null ? inputRow[key] : (inputMeta as Record<string, unknown>)[key];

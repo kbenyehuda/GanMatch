@@ -702,7 +702,7 @@ export function GanDetail({
       }
     }
     return entries;
-  }, [pendingPreview, gan]);
+  }, [pendingPreview]);
 
   const displayOperatingHours =
     ownLatestEditStatus === "pending" && typeof pendingPreview?.operating_hours === "string"
@@ -720,10 +720,6 @@ export function GanDetail({
             typeof pendingPreview?.monthly_price_nis === "number"
               ? Number(pendingPreview.monthly_price_nis)
               : gan.monthly_price_nis ?? null,
-          price_notes:
-            typeof pendingPreview?.price_notes === "string"
-              ? pendingPreview.price_notes
-              : gan.price_notes ?? null,
         })
       : priceText;
   const displayPriceNotes =
