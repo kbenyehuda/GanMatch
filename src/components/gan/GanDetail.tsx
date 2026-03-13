@@ -360,34 +360,52 @@ export function GanDetail({
           return;
         }
 
-        const storageKey = `ganmatch:rejected-notice:${user.id}:${gan.id}`;
         const now = Date.now();
-        let shouldShow = false;
-        try {
-          const rawStored = window.localStorage.getItem(storageKey);
-          if (rawStored) {
-            const parsed = JSON.parse(rawStored) as { rejectedId?: string; expiresAt?: number };
-            const sameRejected = typeof parsed?.rejectedId === "string" && parsed.rejectedId === rejectedData.id;
-            const expiresAt = Number(parsed?.expiresAt ?? 0);
-            if (sameRejected && Number.isFinite(expiresAt) && expiresAt > now) {
-              shouldShow = true;
-            }
-          }
-          if (!shouldShow) {
-            window.localStorage.setItem(
-              storageKey,
-              JSON.stringify({
-                rejectedId: rejectedData.id,
-                expiresAt: now + REJECTED_NOTICE_DURATION_MS,
-              })
-            );
-            shouldShow = true;
-          }
-        } catch {
-          // If storage is unavailable, default to showing the notice while rejected row exists.
-          shouldShow = true;
+        const { data: windowRow, error: windowReadError } = await supabase
+          .from("user_rejection_notice_windows")
+          .select("rejected_input_id,visible_until")
+          .eq("user_id", user.id)
+          .eq("gan_id", gan.id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (windowReadError) {
+          // Graceful fallback if migration isn't applied yet.
+          setShowRejectedNotice(true);
+          return;
         }
-        setShowRejectedNotice(shouldShow);
+
+        const existingRejectedId =
+          typeof (windowRow as any)?.rejected_input_id === "string"
+            ? String((windowRow as any).rejected_input_id)
+            : null;
+        const existingVisibleUntil = Number(
+          Date.parse(typeof (windowRow as any)?.visible_until === "string" ? (windowRow as any).visible_until : "")
+        );
+
+        if (!windowRow || existingRejectedId !== rejectedData.id) {
+          const visibleUntilIso = new Date(now + REJECTED_NOTICE_DURATION_MS).toISOString();
+          const { error: upsertErr } = await supabase
+            .from("user_rejection_notice_windows")
+            .upsert(
+              {
+                user_id: user.id,
+                gan_id: gan.id,
+                rejected_input_id: rejectedData.id,
+                visible_until: visibleUntilIso,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id,gan_id" }
+            );
+          if (cancelled) return;
+          if (upsertErr) {
+            setShowRejectedNotice(true);
+            return;
+          }
+          setShowRejectedNotice(true);
+          return;
+        }
+
+        setShowRejectedNotice(Number.isFinite(existingVisibleUntil) && existingVisibleUntil > now);
       } catch {
         if (!cancelled) {
           setOwnLatestEditStatus(null);
