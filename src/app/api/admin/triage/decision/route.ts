@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
+import { grantFullAccess } from "@/lib/entitlements/service";
 
 export async function POST(req: Request) {
   const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
 
   const { data: existing, error: existingErr } = await supabaseAdmin
     .from("user_inputs")
-    .select("id,status,input_type,gan_id")
+    .select("id,status,input_type,gan_id,user_id")
     .eq("id", id)
     .single();
   if (existingErr || !existing) {
@@ -69,6 +70,28 @@ export async function POST(req: Request) {
     .eq("id", id);
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  if (
+    serverEnv.FF_SOFT_GATE &&
+    status === "approved" &&
+    existing.input_type === "review" &&
+    typeof existing.user_id === "string" &&
+    existing.user_id
+  ) {
+    try {
+      await grantFullAccess({
+        userId: existing.user_id,
+        source: "review",
+        durationDays: serverEnv.ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS,
+        sourceRef: id,
+        metadata: { user_input_id: id, gan_id: existing.gan_id ?? null },
+      });
+    } catch (entitlementErr) {
+      const message =
+        entitlementErr instanceof Error ? entitlementErr.message : "Failed to grant review entitlement";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
   }
 
   // Keep visual status in sync for suggested ganim that already exist in ganim_v2.

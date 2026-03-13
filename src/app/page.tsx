@@ -18,6 +18,19 @@ import { Baby, Loader2, TriangleAlert } from "lucide-react";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 
+type UnlockDefaults = {
+  review_full_access_days: number;
+  bounty_full_access_days: number;
+  bounty_required_tasks: number;
+  onboarding_review_quota: number;
+};
+
+type UnlockFlags = {
+  bounty_unlock: boolean;
+  referral_unlock: boolean;
+  onboarding_unlock: boolean;
+};
+
 export default function HomePage() {
   const { user, loading } = useSession();
   const [skipLogin, setSkipLogin] = useState<boolean | null>(null);
@@ -40,7 +53,19 @@ export default function HomePage() {
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [currentBounds, setCurrentBounds] = useState<Bounds | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const canViewReviews = !!user; // TODO: Wire to contribution check (Give-to-Get)
+  const [canViewReviews, setCanViewReviews] = useState(false);
+  const [entitlementsRefreshKey, setEntitlementsRefreshKey] = useState(0);
+  const [unlockDefaults, setUnlockDefaults] = useState<UnlockDefaults>({
+    review_full_access_days: 365,
+    bounty_full_access_days: 365,
+    bounty_required_tasks: 3,
+    onboarding_review_quota: 3,
+  });
+  const [unlockFlags, setUnlockFlags] = useState<UnlockFlags>({
+    bounty_unlock: true,
+    referral_unlock: false,
+    onboarding_unlock: true,
+  });
 
   const preserveGanIds = useMemo(
     () => (selectedGan?.id ? new Set([selectedGan.id]) : undefined),
@@ -100,6 +125,55 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user || !supabase) {
+      setCanViewReviews(false);
+      return;
+    }
+    (async () => {
+      try {
+        const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
+        if (!token) {
+          if (!cancelled) setCanViewReviews(false);
+          return;
+        }
+        const res = await fetch("/api/entitlements/me", {
+          headers: { authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (!cancelled) setCanViewReviews(!!user);
+          return;
+        }
+        if (!cancelled) {
+          setCanViewReviews(Boolean(data?.can_view_reviews));
+          if (data?.defaults) {
+            setUnlockDefaults({
+              review_full_access_days: Number(data.defaults.review_full_access_days ?? 365),
+              bounty_full_access_days: Number(data.defaults.bounty_full_access_days ?? 365),
+              bounty_required_tasks: Number(data.defaults.bounty_required_tasks ?? 3),
+              onboarding_review_quota: Number(data.defaults.onboarding_review_quota ?? 3),
+            });
+          }
+          if (data?.feature_flags) {
+            setUnlockFlags({
+              bounty_unlock: Boolean(data.feature_flags.bounty_unlock),
+              referral_unlock: Boolean(data.feature_flags.referral_unlock),
+              onboarding_unlock: Boolean(data.feature_flags.onboarding_unlock),
+            });
+          }
+        }
+      } catch {
+        if (!cancelled) setCanViewReviews(!!user);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, entitlementsRefreshKey]);
 
   const handleBoundsChange = useCallback(
     (bounds: Bounds) => {
@@ -241,6 +315,9 @@ export default function HomePage() {
                 setSelectedClusterGanim(null);
               }}
               canViewReviews={canViewReviews}
+              unlockDefaults={unlockDefaults}
+              unlockFlags={unlockFlags}
+              onEntitlementChanged={() => setEntitlementsRefreshKey((k) => k + 1)}
               onReviewSaved={refetchViewport}
             />
           ) : selectedClusterGanim ? (

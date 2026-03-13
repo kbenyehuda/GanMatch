@@ -51,6 +51,21 @@ export const serverEnv = {
     process.env.MODERATION_MIN_APPROVED_EDITS_FOR_AUTO_APPROVE,
     3
   ),
+
+  // Part B: entitlements and soft-gate defaults
+  FF_SOFT_GATE: truthy(process.env.FF_SOFT_GATE),
+  FF_BOUNTY_UNLOCK: truthy(process.env.FF_BOUNTY_UNLOCK),
+  FF_REFERRAL_UNLOCK: truthy(process.env.FF_REFERRAL_UNLOCK),
+  FF_ONBOARDING_UNLOCK: (() => {
+    // Onboarding path is default-on in dev unless explicitly disabled.
+    const raw = process.env.FF_ONBOARDING_UNLOCK;
+    if (raw === undefined) return true;
+    return truthy(raw);
+  })(),
+  ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS: numberOr(process.env.ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS, 365),
+  ENTITLEMENT_BOUNTY_FULL_ACCESS_DAYS: numberOr(process.env.ENTITLEMENT_BOUNTY_FULL_ACCESS_DAYS, 365),
+  ENTITLEMENT_BOUNTY_REQUIRED_TASKS: numberOr(process.env.ENTITLEMENT_BOUNTY_REQUIRED_TASKS, 3),
+  ENTITLEMENT_ONBOARDING_REVIEW_QUOTA: numberOr(process.env.ENTITLEMENT_ONBOARDING_REVIEW_QUOTA, 3),
 } as const;
 
 export function requireContactReviewerConfig() {
