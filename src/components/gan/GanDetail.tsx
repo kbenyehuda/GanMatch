@@ -63,8 +63,20 @@ interface GanDetailProps {
   onClose: () => void;
   onBack?: () => void;
   canViewReviews: boolean; // Give-to-Get: true if user has contributed
+  unlockDefaults?: {
+    review_full_access_days: number;
+    bounty_full_access_days: number;
+    bounty_required_tasks: number;
+    onboarding_review_quota: number;
+  };
+  unlockFlags?: {
+    bounty_unlock: boolean;
+    referral_unlock: boolean;
+    onboarding_unlock: boolean;
+  };
   onRequestLogin?: () => void;
   onReviewSaved?: () => void;
+  onEntitlementChanged?: () => void;
 }
 
 export function GanDetail({
@@ -72,8 +84,11 @@ export function GanDetail({
   onClose,
   onBack,
   canViewReviews,
+  unlockDefaults,
+  unlockFlags,
   onRequestLogin,
   onReviewSaved,
+  onEntitlementChanged,
 }: GanDetailProps) {
   const { user, session } = useSession();
   const [showAvgFacets, setShowAvgFacets] = useState(false);
@@ -102,6 +117,25 @@ export function GanDetail({
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [refreshReviewsKey, setRefreshReviewsKey] = useState(0);
   const [reviewSort, setReviewSort] = useState<"newest" | "year" | "rating_asc" | "rating_desc">("newest");
+  const [bountyTasks, setBountyTasks] = useState<Record<string, boolean>>({
+    phone_verified: false,
+    hours_verified: false,
+    vacancy_verified: false,
+  });
+  const [bountySaving, setBountySaving] = useState(false);
+  const [bountyMessage, setBountyMessage] = useState<string | null>(null);
+  const [onboardingSaving, setOnboardingSaving] = useState(false);
+  const [onboardingMessage, setOnboardingMessage] = useState<string | null>(null);
+  const [onboardingCity, setOnboardingCity] = useState("");
+  const [onboardingKidsCount, setOnboardingKidsCount] = useState("1");
+  const [onboardingKidsAges, setOnboardingKidsAges] = useState("");
+  const [onboardingNeighborhood, setOnboardingNeighborhood] = useState("");
+  const [onboardingBudgetRange, setOnboardingBudgetRange] = useState("");
+
+  const bountyRequiredTasks = Math.max(1, Math.floor(unlockDefaults?.bounty_required_tasks ?? 3));
+  const bountyFullAccessDays = Math.max(1, Math.floor(unlockDefaults?.bounty_full_access_days ?? 365));
+  const reviewFullAccessDays = Math.max(1, Math.floor(unlockDefaults?.review_full_access_days ?? 365));
+  const onboardingReviewQuota = Math.max(1, Math.floor(unlockDefaults?.onboarding_review_quota ?? 3));
 
   const maskEmail = useMemo(() => {
     return (email: string): string => {
@@ -739,6 +773,126 @@ export function GanDetail({
         redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
       },
     });
+  };
+
+  const getBearerToken = async (): Promise<string | null> => {
+    if (!supabase) return null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const shouldRefresh =
+      (session?.expires_at != null && session.expires_at - nowSec < 60) || !session?.access_token;
+    if (shouldRefresh) {
+      try {
+        await supabase.auth.refreshSession();
+      } catch {
+        // ignore and fall back to latest cached session/getSession response
+      }
+    }
+    return (
+      (await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null)) ??
+      session?.access_token ??
+      null
+    );
+  };
+
+  const submitBountyUnlock = async () => {
+    setBountyMessage(null);
+    if (!user) {
+      (onRequestLogin ?? signIn)();
+      return;
+    }
+    const taskKeys = Object.entries(bountyTasks)
+      .filter(([, done]) => done)
+      .map(([k]) => k);
+    if (taskKeys.length < bountyRequiredTasks) {
+      setBountyMessage(`נדרשות לפחות ${bountyRequiredTasks} משימות מאומתות.`);
+      return;
+    }
+    const token = await getBearerToken();
+    if (!token) {
+      setBountyMessage("פג תוקף ההתחברות. התחבר/י מחדש ונסה/י שוב.");
+      return;
+    }
+    setBountySaving(true);
+    try {
+      const res = await fetch("/api/entitlements/unlock/bounty", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ task_keys: taskKeys }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBountyMessage(typeof data?.error === "string" ? data.error : "שגיאה בפתיחת הגישה.");
+        return;
+      }
+      setBountyMessage("הגישה לביקורות נפתחה בהצלחה.");
+      onEntitlementChanged?.();
+    } catch {
+      setBountyMessage("שגיאת רשת. נסה/י שוב.");
+    } finally {
+      setBountySaving(false);
+    }
+  };
+
+  const submitOnboardingUnlock = async () => {
+    setOnboardingMessage(null);
+    if (!user) {
+      (onRequestLogin ?? signIn)();
+      return;
+    }
+    const kidsAges = onboardingKidsAges
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n <= 18)
+      .map((n) => Math.floor(n));
+    const numberOfKids = Math.floor(Number(onboardingKidsCount));
+    if (!onboardingCity.trim()) {
+      setOnboardingMessage("יש למלא עיר.");
+      return;
+    }
+    if (!Number.isFinite(numberOfKids) || numberOfKids <= 0) {
+      setOnboardingMessage("יש למלא מספר ילדים תקין.");
+      return;
+    }
+    if (kidsAges.length === 0) {
+      setOnboardingMessage("יש למלא גילאי ילדים (לדוגמה: 2,4).");
+      return;
+    }
+    const token = await getBearerToken();
+    if (!token) {
+      setOnboardingMessage("פג תוקף ההתחברות. התחבר/י מחדש ונסה/י שוב.");
+      return;
+    }
+    setOnboardingSaving(true);
+    try {
+      const res = await fetch("/api/entitlements/unlock/onboarding", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          city: onboardingCity.trim(),
+          number_of_kids: numberOfKids,
+          kids_ages: kidsAges,
+          neighborhood: onboardingNeighborhood.trim() || null,
+          budget_range: onboardingBudgetRange.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOnboardingMessage(typeof data?.error === "string" ? data.error : "שגיאה בפתיחת הגישה.");
+        return;
+      }
+      setOnboardingMessage("הגישה נפתחה לפי מכסת צפייה.");
+      onEntitlementChanged?.();
+    } catch {
+      setOnboardingMessage("שגיאת רשת. נסה/י שוב.");
+    } finally {
+      setOnboardingSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -1792,20 +1946,153 @@ export function GanDetail({
               style={{ filter: "blur(4px)", userSelect: "none", pointerEvents: "none" }}
             >
               <p className="text-sm text-gray-500">
-                תוכן הביקורות מוסתר. התחבר ופרסם ביקורת או &quot;הערת ביקור&quot; כדי לצפות.
+                תוכן הביקורות מוסתר. אפשר לפתוח גישה דרך אחת מדרכי ה-Give-to-Get.
               </p>
             </div>
           )}
           {!canViewReviews && (
-            <div className="mt-2">
-              <Button
-                size="sm"
-                onClick={onRequestLogin ?? signIn}
-                className="gap-2"
-              >
-                <Lock className="w-4 h-4" />
-                התחבר כדי לצפות
-              </Button>
+            <div className="mt-3 space-y-3">
+              {!user ? (
+                <div className="rounded-lg border border-gan-accent/40 bg-white p-3">
+                  <div className="text-sm font-hebrew text-gray-700 mb-2">
+                    כדי לפתוח ביקורות, צריך להתחבר ואז לבחור מסלול פתיחה.
+                  </div>
+                  <Button size="sm" onClick={onRequestLogin ?? signIn} className="gap-2">
+                    <Lock className="w-4 h-4" />
+                    התחבר כדי להמשיך
+                  </Button>
+                </div>
+              ) : null}
+
+              <div className="grid gap-2">
+                <div className="rounded-lg border border-gan-accent/40 bg-white p-3">
+                  <div className="text-sm font-hebrew font-semibold text-gan-dark">הייתי הורה כאן</div>
+                  <div className="text-xs text-gray-600 font-hebrew mt-1">
+                    כתבו ביקורת איכותית. אחרי אישור במודרציה תקבלו גישה מלאה ל-{reviewFullAccessDays} ימים.
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => {
+                      if (!user) {
+                        (onRequestLogin ?? signIn)();
+                      } else {
+                        setShowReviewModal(true);
+                      }
+                    }}
+                  >
+                    כתיבת ביקורת
+                  </Button>
+                </div>
+
+                {unlockFlags?.bounty_unlock !== false ? (
+                  <div className="rounded-lg border border-gan-accent/40 bg-white p-3">
+                    <div className="text-sm font-hebrew font-semibold text-gan-dark">מסלול באונטי</div>
+                    <div className="text-xs text-gray-600 font-hebrew mt-1">
+                      סמנו {bountyRequiredTasks} משימות אימות כדי לקבל גישה מלאה ל-{bountyFullAccessDays} ימים.
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        ["phone_verified", "טלפון"],
+                        ["hours_verified", "שעות פעילות"],
+                        ["vacancy_verified", "סטטוס זמינות"],
+                      ].map(([key, label]) => (
+                        <label
+                          key={key}
+                          className="inline-flex items-center gap-1 rounded-full border border-gan-accent/40 px-2 py-1 text-xs font-hebrew"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Boolean(bountyTasks[key])}
+                            onChange={(e) =>
+                              setBountyTasks((prev) => ({ ...prev, [key]: e.target.checked }))
+                            }
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={submitBountyUnlock}
+                        disabled={bountySaving || !user}
+                      >
+                        {bountySaving ? "פותח..." : "פתח גישה בבאונטי"}
+                      </Button>
+                      {bountyMessage ? (
+                        <span className="text-xs font-hebrew text-gray-600">{bountyMessage}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {unlockFlags?.onboarding_unlock !== false ? (
+                  <div className="rounded-lg border border-gan-accent/40 bg-white p-3">
+                    <div className="text-sm font-hebrew font-semibold text-gan-dark">מסלול אונבורדינג</div>
+                    <div className="text-xs text-gray-600 font-hebrew mt-1">
+                      עיר + מספר ילדים + גילאים פותחים מכסת צפייה של {onboardingReviewQuota} ביקורות.
+                      שכונה ותקציב הם שדות אופציונליים.
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <input
+                        value={onboardingCity}
+                        onChange={(e) => setOnboardingCity(e.target.value)}
+                        placeholder="עיר *"
+                        className="rounded border border-gan-accent/40 px-2 py-1 text-xs font-hebrew"
+                      />
+                      <input
+                        value={onboardingKidsCount}
+                        onChange={(e) => setOnboardingKidsCount(e.target.value)}
+                        placeholder="מספר ילדים *"
+                        className="rounded border border-gan-accent/40 px-2 py-1 text-xs font-hebrew"
+                      />
+                      <input
+                        value={onboardingKidsAges}
+                        onChange={(e) => setOnboardingKidsAges(e.target.value)}
+                        placeholder="גילאים בפסיקים (לדוגמה: 2,4) *"
+                        className="rounded border border-gan-accent/40 px-2 py-1 text-xs font-hebrew md:col-span-2"
+                      />
+                      <input
+                        value={onboardingNeighborhood}
+                        onChange={(e) => setOnboardingNeighborhood(e.target.value)}
+                        placeholder="שכונה (אופציונלי)"
+                        className="rounded border border-gan-accent/40 px-2 py-1 text-xs font-hebrew"
+                      />
+                      <input
+                        value={onboardingBudgetRange}
+                        onChange={(e) => setOnboardingBudgetRange(e.target.value)}
+                        placeholder="טווח תקציב (אופציונלי)"
+                        className="rounded border border-gan-accent/40 px-2 py-1 text-xs font-hebrew"
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={submitOnboardingUnlock}
+                        disabled={onboardingSaving || !user}
+                      >
+                        {onboardingSaving ? "שומר..." : "שליחה ופתיחת גישה"}
+                      </Button>
+                      {onboardingMessage ? (
+                        <span className="text-xs font-hebrew text-gray-600">{onboardingMessage}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {unlockFlags?.referral_unlock ? (
+                  <div className="rounded-lg border border-gan-accent/40 bg-white p-3">
+                    <div className="text-sm font-hebrew font-semibold text-gan-dark">מסלול הזמנות</div>
+                    <div className="text-xs text-gray-600 font-hebrew mt-1">
+                      מסלול זה יופעל בהמשך יחד עם מנגנון qualifying action.
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           )}
         </div>
