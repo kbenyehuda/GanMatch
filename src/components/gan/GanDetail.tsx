@@ -75,6 +75,7 @@ export function GanDetail({
   onRequestLogin,
   onReviewSaved,
 }: GanDetailProps) {
+  const REJECTED_NOTICE_DURATION_MS = 24 * 60 * 60 * 1000;
   const { user, session } = useSession();
   const [showAvgFacets, setShowAvgFacets] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -220,6 +221,7 @@ export function GanDetail({
   const [ownLatestEditStatus, setOwnLatestEditStatus] = useState<"pending" | "rejected" | null>(
     null
   );
+  const [showRejectedNotice, setShowRejectedNotice] = useState(false);
   const editFormTopRef = useRef<HTMLDivElement | null>(null);
   const editFirstMissingFieldRef = useRef<HTMLElement | null>(null);
   const prevGanIdRef = useRef<string | null>(null);
@@ -236,6 +238,7 @@ export function GanDetail({
       setEditSavedStatus("pending");
       setPendingPreview(null);
       setOwnLatestEditStatus(null);
+      setShowRejectedNotice(false);
       setShowMissingDetails(false);
       setShowReviewModal(false);
     }
@@ -297,57 +300,106 @@ export function GanDetail({
   useEffect(() => {
     if (!supabase || !user?.id || !gan.id) {
       setOwnLatestEditStatus(null);
+      setPendingPreview(null);
+      setShowRejectedNotice(false);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const { data, error } = await supabase
+        const { data: pendingData, error: pendingError } = await supabase
           .from("user_inputs")
           .select("*")
           .eq("user_id", user.id)
           .eq("gan_id", gan.id)
           .eq("input_type", "edit")
-          .in("status", ["pending", "rejected"])
+          .eq("status", "pending")
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (cancelled) return;
-        if (error) {
+        if (pendingError) {
           setOwnLatestEditStatus(null);
+          setPendingPreview(null);
+          setShowRejectedNotice(false);
           return;
         }
-        if (data) {
-          const status = data.status === "pending" ? "pending" : data.status === "rejected" ? "rejected" : null;
-          setOwnLatestEditStatus(status);
-          if (status === "pending") {
-            const raw = data as Record<string, unknown>;
-            const cleaned: Record<string, unknown> = {};
-            for (const [k, v] of Object.entries(raw)) {
-              if (k === "status" || k === "created_at" || k === "id" || k === "user_id" || k === "gan_id") continue;
-              if (v !== null) cleaned[k] = v;
-            }
-            const meta = raw.metadata;
-            if (meta && typeof meta === "object" && !Array.isArray(meta)) {
-              for (const [k, v] of Object.entries(meta as Record<string, unknown>)) {
-                if (v !== null && v !== undefined) cleaned[k] = v;
-              }
-            }
-            setPendingPreview((prev) => prev ?? cleaned);
-          } else {
-            setPendingPreview(null);
+        if (pendingData) {
+          setOwnLatestEditStatus("pending");
+          const raw = pendingData as Record<string, unknown>;
+          const cleaned: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(raw)) {
+            if (k === "status" || k === "created_at" || k === "id" || k === "user_id" || k === "gan_id") continue;
+            if (v !== null) cleaned[k] = v;
           }
+          const meta = raw.metadata;
+          if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+            for (const [k, v] of Object.entries(meta as Record<string, unknown>)) {
+              if (v !== null && v !== undefined) cleaned[k] = v;
+            }
+          }
+          setPendingPreview((prev) => prev ?? cleaned);
         } else {
           setOwnLatestEditStatus(null);
+          setPendingPreview(null);
         }
+
+        const { data: rejectedData, error: rejectedError } = await supabase
+          .from("user_inputs")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("gan_id", gan.id)
+          .eq("input_type", "edit")
+          .eq("status", "rejected")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (rejectedError || !rejectedData?.id) {
+          setShowRejectedNotice(false);
+          return;
+        }
+
+        const storageKey = `ganmatch:rejected-notice:${user.id}:${gan.id}`;
+        const now = Date.now();
+        let shouldShow = false;
+        try {
+          const rawStored = window.localStorage.getItem(storageKey);
+          if (rawStored) {
+            const parsed = JSON.parse(rawStored) as { rejectedId?: string; expiresAt?: number };
+            const sameRejected = typeof parsed?.rejectedId === "string" && parsed.rejectedId === rejectedData.id;
+            const expiresAt = Number(parsed?.expiresAt ?? 0);
+            if (sameRejected && Number.isFinite(expiresAt) && expiresAt > now) {
+              shouldShow = true;
+            }
+          }
+          if (!shouldShow) {
+            window.localStorage.setItem(
+              storageKey,
+              JSON.stringify({
+                rejectedId: rejectedData.id,
+                expiresAt: now + REJECTED_NOTICE_DURATION_MS,
+              })
+            );
+            shouldShow = true;
+          }
+        } catch {
+          // If storage is unavailable, default to showing the notice while rejected row exists.
+          shouldShow = true;
+        }
+        setShowRejectedNotice(shouldShow);
       } catch {
-        if (!cancelled) setOwnLatestEditStatus(null);
+        if (!cancelled) {
+          setOwnLatestEditStatus(null);
+          setPendingPreview(null);
+          setShowRejectedNotice(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [gan.id, user?.id]);
+  }, [gan.id, user?.id, REJECTED_NOTICE_DURATION_MS]);
 
   const missingInfo = useMemo(() => {
     const items: Array<{ key: string; label: string; focus?: "category" | "addon" | "ages" | "price" | "neighborhood" }> = [];
@@ -902,7 +954,7 @@ export function GanDetail({
 
         {/* Unified info block (same style as search cards) */}
         <div className="rounded-lg border border-gan-accent/30 bg-white p-4 space-y-3 min-w-0">
-          {ownLatestEditStatus === "rejected" ? (
+          {showRejectedNotice ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
               <div className="text-xs font-hebrew font-semibold text-rose-900">
                 העדכון האחרון ששלחת נדחה. אפשר לערוך ולשלוח שוב.
