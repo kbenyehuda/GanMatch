@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 
-export const runtime = "nodejs";
+// Use edge runtime for icon metadata route to avoid Windows Node URL/font path issues.
+export const runtime = "edge";
 
 export function generateImageMetadata() {
   return [

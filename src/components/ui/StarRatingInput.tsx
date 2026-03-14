@@ -60,19 +60,27 @@ export function StarRatingInput({
               <button
                 type="button"
                 disabled={disabled}
-                className="absolute top-0 bottom-0 start-0 w-1/2 z-10 cursor-pointer"
+                className="absolute top-0 bottom-0 left-0 w-1/2 z-20 cursor-pointer appearance-none bg-transparent border-0 p-0 m-0"
                 aria-label={`${i + 0.5} כוכבים`}
                 onMouseEnter={() => setHover(i + 0.5)}
                 onFocus={() => setHover(i + 0.5)}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleClick(i + 0.5);
+                }}
                 onClick={() => handleClick(i + 0.5)}
               />
               <button
                 type="button"
                 disabled={disabled}
-                className="absolute top-0 bottom-0 start-1/2 w-1/2 z-10 cursor-pointer"
+                className="absolute top-0 bottom-0 left-1/2 w-1/2 z-20 cursor-pointer appearance-none bg-transparent border-0 p-0 m-0"
                 aria-label={`${i + 1} כוכבים`}
                 onMouseEnter={() => setHover(i + 1)}
                 onFocus={() => setHover(i + 1)}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleClick(i + 1);
+                }}
                 onClick={() => handleClick(i + 1)}
               />
             </div>

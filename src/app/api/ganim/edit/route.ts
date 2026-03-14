@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { approveGanEditPatch } from "@/lib/moderation/gan-edit-approval";
+import { getAccessSnapshot, grantFullAccess } from "@/lib/entitlements/service";
+import { logTelemetryEvent } from "@/lib/telemetry/log-event";
 
 type GanCategory = "UNSPECIFIED" | "MAON_SYMBOL" | "PRIVATE_GAN" | "MISHPACHTON" | "MUNICIPAL_GAN";
 type PrivateSupervisionStatus = "UNKNOWN" | "SUPERVISED" | "NOT_SUPERVISED";
@@ -349,9 +351,60 @@ export async function POST(req: Request) {
   const cleanRow = Object.fromEntries(
     Object.entries(userInputRow).filter(([, v]) => v !== undefined)
   ) as Record<string, unknown>;
-  const { error: insertErr } = await supabaseAdmin.from("user_inputs").insert(cleanRow);
-  if (insertErr) {
-    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  const { data: insertedInput, error: insertErr } = await supabaseAdmin
+    .from("user_inputs")
+    .insert(cleanRow)
+    .select("id")
+    .single();
+  if (insertErr || !insertedInput?.id) {
+    return NextResponse.json(
+      { error: insertErr?.message ?? "Failed to persist edit input" },
+      { status: 500 }
+    );
+  }
+  const inputId = String(insertedInput.id);
+  const userEmail = String(userData.user.email ?? "").trim().toLowerCase();
+  const isAdmin = !!userEmail && serverEnv.ADMIN_EMAILS.has(userEmail);
+
+  if (serverEnv.FF_SOFT_GATE) {
+    await logTelemetryEvent({
+      eventName: "contribution_submitted",
+      userId: userData.user.id,
+      path: "bounty",
+      sourceSurface: "gan_edit_submit",
+      entityId: inputId,
+      metadata: { gan_id: ganId, status: moderation.status },
+    });
+  }
+
+  if (serverEnv.FF_SOFT_GATE) {
+    try {
+      const snapshot = await getAccessSnapshot(userData.user.id, isAdmin);
+      if (!snapshot.hasFullAccess) {
+        await grantFullAccess({
+          userId: userData.user.id,
+          source: "bounty",
+          durationDays: serverEnv.ENTITLEMENT_SUBMIT_TEMP_FULL_ACCESS_DAYS,
+          sourceRef: `${inputId}:submit`,
+          metadata: { user_input_id: inputId, gan_id: ganId, trigger: "contribution_submitted", stage: "submit" },
+        });
+        await logTelemetryEvent({
+          eventName: "entitlement_granted",
+          userId: userData.user.id,
+          path: "bounty",
+          sourceSurface: "gan_edit_submit_pending",
+          entityId: inputId,
+          metadata: {
+            entitlement_type: "full_access",
+            duration_days: serverEnv.ENTITLEMENT_SUBMIT_TEMP_FULL_ACCESS_DAYS,
+            gan_id: ganId,
+            stage: "submit",
+          },
+        });
+      }
+    } catch {
+      // Best-effort temporary unlock.
+    }
   }
 
   // Fast path: if moderation auto-approved this edit, materialize immediately so UI reflects it
@@ -415,6 +468,43 @@ export async function POST(req: Request) {
       .eq("id", ganId);
     if (materializeErr) {
       return NextResponse.json({ error: materializeErr.message }, { status: 500 });
+    }
+
+    if (serverEnv.FF_SOFT_GATE) {
+      try {
+        await grantFullAccess({
+          userId: userData.user.id,
+          source: "bounty",
+          durationDays: serverEnv.ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS,
+          sourceRef: `${inputId}:approved`,
+          metadata: { user_input_id: inputId, gan_id: ganId, input_type: "edit", stage: "approved" },
+        });
+        await logTelemetryEvent({
+          eventName: "contribution_approved",
+          userId: userData.user.id,
+          path: "bounty",
+          sourceSurface: "gan_edit_auto_approved",
+          entityId: inputId,
+          metadata: { gan_id: ganId, auto_approved: true },
+        });
+        await logTelemetryEvent({
+          eventName: "entitlement_granted",
+          userId: userData.user.id,
+          path: "bounty",
+          sourceSurface: "gan_edit_auto_approved",
+          entityId: inputId,
+          metadata: {
+            entitlement_type: "full_access",
+            duration_days: serverEnv.ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS,
+            gan_id: ganId,
+            stage: "approved",
+          },
+        });
+      } catch (grantErr) {
+        const msg =
+          grantErr instanceof Error ? grantErr.message : "Failed to grant entitlement for approved edit";
+        return NextResponse.json({ error: msg }, { status: 500 });
+      }
     }
   }
 

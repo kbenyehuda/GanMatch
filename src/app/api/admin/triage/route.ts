@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { loadModerationConfig } from "@/lib/moderation/moderation-config";
+import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 
 function parseLimit(raw: string | null, fallback = 100): number {
   const n = Number(raw);
@@ -70,7 +71,7 @@ function toNum(v: unknown): number | null {
 function parseHours(raw: unknown): { open: number; close: number } | null {
   const s = String(raw ?? "").trim();
   if (!s) return null;
-  const m = s.match(/(\d{1,2}):(\d{2}).*?(\d{1,2}):(\d{2})/);
+  const m = s.match(/^([01]\d|2[0-3]):([0-5]\d)\s*-\s*([01]\d|2[0-3]):([0-5]\d)$/);
   if (!m) return null;
   const open = Number(m[1]) * 60 + Number(m[2]);
   const close = Number(m[3]) * 60 + Number(m[4]);
@@ -129,29 +130,46 @@ function buildGuardrailChecks(inputRow: any): Array<{
 
   const oldHours = parseHours(gan?.operating_hours);
   const newHours = parseHours(inputRow?.operating_hours);
+  const operatingHoursRaw = typeof inputRow?.operating_hours === "string" ? String(inputRow.operating_hours).trim() : "";
+  if (operatingHoursRaw) {
+    const parsed = parseHours(operatingHoursRaw);
+    checks.push({
+      key: "operating_hours_format",
+      label: "Operating hours format",
+      direction: "neutral",
+      baseThreshold: "HH:MM - HH:MM",
+      multiplier: "x1.00",
+      threshold: "HH:MM - HH:MM",
+      actual: operatingHoursRaw,
+      exceededBy: parsed ? "0" : "Invalid format",
+      passed: !!parsed,
+    });
+  }
   if (oldHours && newHours) {
-    const closeDelta = newHours.close - oldHours.close;
-    if (closeDelta !== 0) {
-      const isWorse = closeDelta < 0;
-      const mult = isWorse ? cfg.worseDirectionMultiplier : cfg.betterDirectionMultiplier;
-      const threshold = effectiveThreshold(
-        cfg.operatingHoursChangeMinutes,
-        isWorse,
-        cfg.worseDirectionMultiplier,
-        cfg.betterDirectionMultiplier
-      );
-      checks.push({
-        key: "operating_hours_change_minutes",
-        label: "Close time delta (minutes)",
-        direction: isWorse ? "worse" : "better",
-        baseThreshold: `${cfg.operatingHoursChangeMinutes} min`,
-        multiplier: `x${mult.toFixed(2)}`,
-        threshold: `${threshold.toFixed(2)} min`,
-        actual: `${Math.abs(closeDelta)} min`,
-        exceededBy: Math.abs(closeDelta) > threshold ? `${(Math.abs(closeDelta) - threshold).toFixed(2)} min` : "0",
-        passed: Math.abs(closeDelta) <= threshold,
-      });
-    }
+    const openDelta = Math.abs(newHours.open - oldHours.open);
+    const closeDelta = Math.abs(newHours.close - oldHours.close);
+    checks.push({
+      key: "operating_hours_change_open_minutes",
+      label: "Open time delta (minutes)",
+      direction: "neutral",
+      baseThreshold: "<= 15 min",
+      multiplier: "x1.00",
+      threshold: "<= 15 min",
+      actual: `${openDelta} min`,
+      exceededBy: openDelta > 15 ? `${openDelta - 15} min` : "0",
+      passed: openDelta <= 15,
+    });
+    checks.push({
+      key: "operating_hours_change_close_minutes",
+      label: "Close time delta (minutes)",
+      direction: "neutral",
+      baseThreshold: "<= 15 min",
+      multiplier: "x1.00",
+      threshold: "<= 15 min",
+      actual: `${closeDelta} min`,
+      exceededBy: closeDelta > 15 ? `${closeDelta - 15} min` : "0",
+      passed: closeDelta <= 15,
+    });
   }
 
   const oldRatio = toNum(gan?.staff_child_ratio);
@@ -179,7 +197,7 @@ function buildGuardrailChecks(inputRow: any): Array<{
     });
   }
 
-  const textFields = ["price_notes", "suggested_type", "operating_hours"];
+  const textFields = ["price_notes", "suggested_type"];
   for (const f of textFields) {
     const val = typeof inputRow?.[f] === "string" ? String(inputRow[f]).trim() : "";
     if (!val) continue;
@@ -326,6 +344,7 @@ export async function GET(req: Request) {
   if (!serverEnv.ADMIN_EMAILS.has(email)) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
+  await ensureAdminFullAccessForUser({ userId: userData.user.id, email });
 
   const { searchParams } = new URL(req.url);
   const status = (searchParams.get("status") ?? "pending").trim();

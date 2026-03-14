@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { grantFullAccess } from "@/lib/entitlements/service";
+import { logTelemetryEvent } from "@/lib/telemetry/log-event";
 
 function normalizeTaskKeys(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -13,6 +14,8 @@ function normalizeTaskKeys(v: unknown): string[] {
   }
   return Array.from(dedup);
 }
+
+const ALLOWED_BOUNTY_TASK_KEYS = new Set(["phone_verified", "hours_verified", "vacancy_verified"]);
 
 export async function POST(req: Request) {
   if (!serverEnv.FF_SOFT_GATE || !serverEnv.FF_BOUNTY_UNLOCK) {
@@ -39,6 +42,10 @@ export async function POST(req: Request) {
   }
 
   const taskKeys = normalizeTaskKeys((body as any)?.task_keys);
+  const hasInvalid = taskKeys.some((key) => !ALLOWED_BOUNTY_TASK_KEYS.has(key));
+  if (hasInvalid) {
+    return NextResponse.json({ error: "Invalid task_keys submitted" }, { status: 400 });
+  }
   if (taskKeys.length < serverEnv.ENTITLEMENT_BOUNTY_REQUIRED_TASKS) {
     return NextResponse.json(
       { error: `Need at least ${serverEnv.ENTITLEMENT_BOUNTY_REQUIRED_TASKS} completed tasks` },
@@ -82,6 +89,19 @@ export async function POST(req: Request) {
     sourceRef: String(completion.id),
     metadata: {
       task_keys: taskKeys,
+      task_count: taskKeys.length,
+    },
+  });
+
+  await logTelemetryEvent({
+    eventName: "entitlement_granted",
+    userId: userData.user.id,
+    path: "bounty",
+    sourceSurface: "bounty_unlock_api",
+    entityId: String(completion.id),
+    metadata: {
+      entitlement_type: "full_access",
+      duration_days: serverEnv.ENTITLEMENT_BOUNTY_FULL_ACCESS_DAYS,
       task_count: taskKeys.length,
     },
   });

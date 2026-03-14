@@ -35,6 +35,13 @@ function getAdminClient() {
   });
 }
 
+function normalizeEmail(v: string | null | undefined): string {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+const ADMIN_BACKFILL_INTERVAL_MS = 5 * 60 * 1000;
+let lastAdminBackfillAt = 0;
+
 export async function getAccessSnapshot(userId: string, isAdmin: boolean): Promise<AccessSnapshot> {
   if (!userId) return { canViewReviews: false, hasFullAccess: false, reviewQuotaRemaining: 0 };
   if (isAdmin) return { canViewReviews: true, hasFullAccess: true, reviewQuotaRemaining: 0 };
@@ -154,5 +161,133 @@ export async function grantReviewQuota(params: {
     .single();
   if (error) throw error;
   return { id: String(data.id), inserted: true as const };
+}
+
+export async function consumeOneReviewQuota(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const supabaseAdmin = getAdminClient();
+  const now = nowIso();
+
+  // Retry a couple of times to handle concurrent consumers.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data: rows, error } = await supabaseAdmin
+      .from("user_access_entitlements")
+      .select("id,quota_remaining")
+      .eq("user_id", userId)
+      .eq("entitlement_type", "review_quota")
+      .gt("quota_remaining", 0)
+      .lte("starts_at", now)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order("starts_at", { ascending: true })
+      .limit(1);
+    if (error) throw error;
+    const row = (rows ?? [])[0];
+    if (!row?.id) return false;
+
+    const current = Number((row as any).quota_remaining ?? 0);
+    if (!Number.isFinite(current) || current <= 0) continue;
+    const nextQuota = current - 1;
+    const { data: updated, error: updateErr } = await supabaseAdmin
+      .from("user_access_entitlements")
+      .update({
+        quota_remaining: nextQuota,
+        updated_at: nowIso(),
+      })
+      .eq("id", row.id)
+      .gt("quota_remaining", 0)
+      .select("id")
+      .maybeSingle();
+    if (updateErr) throw updateErr;
+    if (updated?.id) return true;
+  }
+
+  return false;
+}
+
+export async function ensureAdminFullAccessForUser(params: {
+  userId: string;
+  email: string | null | undefined;
+}): Promise<{ ensured: boolean }> {
+  const userId = String(params.userId ?? "").trim();
+  const email = normalizeEmail(params.email);
+  if (!userId || !email || !serverEnv.ADMIN_EMAILS.has(email)) {
+    return { ensured: false };
+  }
+
+  const supabaseAdmin = getAdminClient();
+  const sourceRef = `admin_email:${email}`;
+
+  const { data: existing, error: existingErr } = await supabaseAdmin
+    .from("user_access_entitlements")
+    .select("id,expires_at,metadata")
+    .eq("user_id", userId)
+    .eq("source", "admin")
+    .eq("source_ref", sourceRef)
+    .maybeSingle();
+  if (existingErr) throw existingErr;
+
+  if (existing?.id) {
+    // Keep admin grants permanent.
+    if ((existing as any).expires_at != null) {
+      const { error: updateErr } = await supabaseAdmin
+        .from("user_access_entitlements")
+        .update({
+          expires_at: null,
+          metadata: { ...(existing as any).metadata, admin_email: email },
+          updated_at: nowIso(),
+        })
+        .eq("id", existing.id);
+      if (updateErr) throw updateErr;
+    }
+    return { ensured: true };
+  }
+
+  const { error: insertErr } = await supabaseAdmin.from("user_access_entitlements").insert({
+    user_id: userId,
+    entitlement_type: "full_access",
+    source: "admin",
+    source_ref: sourceRef,
+    starts_at: nowIso(),
+    expires_at: null,
+    quota_remaining: null,
+    metadata: { admin_email: email, sync_mode: "auto" },
+  });
+  if (insertErr) throw insertErr;
+  return { ensured: true };
+}
+
+export async function backfillAdminFullAccessFromConfig(force = false): Promise<{ ensuredCount: number }> {
+  const now = Date.now();
+  if (!force && now - lastAdminBackfillAt < ADMIN_BACKFILL_INTERVAL_MS) {
+    return { ensuredCount: 0 };
+  }
+  lastAdminBackfillAt = now;
+
+  if (serverEnv.ADMIN_EMAILS.size === 0) return { ensuredCount: 0 };
+  const supabaseAdmin = getAdminClient();
+
+  const matchedUsers: Array<{ id: string; email: string }> = [];
+  let page = 1;
+  const perPage = 200;
+
+  for (;;) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users ?? [];
+    for (const user of users) {
+      const email = normalizeEmail(user.email ?? null);
+      if (!email || !serverEnv.ADMIN_EMAILS.has(email)) continue;
+      matchedUsers.push({ id: user.id, email });
+    }
+    if (users.length < perPage) break;
+    page += 1;
+  }
+
+  let ensuredCount = 0;
+  for (const user of matchedUsers) {
+    const { ensured } = await ensureAdminFullAccessForUser({ userId: user.id, email: user.email });
+    if (ensured) ensuredCount += 1;
+  }
+  return { ensuredCount };
 }
 

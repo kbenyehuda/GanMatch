@@ -183,6 +183,17 @@ export default function HomePage() {
     [onBoundsChange]
   );
 
+  const handleSelectGanForContribution = useCallback(
+    (ganId: string): boolean => {
+      const next = ganim.find((g) => g.id === ganId);
+      if (!next) return false;
+      setSelectedClusterGanim(null);
+      setSelectedGan(next);
+      return true;
+    },
+    [ganim]
+  );
+
   const handleSearchSelect = useCallback(
     (s: SearchSuggestion) => {
       const isGan = s.place_type?.includes("gan");
@@ -314,6 +325,7 @@ export default function HomePage() {
                 setSelectedGan(null);
                 setSelectedClusterGanim(null);
               }}
+              onSelectGanForContribution={handleSelectGanForContribution}
               canViewReviews={canViewReviews}
               unlockDefaults={unlockDefaults}
               unlockFlags={unlockFlags}

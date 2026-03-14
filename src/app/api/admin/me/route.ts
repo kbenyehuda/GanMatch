@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
+import {
+  backfillAdminFullAccessFromConfig,
+  ensureAdminFullAccessForUser,
+} from "@/lib/entitlements/service";
 
 export async function GET(req: Request) {
   const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
@@ -24,6 +28,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ is_admin: false }, { status: 200 });
   }
 
-  return NextResponse.json({ is_admin: serverEnv.ADMIN_EMAILS.has(email) });
+  const isAdmin = serverEnv.ADMIN_EMAILS.has(email);
+  if (isAdmin) {
+    await ensureAdminFullAccessForUser({ userId: userData.user.id, email });
+    await backfillAdminFullAccessFromConfig();
+  }
+  return NextResponse.json({ is_admin: isAdmin });
 }
 

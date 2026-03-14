@@ -30,6 +30,7 @@ export function GanReviewModal({
   onClose,
   onSaved,
   onOpenEditGan,
+  mode = "modal",
 }: {
   ganId: string;
   ganName?: string | null;
@@ -37,6 +38,7 @@ export function GanReviewModal({
   onClose: () => void;
   onSaved?: () => void;
   onOpenEditGan?: () => void;
+  mode?: "modal" | "inline";
 }) {
   const { user } = useSession();
   const [rating, setRating] = useState(4);
@@ -137,29 +139,33 @@ export function GanReviewModal({
 
     setSaving(true);
     try {
-      const { error: err } = await supabase.from("user_inputs").insert({
-        user_id: user.id,
-        email: user.email ?? null,
-        gan_id: ganId,
-        is_new_gan: false,
-        input_type: "review",
-        status: "pending",
-        parent_in_gan: true,
-        anonymous: isAnonymous,
-        allows_messages: allowContact,
-        free_text_rec: reviewText.trim() || null,
-        metadata: {
+      const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
+      if (!token) throw new Error("פג תוקף ההתחברות. אנא התחבר/י מחדש.");
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          gan_id: ganId,
           rating,
           cleanliness_rating: cleanliness,
           staff_rating: staff,
           safety_rating: safety,
           enrollment_years: enrollmentYears,
+          is_anonymous: isAnonymous,
+          allow_contact: allowContact,
+          advice_to_parents_text: reviewText.trim() || null,
           reviewer_public_name: reviewerPublicName,
           reviewer_public_email_masked: reviewerPublicEmailMasked,
-        },
+        }),
       });
-
-      if (err) throw err;
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = typeof payload?.error === "string" ? payload.error : "שגיאה בשמירת הביקורת";
+        throw new Error(msg);
+      }
       setSuccess(true);
       onSaved?.();
     } catch (e: unknown) {
@@ -173,19 +179,23 @@ export function GanReviewModal({
     }
   };
 
+  const isInline = mode === "inline";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 p-3">
-      <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div className={isInline ? "" : "fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 p-3"}>
+      <Card className={isInline ? "border-0 shadow-none" : "w-full max-w-lg max-h-[90vh] overflow-y-auto"}>
         <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 pb-2">
           <div className="min-w-0">
-            <CardTitle className="font-hebrew text-base">הייתי הורה כאן</CardTitle>
+            <CardTitle className="font-hebrew text-base">יש לי מה לומר על הגן הזה</CardTitle>
             {ganName ? <div className="mt-1 text-xs text-gray-600 font-hebrew">{ganName}</div> : null}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
-            <X className="w-5 h-5" />
-          </Button>
+          {!isInline ? (
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
+              <X className="w-5 h-5" />
+            </Button>
+          ) : null}
         </CardHeader>
-        <CardContent className="p-4 pt-0 space-y-4">
+        <CardContent className={isInline ? "p-0 pt-1 space-y-4" : "p-4 pt-0 space-y-4"}>
           {/* Section 1: Mandatory ratings - overall first, then specific */}
           <div>
             <div className="text-xs font-hebrew font-semibold text-gan-dark mb-2">דירוגים (חובה)</div>
@@ -267,7 +277,6 @@ export function GanReviewModal({
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      onClose();
                       onOpenEditGan();
                     }}
                     className="gap-2"
@@ -317,7 +326,7 @@ export function GanReviewModal({
 
           <div className="flex items-center justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={saving}>
-              ביטול
+              {isInline ? "סגור" : "ביטול"}
             </Button>
             <Button onClick={submit} disabled={saving}>
               {saving ? "שומר..." : "שמור"}

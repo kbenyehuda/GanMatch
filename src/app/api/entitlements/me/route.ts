@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
-import { getAccessSnapshot } from "@/lib/entitlements/service";
+import { ensureAdminFullAccessForUser, getAccessSnapshot } from "@/lib/entitlements/service";
 
 export async function GET(req: Request) {
   const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
@@ -43,6 +43,9 @@ export async function GET(req: Request) {
 
   const email = String(userData.user.email ?? "").trim().toLowerCase();
   const isAdmin = !!email && serverEnv.ADMIN_EMAILS.has(email);
+  if (isAdmin) {
+    await ensureAdminFullAccessForUser({ userId: userData.user.id, email });
+  }
 
   let snapshot = { canViewReviews: false, hasFullAccess: false, reviewQuotaRemaining: 0 };
   if (serverEnv.FF_SOFT_GATE) {

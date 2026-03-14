@@ -98,7 +98,7 @@ function extractTextValues(value: unknown, out: string[]) {
 function parseHours(raw: string | null | undefined): { open: number; close: number } | null {
   const s = String(raw ?? "").trim();
   if (!s) return null;
-  const m = s.match(/(\d{1,2}):(\d{2}).*?(\d{1,2}):(\d{2})/);
+  const m = s.match(/^([01]\d|2[0-3]):([0-5]\d)\s*-\s*([01]\d|2[0-3]):([0-5]\d)$/);
   if (!m) return null;
   const open = Number(m[1]) * 60 + Number(m[2]);
   const close = Number(m[3]) * 60 + Number(m[4]);
@@ -164,14 +164,11 @@ export class ValidationEngine {
 
     // 3) Logic guards: operating hours + age range + phone format
     if (typeof ctx.patch.operating_hours === "string") {
-      const s = ctx.patch.operating_hours.trim();
-      const m = s.match(/(\d{1,2}):(\d{2}).*?(\d{1,2}):(\d{2})/);
-      if (m) {
-        const open = Number(m[1]) * 60 + Number(m[2]);
-        const close = Number(m[3]) * 60 + Number(m[4]);
-        if (Number.isFinite(open) && Number.isFinite(close) && open > close) {
-          flaggedReasons.push("OPERATING_HOURS_INVALID");
-        }
+      const parsed = parseHours(ctx.patch.operating_hours);
+      if (!parsed) {
+        flaggedReasons.push("OPERATING_HOURS_INVALID_FORMAT");
+      } else if (parsed.open > parsed.close) {
+        flaggedReasons.push("OPERATING_HOURS_INVALID_RANGE");
       }
     }
     if (cfg.enforceAgeLogic) {
@@ -189,18 +186,10 @@ export class ValidationEngine {
     const newHours =
       typeof ctx.patch.operating_hours === "string" ? parseHours(ctx.patch.operating_hours) : null;
     if (oldHours && newHours) {
-      const closeDelta = newHours.close - oldHours.close;
-      if (closeDelta !== 0) {
-        const isWorse = closeDelta < 0; // earlier close is worse
-        const threshold = effectiveThreshold(
-          cfg.operatingHoursChangeMinutes,
-          isWorse,
-          cfg.worseDirectionMultiplier,
-          cfg.betterDirectionMultiplier
-        );
-        if (Math.abs(closeDelta) > threshold) {
-          reasons.push(isWorse ? "CLOSE_TIME_EARLIER_SIGNIFICANT" : "CLOSE_TIME_LATER_SIGNIFICANT");
-        }
+      const openDelta = Math.abs(newHours.open - oldHours.open);
+      const closeDelta = Math.abs(newHours.close - oldHours.close);
+      if (openDelta > 15 || closeDelta > 15) {
+        flaggedReasons.push("OPERATING_HOURS_DELTA_GT_15_MIN");
       }
     }
 
@@ -278,7 +267,7 @@ export class ValidationEngine {
     }
 
     // 4) Effort heuristic: minimum text length + velocity
-    const textHeavyFields = ["price_notes", "suggested_type", "operating_hours"];
+    const textHeavyFields = ["price_notes", "suggested_type"];
     for (const f of textHeavyFields) {
       const v = ctx.patch[f];
       if (typeof v === "string" && v.trim() && v.trim().length < cfg.minReviewLength) {

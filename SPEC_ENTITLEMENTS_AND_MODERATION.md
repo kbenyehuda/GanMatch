@@ -192,8 +192,10 @@ Minimum events:
 - `lock_wall_viewed`
 - `unlock_path_selected`
 - `contribution_submitted`
-- `contribution_approved`
-- `entitlement_granted`
+- `contribution_approved`/++5
++?>
+.0`
+3entitlemen.30t0_granted`
 - `review_viewed`
 - `moderation_pending_created`
 - `moderation_decision_made`

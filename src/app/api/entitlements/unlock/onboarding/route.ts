@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { grantReviewQuota } from "@/lib/entitlements/service";
+import { logTelemetryEvent } from "@/lib/telemetry/log-event";
 
 function parseAges(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
@@ -62,6 +63,12 @@ export async function POST(req: Request) {
   if (kidsAges.length === 0) {
     return NextResponse.json({ error: "Missing kids_ages" }, { status: 400 });
   }
+  if (kidsAges.length !== numberOfKids) {
+    return NextResponse.json(
+      { error: "number_of_kids must match kids_ages length" },
+      { status: 400 }
+    );
+  }
 
   const supabaseUserClient = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authHeader } },
@@ -105,6 +112,18 @@ export async function POST(req: Request) {
       kids_ages: kidsAges,
       neighborhood,
       budget_range: budgetRange,
+    },
+  });
+
+  await logTelemetryEvent({
+    eventName: "entitlement_granted",
+    userId: userData.user.id,
+    path: "onboarding",
+    sourceSurface: "onboarding_unlock_api",
+    entityId: String(profile.id),
+    metadata: {
+      entitlement_type: "review_quota",
+      quota_granted: serverEnv.ENTITLEMENT_ONBOARDING_REVIEW_QUOTA,
     },
   });
 
