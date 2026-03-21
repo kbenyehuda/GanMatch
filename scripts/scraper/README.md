@@ -2,6 +2,8 @@
 
 Scrape daycare (ganim) data for Tel Aviv and Givatayim and import into Supabase.
 
+**Note:** This path historically used **`insert_gan`** → **`public.ganim`**. If your project dropped **`ganim`** in favor of **`ganim_v2`** only, fix ingestion (e.g. **`upsert_ganim_v2`**, see [scripts/gov_import/README.md](../gov_import/README.md)) before relying on this scraper. Archived context: [docs/graveyard/retired_tables_and_ledgers.md](../../docs/graveyard/retired_tables_and_ledgers.md).
+
 ## Setup
 
 ```bash
@@ -12,7 +14,7 @@ playwright install chromium
 
 ## Environment
 
-Create `.env` (copy from `.env.example`):
+Create `.env` in this folder (copy from `.env.example`). These scripts read **`SUPABASE_SERVICE_KEY`** (not `SUPABASE_SERVICE_ROLE_KEY`). Use the same **service role** value as in the project root `.env.local`, under this name—or set `SUPABASE_SERVICE_KEY` in the environment.
 
 ```
 SUPABASE_URL=https://your-project.supabase.co

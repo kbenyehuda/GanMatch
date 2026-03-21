@@ -2,6 +2,8 @@
 
 This document captures the current product audit and proposed fixes so we can iterate over time.
 
+**Other docs:** [docs/README.md](docs/README.md) · **Access model:** [GIVE_TO_GET_ACCESS_MODEL.md](GIVE_TO_GET_ACCESS_MODEL.md) · **Archived roadmaps:** [docs/graveyard/](docs/graveyard/)
+
 ## Why This Exists
 
 - Keep one source of truth for product quality gaps.
@@ -18,21 +20,21 @@ This document captures the current product audit and proposed fixes so we can it
 
 ## Critical Issues
 
-### C1) Give-to-Get is technically broken
-- **Current state**: Review visibility is unlocked by login (`canViewReviews = !!user`) rather than meaningful contribution.
-- **Risk**: Core value loop is not aligned with product promise; weak contribution incentive.
+### C1) Give-to-Get still has product gaps (entitlements vs open read)
+- **Current state (2026)**: When **`FF_SOFT_GATE`** is enabled, review visibility uses **entitlements** (`full_access`, `review_quota`) plus onboarding and bounty paths—see `src/lib/entitlements/service.ts` and `GIVE_TO_GET_ACCESS_MODEL.md`. When **`FF_SOFT_GATE`** is off (default in `.env.example`), any **logged-in** user can read reviews without ledger checks; bounty/onboarding unlock **POST** routes still return 403.
+- **Remaining risk**: Referral path is still placeholder; economics and copy may not match parent expectations; cold-start areas still feel empty.
 - **Owner**: Product + Eng
-- **Status**: Open
+- **Status**: In progress
 
-### C2) Moderation is effectively auto-approve
-- **Current state**: Edit moderation currently approves all patches.
-- **Risk**: Childcare data can be manipulated or degraded; trust and safety liability.
+### C2) Moderation coverage and operator load
+- **Current state**: `POST /api/ganim/edit` runs `src/lib/moderation/validation-engine.ts` (driven by `config/moderation.json` and `MODERATION_*` env fallbacks). The engine returns only **`approved`** or **`pending`** (`GanEditModerationDecision`); it does **not** auto-**`reject`**. **`rejected`** is applied via **`/admin/triage`**. Patches can be **`pending`** (blacklist, large price/location deltas, invalid hours/phone, rate limits, low reputation, and many “reason” signals) or **`approved`** when the user is trusted (e.g. enough approved edits or trusted OAuth provider) and no hard flags fired. Auto-approved edits materialize to **`ganim_v2`** immediately; pending rows wait for triage (or the background processor for some paths).
+- **Risk**: Trusted cohorts still auto-approve low-friction edits; triage throughput and policy tuning remain important for abuse and data quality.
 - **Owner**: Product + Eng
 - **Status**: Open
 
 ### C3) Materialization dependency is opaque to users
-- **Current state**: User edits/reviews flow through `user_inputs` and depend on processor materialization.
-- **Risk**: User sees "saved" but public data may not reflect it immediately.
+- **Current state**: Submissions land in **`user_inputs`**. **Auto-approved** edits are written to **`ganim_v2`** immediately in `POST /api/ganim/edit`. **Triage-approved** reviews upsert **`confirmed_reviews`** in `POST /api/admin/triage/decision`. Other approved rows (and anything the API does not fast-path) still rely on **`scripts/user_inputs/process_user_inputs.py`** (or equivalent) to show up consistently everywhere.
+- **Risk**: Users can still misunderstand “saved” vs “visible on the map / in averages” for **pending** rows or paths that only the worker handles.
 - **Owner**: Eng
 - **Status**: Open
 
@@ -59,12 +61,12 @@ This document captures the current product audit and proposed fixes so we can it
 - No lifecycle loop (saved search, alerts for updates/vacancy/reviews).
 
 ### Trust and Quality
-- No admin moderation triage surface.
+- Admin triage exists (`/admin/triage`); throughput, SLA, and reviewer tooling still thin.
 - Limited review credibility signals and freshness/provenance transparency.
 - Search behavior still brittle for real-world messy queries.
 
 ### Product Management Infrastructure
-- No clear product analytics instrumentation for funnel diagnosis.
+- Telemetry exists (`telemetry_events`, unlock events); dashboard / weekly review discipline still light.
 - Guest-restriction messaging can be clearer and more value-oriented.
 - Multilingual strategy not fully explicit in UX behavior.
 
@@ -91,23 +93,17 @@ The key challenge is a classic cold-start marketplace problem:
 ## 1) Real Approval System (Moderation Engine)
 
 ### Phase 1: Automated Guardrails (fastest path)
-- Add sanity checks in approval logic:
-  - Regex blacklist for abusive/prohibited terms.
-  - Diff thresholds (e.g., large price/location jumps -> pending review).
-  - Reputation gating (trusted contributors can auto-approve low-risk edits).
-- Outcome: immediate risk reduction with low implementation complexity.
+- **Shipped (edits):** blacklist, directional price/location/staff-ratio checks, hours/phone/age guards, rate limits, and reputation/OAuth trust gating in `validation-engine.ts` + `config/moderation.json`.
+- **Still useful:** extend the same ideas to other input types, tune thresholds from data, and tighten “trusted” definitions if abuse appears.
 
 ### Phase 2: Shadow Materialization UX
 - On submit, show change as **Pending Verification** to submitting user.
-- Public data remains unchanged until approved/materialized.
+- Public data remains unchanged until approved/materialized (**product goal**; today, **auto-approved** edits already patch **`ganim_v2`** immediately—see **C3**).
 - Outcome: honest user feedback loop; less confusion about "saved but not visible".
 
 ### Phase 3: Lightweight Admin Triage
-- Create simple `/admin/triage`:
-  - Query pending submissions.
-  - Show Original vs New values, user id, timestamp.
-  - Approve / Reject actions.
-- Outcome: human override and operational moderation without heavy tooling.
+- **Shipped:** `/admin/triage` plus `POST /api/admin/triage/decision` (see [docs/database.md](docs/database.md)).
+- **Remaining:** richer diff/reviewer tooling, SLAs, and throughput workflows.
 
 ## 2) Solving Give-to-Get Catch-22 (Soft Gate Model)
 
@@ -117,7 +113,7 @@ Allow parents to contribute via **data**, **effort**, or **referrals**.
 | --- | --- | --- |
 | Experienced Parent | Write a high-quality review | Full access for a period (e.g. 1 year) |
 | First-Time Parent | Invite a veteran parent who contributes | Access unlock after qualifying action |
-| First-Time Parent | Verify micro-tasks (phone/hours/status) | Time-based day pass |
+| First-Time Parent | Verify micro-tasks (phone/hours/status) | Time-boxed **`full_access`** after N tasks (`grantFullAccess` + `ENTITLEMENT_BOUNTY_FULL_ACCESS_DAYS`; same type as review unlock—not a separate DB `day_pass`) |
 | First-Time Parent | Complete onboarding profile (age, area, budget) | Limited review access (quota-based) |
 
 This preserves growth while protecting contribution economics.
@@ -126,21 +122,15 @@ This preserves growth while protecting contribution economics.
 
 ## Immediate Implementation Sequence (Recommended)
 
+**Note:** Steps A–B below are largely implemented in code and migrations; this sequence remains as the original plan and backlog anchor (referral loop still open).
+
 ### Step A: Introduce Pending Status in `user_inputs`
-- Add `status` column (`pending` default; `approved`/`rejected` lifecycle).
-- Ensure public read paths only use approved/materialized records.
-- Make pending state explicit in UI.
+- **Done:** `status` lifecycle on `user_inputs`; public review reads use **`confirmed_reviews`**; edits use moderation + triage/processor as described in [docs/database.md](docs/database.md).
+- **Remaining:** keep pending/rejected UX and copy consistent everywhere submissions surface.
 
 ### Step B: Replace hard login gate with capability gate
-- Replace `canViewReviews = !!user` with capability model, e.g.:
-  - `has_contributed`
-  - `has_referral_unlock`
-  - `is_admin`
-  - `has_day_pass`
-- If locked, show contribution modal with multiple unlock options:
-  1. I have experience -> write review.
-  2. First-time parent -> complete verification bounty.
-  3. Invite trusted parent -> referral path.
+- **Done (feature-flagged):** entitlements + `FF_SOFT_GATE` per [GIVE_TO_GET_ACCESS_MODEL.md](GIVE_TO_GET_ACCESS_MODEL.md); unlock modal paths (review / bounty / onboarding) without referral.
+- **Remaining:** referral-based unlock; clearer guest messaging; economics/copy passes.
 
 ### Step C: Launch basic referral loop
 - Add `referral_codes` and referral attribution flow.
@@ -151,16 +141,18 @@ This preserves growth while protecting contribution economics.
 
 ## Suggested Data Model Additions
 
-### `user_inputs` (extend)
-- `status`: `pending | approved | rejected`
-- `moderation_reason`: nullable text
-- `risk_score`: nullable numeric
-- `approved_by`: nullable user id
-- `approved_at`: nullable timestamp
+**Shipped today:** `user_inputs` includes **`status`**, **`moderation_reason`**, **`reviewed_at`**, **`reviewed_by`** (see migration `20260311132000_user_inputs_moderation_fields.sql` and related status migrations). The bullets below are **original target / backlog** naming where it still differs (e.g. no `risk_score` column in migrations yet).
 
-### `user_access_entitlements` (new)
+### `user_inputs` (extend — target vs shipped)
+- `status`: `pending | approved | rejected` — **shipped**
+- `moderation_reason`: nullable text — **shipped** (edit path stores reason codes here; no separate `risk_score` column yet)
+- `risk_score`: nullable numeric — **not in DB** (future if you want structured scoring)
+- `reviewed_by`: nullable user id — **shipped** (Part A of [SPEC_ENTITLEMENTS_AND_MODERATION.md](SPEC_ENTITLEMENTS_AND_MODERATION.md) used aspirational `approved_by` / `approved_at`; production uses **`reviewed_*`**)
+- `reviewed_at`: timestamptz — **shipped**
+
+### `user_access_entitlements` (shipped — `day_pass` type not used)
 - `user_id`
-- `entitlement_type` (`full_access`, `day_pass`, `review_quota`)
+- `entitlement_type` (`full_access`, `review_quota` in DB; `day_pass` was design-only)
 - `source` (`review`, `referral`, `bounty`, `onboarding`, `admin`)
 - `starts_at`, `expires_at`
 - `quota_remaining` (nullable)
@@ -213,14 +205,12 @@ This preserves growth while protecting contribution economics.
 ## Next Milestone Proposal
 
 ### Milestone 1 (2 weeks)
-- Add pending/approved states + moderation guardrails.
-- Add pending UX badge and user feedback.
-- Ship basic admin triage page.
+- **Largely done:** pending/approved on `user_inputs`, moderation guardrails for edits, `/admin/triage`.
+- **Still open:** pending UX consistency everywhere; reviewer tooling depth.
 
 ### Milestone 2 (2-3 weeks)
-- Introduce entitlement model and soft gate modal.
-- Add verification bounty flow.
-- Add referral code generation + attribution.
+- **Largely done:** entitlement model, soft gate, bounty + onboarding unlock APIs/UI.
+- **Still open:** referral code generation + attribution.
 
 ### Milestone 3 (2 weeks)
 - Add instrumentation dashboard and cohort analysis.

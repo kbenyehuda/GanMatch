@@ -2,6 +2,21 @@
 
 This document defines the access economics for review visibility.
 
+**Doc map:** [docs/README.md](docs/README.md) · **Non-normative target/backlog:** [SPEC_ENTITLEMENTS_AND_MODERATION.md](SPEC_ENTITLEMENTS_AND_MODERATION.md) (read its top warning) · **HTTP + DB flow detail:** [docs/database.md](docs/database.md)
+
+## Master switch: `FF_SOFT_GATE`
+
+Implemented in `src/lib/env/server.ts` and enforced in `GET /api/entitlements/me`, `GET /api/reviews`, unlock routes, and parts of triage/edit flows.
+
+| `FF_SOFT_GATE` | Behavior |
+|----------------|----------|
+| **`false`** (default in `.env.example`) | Any **logged-in** user is treated as able to view reviews: `/api/entitlements/me` returns `can_view_reviews: true`, and `GET /api/reviews` does **not** check entitlements or consume quota. **`has_full_access` and `review_quota_remaining` stay ledger-accurate** (often false / 0) even though reads are open—UI and clients should treat **`can_view_reviews`** as the read gate when the soft gate is off. Unlock UI flags may still be returned for display, but **bounty** and **onboarding** unlock endpoints return 403 (`Bounty unlock disabled` / `Onboarding unlock disabled`). |
+| **`true`** | Entitlements apply: `getAccessSnapshot()` in `src/lib/entitlements/service.ts` reads `user_access_entitlements`. `GET /api/reviews` returns 403 if the user has no access. **Quota:** only users who **do not** have active **`full_access`** but **do** have **`review_quota` remaining** pay one unit per successful fetch (`consumeOneReviewQuota` in `GET /api/reviews`). Users with full access do not consume quota on read. Bounty/onboarding POST unlock routes work only if their sub-flags (`FF_BOUNTY_UNLOCK`, `FF_ONBOARDING_UNLOCK`) are also on. |
+
+Sub-flags (all require **`FF_SOFT_GATE=true`** for the unlock POST routes): `FF_BOUNTY_UNLOCK`, `FF_ONBOARDING_UNLOCK`, `FF_REFERRAL_UNLOCK` (exposed to the client for UI only; **no referral grant API**—turning it on without product support can mislead users).
+
+**Implementation note:** In `src/lib/env/server.ts`, `FF_ONBOARDING_UNLOCK` is **on by default when the variable is unset** (unlike the other boolean flags, which default to off). To disable onboarding unlock in code terms, set `FF_ONBOARDING_UNLOCK=false` explicitly.
+
 Working name:
 - Product name: **Give-to-Get**
 - Technical name: **Entitlement Soft Gate**
@@ -10,12 +25,18 @@ Working name:
 
 | Path | Who | Give (Action) | Validation / Trigger | Access Granted | Default Config | Status |
 |---|---|---|---|---|---|---|
-| Review contribution | Experienced parent | Submit a quality review | Admin approves `user_inputs` row (`status=approved`, `input_type=review`) | `full_access` | `ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS=365` | Implemented |
-| Bounty | First-time parent | Complete verification micro-tasks | `task_keys` submitted to bounty unlock endpoint and pass key/count checks | `full_access` | `ENTITLEMENT_BOUNTY_FULL_ACCESS_DAYS=365`, `ENTITLEMENT_BOUNTY_REQUIRED_TASKS=3` | Implemented |
-| Onboarding | First-time parent | Submit onboarding profile | Required fields present: `city`, `number_of_kids`, `kids_ages`; consistency check `kids_ages.length == number_of_kids` | `review_quota` | `ENTITLEMENT_ONBOARDING_REVIEW_QUOTA=3` | Implemented |
+| Review contribution | Experienced parent | Submit a review | `POST /api/reviews` inserts `user_inputs` (`input_type=review`, `status=pending`). If **`FF_SOFT_GATE`** and user lacks `full_access`, best-effort **`full_access`** for `ENTITLEMENT_SUBMIT_TEMP_FULL_ACCESS_DAYS` (default **1**) so they can read reviews while pending. | Temporary `full_access` on submit (when gate on) | `ENTITLEMENT_SUBMIT_TEMP_FULL_ACCESS_DAYS=1` | Implemented |
+| Review approved | Experienced parent | Triage approves review | `POST /api/admin/triage/decision` approves row; upserts **`confirmed_reviews`**; if **`FF_SOFT_GATE`**, `grantFullAccess` with `source=review` | `full_access` | `ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS=365` | Implemented |
+| Edit contribution | Contributor | Submit an edit | `POST /api/ganim/edit` inserts **`user_inputs`** (`input_type=edit`, `status` = auto-moderation result). If **`FF_SOFT_GATE`** and the user does not already have **`full_access`** (`!hasFullAccess` in snapshot), best-effort **`full_access`** for **`ENTITLEMENT_SUBMIT_TEMP_FULL_ACCESS_DAYS`** with **`source=bounty`** (telemetry path `bounty`). **No insert** if the patch is a no-op (`skipInsert` / “no meaningful change”)—then no ledger row and no entitlement side effects. | Temporary `full_access` on submit when gate on (same env as review submit) | `ENTITLEMENT_SUBMIT_TEMP_FULL_ACCESS_DAYS=1` | Implemented |
+| Edit auto-approved | Contributor | Auto-moderation returns `approved` on submit | Same **`POST /api/ganim/edit`** request: updates **`ganim_v2`** immediately; if **`FF_SOFT_GATE`**, **`grantFullAccess`** with **`source=bounty`**, duration **`ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS`**, idempotent **`source_ref`** `{user_input_id}:approved`. | `full_access` | `ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS=365` | Implemented |
+| Edit approved (triage) | Contributor | Triage approves a **pending** edit | `POST /api/admin/triage/decision` for `input_type=edit`; **`ganim_v2`** is **not** updated here—**`process_user_inputs`** applies the patch; if **`FF_SOFT_GATE`**, `grantFullAccess` with **`source=bounty`** | `full_access` | `ENTITLEMENT_REVIEW_FULL_ACCESS_DAYS=365` | Implemented |
+| Bounty | First-time parent | Complete verification micro-tasks | `POST /api/entitlements/unlock/bounty` with `task_keys` ⊆ `{phone_verified,hours_verified,vacancy_verified}` and count ≥ required | `full_access` | `ENTITLEMENT_BOUNTY_FULL_ACCESS_DAYS=365`, `ENTITLEMENT_BOUNTY_REQUIRED_TASKS=3` | Implemented (needs **`FF_SOFT_GATE` + `FF_BOUNTY_UNLOCK`**) |
+| Onboarding | First-time parent | Submit onboarding profile | `POST /api/entitlements/unlock/onboarding` with valid profile payload | `review_quota` | `ENTITLEMENT_ONBOARDING_REVIEW_QUOTA=3` | Implemented (needs **`FF_SOFT_GATE` + `FF_ONBOARDING_UNLOCK`**) |
 | Referral | Community helper | Invite user who completes qualifying action | Referral qualification pipeline | entitlement for inviter (typically `full_access`) | future config | Placeholder |
-| Admin auto grant | Admin user | Email exists in `ADMIN_EMAILS` and user authenticates | API auto-upserts entitlement + periodic admin backfill sync | `full_access` (no expiry) | `ADMIN_EMAILS` | Implemented |
+| Admin auto grant | Admin user | Email in `ADMIN_EMAILS` | `ensureAdminFullAccessForUser` on `GET /api/entitlements/me`, triage, reviews, etc.; `GET /api/admin/me` may run throttled `backfillAdminFullAccessFromConfig` (~5 min) | `full_access` (no expiry) | `ADMIN_EMAILS` | Implemented |
 | Admin override | Admin / ops | Manual DB insert/update in entitlements table | Manual action in Supabase | `full_access` or `review_quota` | manual values | Available |
+
+**Edits vs map data:** `POST /api/ganim/edit` patches **`ganim_v2` immediately** only when auto-moderation returns **`approved`** on submit. If the edit was **`pending`** and is later **`approved`** in triage, **`ganim_v2`** is updated by the background **`process_user_inputs`** pipeline (triage does not merge edit fields). **Entitlements** for edits (temp submit, auto-approve grant, triage approve grant) are separate from that map rule—see the matrix rows above. See [docs/database.md](docs/database.md).
 
 ## Entitlement Types
 
@@ -33,6 +54,10 @@ Related tables:
 - `public.user_onboarding_profiles`
 - `public.user_bounty_completions`
 - `public.telemetry_events`
+
+Other tables used by the gate UX (not entitlement ledger):
+- `public.user_rejection_notice_windows` — short-lived UI when a moderator rejects a user’s submission (`GanDetail`).
+- `public.review_contact_messages` — outbound “contact reviewer” relay when that feature is enabled (`CONTACT_REVIEWER_ENABLED`).
 
 ## Read This Like a Human
 

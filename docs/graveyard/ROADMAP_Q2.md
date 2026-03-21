@@ -2,6 +2,8 @@
 
 Execution roadmap for resolving critical trust/safety risks while preserving growth in a cold-start marketplace.
 
+**Archived:** Moved from repo root on 2026-03-21. Several milestones overlap work that later shipped (e.g. `user_inputs` status, `/admin/triage`, entitlements, bounty, telemetry). Kept here so referral/analytics/dashboard items are not lost.
+
 ## Goals
 
 - Restore trust: no unreviewed high-risk childcare data changes.
@@ -156,4 +158,3 @@ Instrumentation and optimization.
 - Monday: queue health + SLA + blockers.
 - Wednesday: funnel snapshot and unlock path performance.
 - Friday: policy/threshold decisions and next-week scope lock.
-

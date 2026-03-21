@@ -2,6 +2,8 @@
 """
 Apply re-geocoded coordinates to Supabase (ganim.location).
 
+Not part of the GanMatch app runtime—optional operator script only.
+
 Reads input produced by `regeocode_ganim_dryrun.py` (xlsx or csv) and updates
 `public.ganim.location` to the new POINT(lon lat) for rows with status=ok.
 

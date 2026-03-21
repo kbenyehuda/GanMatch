@@ -2,6 +2,8 @@
 """
 Dry-run re-geocoding for ganim.
 
+Not part of the GanMatch app runtime—optional operator script only.
+
 - Reads credentials from repo root `.env.local`
 - Fetches ganim (id, name, address, city, lat/lon) via Supabase RPC `get_all_ganim`
 - For rows with an address, forward-geocodes using Mapbox
