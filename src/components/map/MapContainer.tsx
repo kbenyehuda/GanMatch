@@ -18,6 +18,36 @@ type ClusterOrPoint =
   | Supercluster.ClusterFeature<Supercluster.AnyProps>
   | Supercluster.PointFeature<GanPointProps>;
 
+function getGanPinConfig(gan: Gan): { color: string; emoji: string } {
+  switch (gan.category) {
+    case "MAON_SYMBOL":
+      return { color: "#3B82F6", emoji: "🏛️" };
+    case "MISHPACHTON": {
+      const aff = gan.mishpachton_affiliation ?? null;
+      if (aff === "TAMAT") return { color: "#3B82F6", emoji: "🏠" };
+      if (aff === "PRIVATE") return { color: "#F97316", emoji: "🏠" };
+      return { color: "#6B7280", emoji: "🏠" };
+    }
+    case "PRIVATE_GAN": {
+      const sup = gan.private_supervision ?? null;
+      if (sup === "SUPERVISED") return { color: "#22C55E", emoji: "🧩" };
+      if (sup === "NOT_SUPERVISED") return { color: "#F97316", emoji: "🧩" };
+      return { color: "#6B7280", emoji: "🧩" };
+    }
+    case "MUNICIPAL_GAN":
+      return { color: "#3B82F6", emoji: "🏙️" };
+    case "TZAHARON_MUNICIPAL":
+      return { color: "#3B82F6", emoji: "🌆" };
+    case "TZAHARON_PRIVATE_SUPERVISED":
+      return { color: "#22C55E", emoji: "🚐" };
+    case "TZAHARON_PRIVATE_UNSUPERVISED":
+      return { color: "#F97316", emoji: "🚐" };
+    case "UNSPECIFIED":
+    default:
+      return { color: "#6B7280", emoji: "📍" };
+  }
+}
+
 function isClusterFeature(f: ClusterOrPoint): f is Supercluster.ClusterFeature<Supercluster.AnyProps> {
   return (f as any)?.properties?.cluster === true;
 }
@@ -469,12 +499,18 @@ export function MapContainer({
               }}
               className="cursor-pointer"
             >
-              <div
-                title={sel.name_he}
-                className="flex items-center justify-center rounded-full bg-gan-primary text-white ring-4 ring-gan-primary/40 shadow-lg scale-125"
-              >
-                <MapPin className="w-5 h-5" />
-              </div>
+              {(() => {
+                const { color, emoji } = getGanPinConfig(sel);
+                return (
+                  <div
+                    title={sel.name_he}
+                    className="flex items-center justify-center rounded-full text-base shadow-lg scale-125 border-2 border-white"
+                    style={{ backgroundColor: color, width: "2rem", height: "2rem", outline: `3px solid ${color}60`, outlineOffset: "2px" }}
+                  >
+                    {emoji}
+                  </div>
+                );
+              })()}
             </Marker>
           );
         })()}
@@ -514,6 +550,8 @@ export function MapContainer({
         }
         const gan = cluster.properties?.gan;
         if (!gan) return null;
+        const { color, emoji } = getGanPinConfig(gan);
+        const isSelected = selectedGanId === gan.id;
         return (
           <Marker
             key={gan.id}
@@ -528,13 +566,16 @@ export function MapContainer({
           >
             <div
               title={gan.name_he}
-              className={`flex items-center justify-center rounded-full transition-all duration-150 hover:scale-110 ${
-                selectedGanId === gan.id
-                  ? "bg-gan-primary text-white ring-4 ring-gan-primary/40 shadow-lg scale-125"
-                  : "bg-gan-secondary text-white"
-              }`}
+              className={`flex items-center justify-center rounded-full text-base border-2 border-white shadow-md transition-all duration-150 hover:scale-110 ${isSelected ? "scale-125 shadow-lg" : ""}`}
+              style={{
+                backgroundColor: color,
+                width: "2rem",
+                height: "2rem",
+                outline: isSelected ? `3px solid ${color}60` : undefined,
+                outlineOffset: isSelected ? "2px" : undefined,
+              }}
             >
-              <MapPin className="w-5 h-5" />
+              {emoji}
             </div>
           </Marker>
         );

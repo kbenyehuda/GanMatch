@@ -1802,12 +1802,26 @@ def main() -> int:
                             ms = (matched.get("maon_symbol_code") or "").strip()
                             matched_existing_maon_symbol_code = ms or None
 
-                # Determine what we'll write:
-                # - If we matched an existing MAON_SYMBOL row: keep it MAON_SYMBOL and preserve its primary code
-                # - Else if we have semel: MAON_SYMBOL with that code
-                # - Else: UNSPECIFIED with no maon_symbol_code (since MAON_SYMBOL requires it)
-                write_category = "MAON_SYMBOL" if (matched_existing_maon_symbol_code or semel) else "UNSPECIFIED"
-                write_maon_symbol_code = matched_existing_maon_symbol_code or (semel or None)
+                # Determine category from maon_type_code:
+                #   0 (or unrecognized) → MAON_SYMBOL
+                #   1                  → MISHPACHTON (affiliation = TAMAT, gov-supervised)
+                #   2                  → TZAHARON_MUNICIPAL
+                # All 3 types carry their semel as maon_symbol_code.
+                # Fuzzy dedup (matched_existing_maon_symbol_code) only applies to type 0.
+                _type_code = str(maon_type_code).strip() if maon_type_code is not None else "0"
+                if _type_code == "1":
+                    write_category = "MISHPACHTON"
+                    write_mishpachton_affiliation: str | None = "TAMAT"
+                    write_maon_symbol_code = semel or None
+                elif _type_code == "2":
+                    write_category = "TZAHARON_MUNICIPAL"
+                    write_mishpachton_affiliation = None
+                    write_maon_symbol_code = semel or None
+                else:
+                    # type 0 or unrecognized: original MAON_SYMBOL logic with fuzzy dedup
+                    write_category = "MAON_SYMBOL" if (matched_existing_maon_symbol_code or semel) else "UNSPECIFIED"
+                    write_mishpachton_affiliation = None
+                    write_maon_symbol_code = matched_existing_maon_symbol_code or (semel or None)
 
                 # If the dataset already includes coordinates, prefer those (no Mapbox cost).
                 gov_lat = rec.get("lat") or rec.get("LAT")
@@ -2248,6 +2262,7 @@ def main() -> int:
                                 "p_city": city,
                                 "p_category": write_category,
                                 "p_maon_symbol_code": p_maon_symbol_code,
+                                "p_mishpachton_affiliation": write_mishpachton_affiliation,
                                 "p_is_verified": True,
                                 "p_metadata": metadata,
                                 "p_is_fallback": bool(is_fallback),

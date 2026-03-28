@@ -17,6 +17,12 @@ export function formatGanCategoryHe(category: Gan["category"]): string {
       return "משפחתון";
     case "MUNICIPAL_GAN":
       return "גן עירוני";
+    case "TZAHARON_MUNICIPAL":
+      return "גן + צהרון עירוני";
+    case "TZAHARON_PRIVATE_SUPERVISED":
+      return "צהרון פרטי בפיקוח";
+    case "TZAHARON_PRIVATE_UNSUPERVISED":
+      return "צהרון פרטי ללא פיקוח";
     case "UNSPECIFIED":
     default:
       return "לא ידוע";
@@ -43,6 +49,12 @@ export function formatGanCategoryAddonLabelHe(gan: Gan): { label: string; value:
       const text = v === "TTAH" ? 'טט״ח' : v === "TAH" ? 'ט״ח' : v === "HOVA" ? "חובה" : "לא ידוע";
       return { label: "שכבה", value: text };
     }
+    case "TZAHARON_MUNICIPAL":
+      return gan.maon_symbol_code ? { label: "סמל", value: gan.maon_symbol_code } : null;
+    case "TZAHARON_PRIVATE_SUPERVISED":
+      return { label: "פיקוח", value: "🛡️ מפוקח" };
+    case "TZAHARON_PRIVATE_UNSUPERVISED":
+      return { label: "פיקוח", value: "ללא פיקוח" };
     default:
       return null;
   }

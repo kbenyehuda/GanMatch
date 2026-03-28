@@ -113,7 +113,7 @@ File: `src/components/map/MapContainer.tsx`
 | `PRIVATE_GAN` (SUPERVISED) | 🧩 | #22C55E green |
 | `PRIVATE_GAN` (NOT_SUPERVISED) | 🧩 | #F97316 orange |
 | `MUNICIPAL_GAN` | 🏙️ | #3B82F6 blue |
-| `TZAHARON_MUNICIPAL` | 🌆 | #3B82F6 blue |
+| `TZAHARON_MUNICIPAL` (גן + צהרון) | 🌆 | #3B82F6 blue |
 | `TZAHARON_PRIVATE_SUPERVISED` | 🚐 | #22C55E green |
 | `TZAHARON_PRIVATE_UNSUPERVISED` | 🚐 | #F97316 orange |
 | `UNSPECIFIED` | 📍 | #6B7280 gray |

@@ -166,7 +166,7 @@ All rows imported from `data.gov.il` are currently stored as `MAON_SYMBOL` regar
 
 | New `category` value | Hebrew label | גיל | Color | How rows get in |
 |---|---|---|---|---|
-| `TZAHARON_MUNICIPAL` | צהרון עירוני | +3 | 🔵 Blue | Backfill from `maon_type_code = 2` + future gov import |
+| `TZAHARON_MUNICIPAL` | גן + צהרון עירוני | +3 | 🔵 Blue | Backfill from `maon_type_code = 2` + future gov import |
 | `TZAHARON_PRIVATE_SUPERVISED` | צהרון פרטי בפיקוח | +3 | 🟢 Green | Community-contributed (suggest a gan) |
 | `TZAHARON_PRIVATE_UNSUPERVISED` | צהרון פרטי ללא פיקוח | +3 | 🟠 Orange | Community-contributed (suggest a gan) |
 

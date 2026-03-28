@@ -3,7 +3,10 @@ export type GanCategory =
   | "MAON_SYMBOL"
   | "PRIVATE_GAN"
   | "MISHPACHTON"
-  | "MUNICIPAL_GAN";
+  | "MUNICIPAL_GAN"
+  | "TZAHARON_MUNICIPAL"
+  | "TZAHARON_PRIVATE_SUPERVISED"
+  | "TZAHARON_PRIVATE_UNSUPERVISED";
 
 export type PrivateSupervisionStatus = "UNKNOWN" | "SUPERVISED" | "NOT_SUPERVISED";
 export type MishpachtonAffiliation = "UNKNOWN" | "PRIVATE" | "TAMAT";
