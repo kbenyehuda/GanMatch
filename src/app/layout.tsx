@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Heebo } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
+import { getSiteBaseUrl } from "@/lib/site-url";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -14,6 +15,7 @@ const heebo = Heebo({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteBaseUrl()),
   title: "GanMatch | גן מתאים - Find Your Daycare",
   description:
     "Map-centric discovery platform for Israeli daycares (ages 0-3). Find licensed daycares based on location and community reviews.",

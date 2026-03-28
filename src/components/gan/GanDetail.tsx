@@ -14,6 +14,8 @@ import {
   MessageCircle,
   Plus,
   Trash2,
+  Link2,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,6 +117,7 @@ export function GanDetail({
   const REJECTED_NOTICE_DURATION_MS = 24 * 60 * 60 * 1000;
   const { user, session } = useSession();
   const [showAvgFacets, setShowAvgFacets] = useState(false);
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reviewsLoading, setReviewsLoading] = useState(false);
@@ -189,6 +192,20 @@ export function GanDetail({
       return d.toLocaleDateString("he-IL", { year: "numeric", month: "2-digit", day: "2-digit" });
     };
   }, []);
+
+  const copyGanShareLink = useCallback(async () => {
+    const path = `/gan/${gan.id}`;
+    // Use current tab origin so Vercel Preview / staging copies the right host (not site-url.ts).
+    const url =
+      typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareLinkCopied(true);
+      window.setTimeout(() => setShareLinkCopied(false), 2000);
+    } catch {
+      /* clipboard may be denied */
+    }
+  }, [gan.id]);
 
   const phones = Array.isArray(gan.metadata?.phone)
     ? gan.metadata.phone
@@ -1243,6 +1260,20 @@ export function GanDetail({
           </CardTitle>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            type="button"
+            onClick={copyGanShareLink}
+            aria-label="העתק קישור לגן"
+            title="העתק קישור לשיתוף"
+          >
+            {shareLinkCopied ? (
+              <Check className="w-5 h-5 text-green-600" aria-hidden />
+            ) : (
+              <Link2 className="w-5 h-5" aria-hidden />
+            )}
+          </Button>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
             <X className="w-5 h-5" />
           </Button>

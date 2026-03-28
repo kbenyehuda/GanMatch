@@ -28,6 +28,10 @@ export function applyFilters(
       if (!pointInBounds(g.lon, g.lat, bounds) && g.id !== selectedGanId) return false;
     }
 
+    // Keep the focused gan on the map and in the list even when attribute filters would hide it
+    // (e.g. share link + user tightens category / age / rating).
+    if (selectedGanId && g.id === selectedGanId) return true;
+
     // Age track filter — only applies when exactly one track is selected
     if (filters.age_track != null && filters.age_track.length === 1) {
       const track = filters.age_track[0];
