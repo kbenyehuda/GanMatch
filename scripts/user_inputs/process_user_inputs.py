@@ -53,7 +53,8 @@ VALID_VACANCY_STATUS = frozenset({"Available", "Limited", "Full", "UNKNOWN"})
 def sanitize_category_subfields(payload: dict[str, Any], category: str | None) -> None:
     """Enforce ganim_v2_category_subfields_check: clear subfields that don't apply to category."""
     cat = (category or "").strip().upper() or "UNSPECIFIED"
-    if cat != "MAON_SYMBOL":
+    allows_maon_symbol = cat in {"MAON_SYMBOL", "MISHPACHTON", "TZAHARON_MUNICIPAL"}
+    if not allows_maon_symbol:
         payload["maon_symbol_code"] = None
     if cat != "PRIVATE_GAN":
         payload["private_supervision"] = None

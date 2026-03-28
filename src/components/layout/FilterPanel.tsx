@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { Filter, ChevronDown, ChevronUp, Search, X } from "lucide-react";
-import type { GanFilters } from "@/types/filters";
-import type { FridaySchedule, MealType, KosherStatus, SpokenLanguage, VacancyStatus } from "@/types/ganim";
+import type { GanFilters, AgeTrack } from "@/types/filters";
+import type { FridaySchedule, GanCategory, MealType, KosherStatus, SpokenLanguage, VacancyStatus } from "@/types/ganim";
 import type { Gan } from "@/types/ganim";
 import type { SearchSuggestion } from "@/types/search";
 
@@ -45,6 +45,22 @@ const LANG_OPTS: { value: SpokenLanguage; label: string }[] = [
   { value: "ENGLISH", label: "אנגלית" },
   { value: "RUSSIAN", label: "רוסית" },
   { value: "ARABIC", label: "ערבית" },
+];
+
+const CATEGORY_OPTS: { value: GanCategory; emoji: string; label: string }[] = [
+  { value: "MAON_SYMBOL", emoji: "🏛️", label: "מעון סמל" },
+  { value: "MISHPACHTON", emoji: "🏠", label: "משפחתון" },
+  { value: "PRIVATE_GAN", emoji: "🧩", label: "גן פרטי" },
+  { value: "MUNICIPAL_GAN", emoji: "🏙️", label: "גן עירוני" },
+  { value: "TZAHARON_MUNICIPAL", emoji: "🌆", label: "גן + צהרון עירוני" },
+  { value: "TZAHARON_PRIVATE_SUPERVISED", emoji: "🚐", label: "צהרון פרטי בפיקוח" },
+  { value: "TZAHARON_PRIVATE_UNSUPERVISED", emoji: "🚐", label: "צהרון פרטי ללא פיקוח" },
+  { value: "UNSPECIFIED", emoji: "📍", label: "לא ידוע" },
+];
+
+const AGE_TRACKS: { value: AgeTrack; label: string }[] = [
+  { value: "0-3", label: "0–3" },
+  { value: "3+", label: "3+" },
 ];
 
 export function FilterPanel({
@@ -210,6 +226,40 @@ export function FilterPanel({
         </div>
       </div>
 
+      {/* Age toggle — always visible */}
+      <div className="px-4 py-2 flex items-center gap-3 border-t border-gan-accent/20">
+        <span className="text-xs font-medium text-gray-600 font-hebrew shrink-0">גיל:</span>
+        <div className="flex rounded-lg overflow-hidden border border-gan-accent/50 text-sm font-hebrew font-semibold">
+          {AGE_TRACKS.map(({ value, label }, i) => {
+            const activeTrack = filters.age_track ?? ["0-3", "3+"];
+            const isActive = activeTrack.includes(value);
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  const current = filters.age_track ?? ["0-3", "3+"];
+                  const next = current.includes(value)
+                    ? current.filter((t) => t !== value)
+                    : [...current, value];
+                  // null means both selected (default — no filter)
+                  update({ age_track: next.length === 2 ? null : next.length === 0 ? ["0-3", "3+"] : next });
+                }}
+                className={[
+                  "px-4 py-1.5 transition-colors",
+                  i > 0 ? "border-s border-gan-accent/50" : "",
+                  isActive
+                    ? "bg-gan-primary text-white"
+                    : "bg-white text-gray-500 hover:bg-gan-muted/30",
+                ].join(" ")}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -244,6 +294,37 @@ export function FilterPanel({
               נקה סינון
             </button>
           )}
+
+          <div>
+            <label className="block text-xs text-gray-600 mb-1 font-hebrew">סוג גן</label>
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORY_OPTS.map((o) => {
+                const selected = (filters.categories ?? []).includes(o.value);
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => {
+                      const curr = filters.categories ?? [];
+                      const next = selected
+                        ? curr.filter((v) => v !== o.value)
+                        : [...curr, o.value];
+                      update({ categories: next.length ? next : null });
+                    }}
+                    className={[
+                      "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-hebrew border transition-colors",
+                      selected
+                        ? "bg-gan-primary text-white border-gan-primary"
+                        : "bg-white text-gray-600 border-gan-accent/50 hover:border-gan-primary/50",
+                    ].join(" ")}
+                  >
+                    <span>{o.emoji}</span>
+                    <span>{o.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div>
             <label className="block text-xs text-gray-600 mb-1 font-hebrew">ימי שישי</label>

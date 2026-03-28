@@ -534,7 +534,7 @@ export function MapContainer({
               onClick={(e) => {
                 e.originalEvent.stopPropagation();
                 zoomToCluster(cluster, { lon, lat });
-                const ganList = getClusterGanim(cluster, 50);
+                const ganList = getClusterGanim(cluster, count);
                 if (ganList.length > 0) onSelectCluster?.(ganList);
               }}
               className="cursor-pointer"

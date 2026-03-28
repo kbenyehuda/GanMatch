@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { loadModerationConfig } from "@/lib/moderation/moderation-config";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
+import { formatGanCategoryHe } from "@/lib/gan-display";
+import type { Gan } from "@/types/ganim";
 
 function parseLimit(raw: string | null, fallback = 100): number {
   const n = Number(raw);
@@ -14,6 +16,13 @@ const FIELD_LABELS: Record<string, string> = {
   address: "Address",
   city: "City",
   website_url: "Website",
+  category: "Gan type",
+  maon_symbol_code: "Symbol code (סמל)",
+  private_supervision: "Private gan — supervision",
+  mishpachton_affiliation: "Family daycare — affiliation",
+  municipal_grade: "Municipal gan — grade",
+  has_cctv: "CCTV",
+  cctv_streamed_online: "CCTV streamed online",
   operating_hours: "Operating hours",
   friday_schedule: "Friday schedule",
   vacancy_status: "Vacancy status",
@@ -35,8 +44,10 @@ const FIELD_LABELS: Record<string, string> = {
   chugim_types: "Chugim types",
   price_notes: "Price notes",
   neighborhood: "Neighborhood",
+  address_extra: "Address (extra line)",
   pikuach_ironi: "Municipal supervision",
-  suggested_type: "Suggested type",
+  cctv_access: "CCTV access",
+  suggested_type: "Suggested type (free text)",
   phone: "Phone",
   phone_whatsapp: "WhatsApp phone",
 };
@@ -61,6 +72,35 @@ function pretty(v: unknown): string {
   if (Array.isArray(v)) return v.join(", ");
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
+}
+
+function prettyField(field: string, v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (field === "category" && typeof v === "string") {
+    return formatGanCategoryHe(v as Gan["category"]);
+  }
+  if (field === "private_supervision" && typeof v === "string") {
+    if (v === "SUPERVISED") return "Supervised";
+    if (v === "NOT_SUPERVISED") return "Not supervised";
+    if (v === "UNKNOWN") return "Unknown";
+  }
+  if (field === "mishpachton_affiliation" && typeof v === "string") {
+    if (v === "TAMAT") return "Tamat (תמ״ת)";
+    if (v === "PRIVATE") return "Private";
+    if (v === "UNKNOWN") return "Unknown";
+  }
+  if (field === "municipal_grade" && typeof v === "string") {
+    if (v === "TTAH") return "TTAH (טט״ח)";
+    if (v === "TAH") return "TAH (ט״ח)";
+    if (v === "HOVA") return "Hova (חובה)";
+    if (v === "UNKNOWN") return "Unknown";
+  }
+  if (field === "cctv_access" && typeof v === "string") {
+    if (v === "none") return "None";
+    if (v === "online") return "Streamed online";
+    if (v === "exceptional") return "On-site only / exceptional";
+  }
+  return pretty(v);
 }
 
 function toNum(v: unknown): number | null {
@@ -246,7 +286,7 @@ function buildRequestedChanges(inputRow: any): Array<{ field: string; label: str
     out.push({
       field,
       label: FIELD_LABELS[field] ?? field,
-      value: pretty(value),
+      value: prettyField(field, value),
     });
   };
   for (const [k, v] of Object.entries(inputRow ?? {})) {
@@ -310,9 +350,9 @@ function buildDiffs(inputRow: any): Array<{ field: string; label: string; before
     }
     diffs.push({
       field: key,
-      label: FIELD_LABELS[key] ?? key,
-      before: pretty(beforeRaw),
-      after: pretty(afterRaw),
+      label: FIELD_LABELS[key] ?? key.replace(/_/g, " "),
+      before: prettyField(key, beforeRaw),
+      after: prettyField(key, afterRaw),
     });
   }
 
@@ -355,9 +395,13 @@ export async function GET(req: Request) {
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
+  const ganJoinFields =
+    "name_he,address,city,website_url,category,maon_symbol_code,private_supervision,mishpachton_affiliation,municipal_grade,has_cctv,cctv_streamed_online,operating_hours,friday_schedule,vacancy_status,has_mamad,has_outdoor_space,first_aid_trained,monthly_price_nis,min_age_months,max_age_months,meal_type,vegan_friendly,vegetarian_friendly,meat_served,allergy_friendly,kosher_status,kosher_certifier,staff_child_ratio,languages_spoken,chugim_types,price_notes,metadata";
   let query = supabaseAdmin
     .from("user_inputs")
-    .select("id,user_id,email,gan_id,input_type,status,moderation_reason,created_at,reviewed_at,address,city,website_url,operating_hours,friday_schedule,vacancy_status,has_mamad,has_outdoor_space,first_aid_trained,monthly_price_nis,min_age_months,max_age_months,meal_type,vegan_friendly,vegetarian_friendly,meat_served,allergy_friendly,kosher_status,kosher_certifier,staff_child_ratio,languages_spoken,chugim_types,price_notes,metadata,ganim_v2(name_he,address,city,website_url,operating_hours,friday_schedule,vacancy_status,has_mamad,has_outdoor_space,first_aid_trained,monthly_price_nis,min_age_months,max_age_months,meal_type,vegan_friendly,vegetarian_friendly,meat_served,allergy_friendly,kosher_status,kosher_certifier,staff_child_ratio,languages_spoken,chugim_types,price_notes,metadata)")
+    .select(
+      `id,user_id,email,gan_id,input_type,status,moderation_reason,created_at,reviewed_at,address,city,website_url,category,maon_symbol_code,private_supervision,mishpachton_affiliation,municipal_grade,has_cctv,cctv_streamed_online,operating_hours,friday_schedule,vacancy_status,has_mamad,has_outdoor_space,first_aid_trained,monthly_price_nis,min_age_months,max_age_months,meal_type,vegan_friendly,vegetarian_friendly,meat_served,allergy_friendly,kosher_status,kosher_certifier,staff_child_ratio,languages_spoken,chugim_types,price_notes,metadata,ganim_v2(${ganJoinFields})`
+    )
     .order("created_at", { ascending: false })
     .limit(limit);
   if (allowedStatus) {

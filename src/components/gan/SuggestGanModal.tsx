@@ -492,6 +492,9 @@ export function SuggestGanModal({
                 <option value="PRIVATE_GAN">גן פרטי</option>
                 <option value="MISHPACHTON">משפחתון</option>
                 <option value="MUNICIPAL_GAN">גן עירוני</option>
+                <option value="TZAHARON_MUNICIPAL">גן + צהרון עירוני</option>
+                <option value="TZAHARON_PRIVATE_SUPERVISED">צהרון פרטי בפיקוח</option>
+                <option value="TZAHARON_PRIVATE_UNSUPERVISED">צהרון פרטי ללא פיקוח</option>
                 <option value="OTHER">אחר (טקסט חופשי)</option>
               </select>
             </div>

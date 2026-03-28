@@ -21,18 +21,17 @@ export function getWhatsAppUrl(phone: string): string {
 
 /**
  * Returns true if this phone number should open WhatsApp.
- * 1. If metadata.phone_whatsapp exists and contains this number → WhatsApp
- * 2. If category is PRIVATE_GAN or MISHPACHTON (with PRIVATE) → assume WhatsApp
- * 3. Otherwise (MUNICIPAL_GAN, MAON_SYMBOL, etc.) → regular phone only
+ * 1. If metadata.phone_whatsapp is an array (including empty) → only listed numbers use WhatsApp
+ * 2. Else if category is PRIVATE_GAN or MISHPACHTON (with PRIVATE) → assume WhatsApp (legacy rows)
+ * 3. Otherwise → tel: only
  */
 export function isPhoneWhatsApp(gan: Gan, phone: string): boolean {
   const whatsappList = gan.metadata?.phone_whatsapp;
-  if (Array.isArray(whatsappList) && whatsappList.length > 0) {
+  if (Array.isArray(whatsappList)) {
     const norm = (p: string) => p.replace(/\D/g, "").slice(-9); // last 9 digits (Israeli mobile/landline)
     const phoneNorm = norm(phone);
     return whatsappList.some((w) => norm(w) === phoneNorm);
   }
-  // Infer from category: private = typically WhatsApp
   if (gan.category === "PRIVATE_GAN") return true;
   if (gan.category === "MISHPACHTON" && gan.mishpachton_affiliation === "PRIVATE") return true;
   return false;

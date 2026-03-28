@@ -200,7 +200,13 @@ export default function AdminTriagePage() {
                 </div>
               </div>
               <div className="px-2 py-1 rounded-full text-xs border bg-gray-50">
-                Changes: {item.diffs?.length ?? 0}
+                {(() => {
+                  const nd = item.diffs?.length ?? 0;
+                  const nr = item.requested_changes?.length ?? 0;
+                  if (nd > 0) return `Changes: ${nd}`;
+                  if (nr > 0) return `Submitted fields: ${nr} (no diff)`;
+                  return "Changes: 0";
+                })()}
               </div>
             </div>
 
@@ -236,15 +242,30 @@ export default function AdminTriagePage() {
               </div>
             </div>
 
-            <div className="rounded-lg border overflow-hidden">
-              <div className="grid grid-cols-12 bg-gray-100 text-xs font-semibold px-3 py-2">
+            {(item.diffs ?? []).length === 0 && (item.requested_changes ?? []).length > 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+                <span className="font-semibold">No before/after diff for this row.</span>{" "}
+                <span className="text-amber-900/90">
+                  Check &quot;All values in this submission&quot; below for what was sent. If this persists after deploy,
+                  the triage API may need additional columns on the query.
+                </span>
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border overflow-hidden" dir="ltr">
+              <div className="text-left text-xs text-gray-500 px-3 pt-2 pb-1">
+                Comparison reads left to right: previous value → proposed value.
+              </div>
+              <div className="grid grid-cols-12 bg-gray-100 text-xs font-semibold px-3 py-2 text-left">
                 <div className="col-span-4">Field</div>
-                <div className="col-span-4">Before</div>
-                <div className="col-span-4">After</div>
+                <div className="col-span-4">Before (current)</div>
+                <div className="col-span-4">After (proposed)</div>
               </div>
               {(item.diffs ?? []).length === 0 ? (
-                <div className="px-3 py-3 text-sm text-gray-600">
-                  No computed before/after diff detected.
+                <div className="px-3 py-3 text-sm text-gray-600 text-left">
+                  {(item.requested_changes ?? []).length === 0
+                    ? "No field changes are present on this submission."
+                    : "No differences found between the gan record and the submitted values (they may already match)."}
                 </div>
               ) : (
                 <div className="divide-y">
@@ -272,7 +293,7 @@ export default function AdminTriagePage() {
                     return (
                       <div
                         key={`${item.id}-${d.field}`}
-                        className={`grid grid-cols-12 gap-2 px-3 py-2 text-sm ${
+                        className={`grid grid-cols-12 gap-2 px-3 py-2 text-sm text-left ${
                           hasFailure ? "bg-rose-50" : "bg-white"
                         }`}
                         title={hasFailure ? hoverText : undefined}
@@ -343,19 +364,39 @@ export default function AdminTriagePage() {
             ) : null}
 
             {(item.requested_changes ?? []).length > 0 ? (
-              <details className="rounded-lg border overflow-hidden">
-                <summary className="bg-gray-100 text-xs font-semibold px-3 py-2 cursor-pointer">
-                  Requested changes (raw input)
-                </summary>
-                <div className="divide-y">
-                  {(item.requested_changes ?? []).map((c) => (
-                    <div key={`${item.id}-requested-${c.field}`} className="grid grid-cols-12 gap-2 px-3 py-2 text-sm">
-                      <div className="col-span-4 font-medium">{c.label}</div>
-                      <div className="col-span-8 break-words text-indigo-700">{c.value}</div>
-                    </div>
-                  ))}
+              (item.diffs ?? []).length > 0 ? (
+                <details className="rounded-lg border overflow-hidden">
+                  <summary className="bg-gray-100 text-xs font-semibold px-3 py-2 cursor-pointer">
+                    All values in this submission ({item.requested_changes?.length ?? 0})
+                  </summary>
+                  <div className="divide-y">
+                    {(item.requested_changes ?? []).map((c) => (
+                      <div
+                        key={`${item.id}-requested-${c.field}`}
+                        className="grid grid-cols-12 gap-2 px-3 py-2 text-sm"
+                      >
+                        <div className="col-span-4 font-medium text-gray-800">{c.label}</div>
+                        <div className="col-span-8 break-words text-gray-900">{c.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : (
+                <div className="rounded-lg border overflow-hidden">
+                  <div className="bg-gray-100 text-xs font-semibold px-3 py-2">All values in this submission</div>
+                  <div className="divide-y">
+                    {(item.requested_changes ?? []).map((c) => (
+                      <div
+                        key={`${item.id}-requested-${c.field}`}
+                        className="grid grid-cols-12 gap-2 px-3 py-2 text-sm"
+                      >
+                        <div className="col-span-4 font-medium text-gray-800">{c.label}</div>
+                        <div className="col-span-8 break-words text-gray-900">{c.value}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </details>
+              )
             ) : null}
 
             {item.metadata && Object.keys(item.metadata).length > 0 ? (

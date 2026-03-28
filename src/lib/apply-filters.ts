@@ -27,6 +27,50 @@ export function applyFilters(
     if (bounds) {
       if (!pointInBounds(g.lon, g.lat, bounds) && g.id !== selectedGanId) return false;
     }
+
+    // Age track filter — only applies when exactly one track is selected
+    if (filters.age_track != null && filters.age_track.length === 1) {
+      const track = filters.age_track[0];
+      if (track === "0-3") {
+        // 0-3 track: MAON_SYMBOL, MISHPACHTON, UNSPECIFIED always included
+        // MUNICIPAL_GAN and all TZAHARON_* always excluded
+        // PRIVATE_GAN: included when max_age_months is null (default) or <= 36
+        const excluded =
+          g.category === "MUNICIPAL_GAN" ||
+          g.category === "TZAHARON_MUNICIPAL" ||
+          g.category === "TZAHARON_PRIVATE_SUPERVISED" ||
+          g.category === "TZAHARON_PRIVATE_UNSUPERVISED";
+        if (excluded) return false;
+        if (g.category === "PRIVATE_GAN") {
+          const maxAge = g.max_age_months ?? null;
+          if (maxAge !== null && maxAge > 36) return false;
+        }
+      } else {
+        // 3+ track: MUNICIPAL_GAN and all TZAHARON_* always included
+        // MAON_SYMBOL, MISHPACHTON, UNSPECIFIED always excluded
+        // PRIVATE_GAN: included only when min_age_months >= 36
+        const alwaysIn =
+          g.category === "MUNICIPAL_GAN" ||
+          g.category === "TZAHARON_MUNICIPAL" ||
+          g.category === "TZAHARON_PRIVATE_SUPERVISED" ||
+          g.category === "TZAHARON_PRIVATE_UNSUPERVISED";
+        if (alwaysIn) {
+          // pass through
+        } else if (g.category === "PRIVATE_GAN") {
+          const minAge = g.min_age_months ?? null;
+          if (minAge === null || minAge < 36) return false;
+        } else {
+          // MAON_SYMBOL, MISHPACHTON, UNSPECIFIED
+          return false;
+        }
+      }
+    }
+
+    // Category filter
+    if (filters.categories != null && filters.categories.length > 0) {
+      if (!filters.categories.includes(g.category)) return false;
+    }
+
     if (filters.location_query && filters.location_query.trim() && !skipLocationFilter(filters.location_query)) {
       const q = filters.location_query.toLowerCase();
       const match =

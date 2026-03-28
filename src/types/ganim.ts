@@ -21,7 +21,10 @@ export type VacancyStatus = "Available" | "Limited" | "Full" | "UNKNOWN";
 
 export interface GanMetadata {
   phone?: string[];
-  /** Explicit list of phone numbers that have WhatsApp. If absent, inferred from category (private = WhatsApp). */
+  /**
+   * Numbers that should open WhatsApp (mobile). If this key is a list (even empty), it overrides
+   * category-based inference so landlines can use tel: links.
+   */
   phone_whatsapp?: string[];
   age_groups?: string[];
   hours?: string;

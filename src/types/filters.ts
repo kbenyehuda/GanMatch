@@ -1,12 +1,17 @@
 import type {
   FridaySchedule,
+  GanCategory,
   MealType,
   KosherStatus,
   SpokenLanguage,
   VacancyStatus,
 } from "./ganim";
 
+export type AgeTrack = "0-3" | "3+";
+
 export interface GanFilters {
+  age_track: AgeTrack[] | null; // null or both = show all; single value = filter to that track
+  categories: GanCategory[] | null; // gan category must be one of these; null = show all
   friday_schedule: FridaySchedule[] | null; // gan matches ANY of selected
   meal_type: MealType[] | null; // gan matches ANY of selected
   vegan_friendly: boolean | null;
@@ -26,6 +31,8 @@ export interface GanFilters {
 }
 
 export const DEFAULT_FILTERS: GanFilters = {
+  age_track: null,
+  categories: null,
   friday_schedule: null,
   meal_type: null,
   vegan_friendly: null,
@@ -50,6 +57,9 @@ export function hasActiveFilters(f: GanFilters): boolean {
 
 export function countActiveFilters(f: GanFilters): number {
   let n = 0;
+  // age_track is active when exactly one track is selected (deviates from "show all" default)
+  if (f.age_track != null && f.age_track.length === 1) n++;
+  if (f.categories != null && f.categories.length > 0) n++;
   if (f.friday_schedule != null && f.friday_schedule.length > 0) n++;
   if (f.meal_type != null && f.meal_type.length > 0) n++;
   if (f.vegan_friendly != null) n++;

@@ -4,8 +4,17 @@ import { serverEnv } from "@/lib/env/server";
 import { approveGanEditPatch } from "@/lib/moderation/gan-edit-approval";
 import { getAccessSnapshot, grantFullAccess } from "@/lib/entitlements/service";
 import { logTelemetryEvent } from "@/lib/telemetry/log-event";
+import { sanitizeGanimCategorySubfields } from "@/lib/ganim-category-sanitize";
 
-type GanCategory = "UNSPECIFIED" | "MAON_SYMBOL" | "PRIVATE_GAN" | "MISHPACHTON" | "MUNICIPAL_GAN";
+type GanCategory =
+  | "UNSPECIFIED"
+  | "MAON_SYMBOL"
+  | "PRIVATE_GAN"
+  | "MISHPACHTON"
+  | "MUNICIPAL_GAN"
+  | "TZAHARON_MUNICIPAL"
+  | "TZAHARON_PRIVATE_SUPERVISED"
+  | "TZAHARON_PRIVATE_UNSUPERVISED";
 type PrivateSupervisionStatus = "UNKNOWN" | "SUPERVISED" | "NOT_SUPERVISED";
 type MishpachtonAffiliation = "UNKNOWN" | "PRIVATE" | "TAMAT";
 type MunicipalGrade = "UNKNOWN" | "TTAH" | "TAH" | "HOVA";
@@ -16,7 +25,10 @@ function isGanCategory(v: unknown): v is GanCategory {
     v === "MAON_SYMBOL" ||
     v === "PRIVATE_GAN" ||
     v === "MISHPACHTON" ||
-    v === "MUNICIPAL_GAN"
+    v === "MUNICIPAL_GAN" ||
+    v === "TZAHARON_MUNICIPAL" ||
+    v === "TZAHARON_PRIVATE_SUPERVISED" ||
+    v === "TZAHARON_PRIVATE_UNSUPERVISED"
   );
 }
 function isPrivateSupervision(v: unknown): v is PrivateSupervisionStatus {
@@ -140,7 +152,9 @@ export async function POST(req: Request) {
   // Ensure gan exists before writing to ledger + read moderation baseline fields.
   const { data: existing, error: exErr } = await supabaseAdmin
     .from("ganim_v2")
-    .select("id,monthly_price_nis,address,city,min_age_months,max_age_months,website_url,operating_hours,friday_schedule,staff_child_ratio,vegetarian_friendly,vegan_friendly,allergy_friendly,has_mamad,first_aid_trained,metadata")
+    .select(
+      "id,category,monthly_price_nis,address,city,min_age_months,max_age_months,website_url,operating_hours,friday_schedule,staff_child_ratio,vegetarian_friendly,vegan_friendly,allergy_friendly,has_mamad,first_aid_trained,metadata"
+    )
     .eq("id", ganId)
     .single();
   if (exErr || !existing) {
@@ -462,6 +476,11 @@ export async function POST(req: Request) {
         materializePayload.metadata = mergedMeta;
       }
     }
+    const effectiveCategory =
+      materializePayload.category !== undefined && materializePayload.category !== null
+        ? String(materializePayload.category)
+        : String((existing as { category?: string }).category ?? "UNSPECIFIED");
+    sanitizeGanimCategorySubfields(materializePayload, effectiveCategory);
     const { error: materializeErr } = await supabaseAdmin
       .from("ganim_v2")
       .update(materializePayload)

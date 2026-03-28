@@ -159,6 +159,16 @@ def try_write_xlsx(path: Path, rows: Iterable[dict[str, Any]]) -> bool:
 
 
 def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Dry-run re-geocoding for ganim_v2 (no DB writes).")
+    ap.add_argument(
+        "--city",
+        metavar="CITY_HE",
+        help="Filter to a single city (Hebrew name, e.g. 'רמת גן'). Omit to process all cities.",
+    )
+    args = ap.parse_args()
+
     load_env()
 
     supabase_url = require_env_any(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"])
@@ -177,7 +187,7 @@ def main() -> int:
 
     sb = create_client(supabase_url, supabase_key)
 
-    limit = 10000
+    limit = 100000
     try:
         res = sb.rpc("get_all_ganim", {"p_limit": limit}).execute()
         rows = res.data if hasattr(res, "data") else None
@@ -189,11 +199,16 @@ def main() -> int:
         print("Unexpected response: get_all_ganim did not return a list.")
         return 1
 
+    if args.city:
+        rows = [r for r in rows if isinstance(r, dict) and str(r.get("city") or "").strip() == args.city.strip()]
+        print(f"Filtered to city='{args.city}': {len(rows)} rows")
+
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     out_dir = repo_root() / "scripts" / "maintenance" / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_csv_path = out_dir / f"regeocode_dryrun_{ts}.csv"
-    out_xlsx_path = out_dir / f"regeocode_dryrun_{ts}.xlsx"
+    city_slug = args.city.replace(" ", "_") if args.city else "all"
+    out_csv_path = out_dir / f"regeocode_dryrun_{city_slug}_{ts}.csv"
+    out_xlsx_path = out_dir / f"regeocode_dryrun_{city_slug}_{ts}.xlsx"
 
     total = len(rows)
     skipped_no_address = 0
