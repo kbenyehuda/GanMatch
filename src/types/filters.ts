@@ -28,6 +28,10 @@ export interface GanFilters {
   chugim: string[] | null; // gan must have at least one of these (exact match from data)
   operating_hours: string | null; // gan operating_hours must contain this (e.g. "7:30", "8:00")
   location_query: string | null; // text search (city/address/name) - AND with rest
+  /** Show only ganim that have at least one overall rating (avg_rating not null). */
+  rated_only: boolean;
+  /** Minimum inclusive overall rating (0–5); null = no minimum from this field. */
+  min_rating: number | null;
 }
 
 export const DEFAULT_FILTERS: GanFilters = {
@@ -49,6 +53,8 @@ export const DEFAULT_FILTERS: GanFilters = {
   chugim: null,
   operating_hours: null,
   location_query: null,
+  rated_only: false,
+  min_rating: null,
 };
 
 export function hasActiveFilters(f: GanFilters): boolean {
@@ -76,5 +82,7 @@ export function countActiveFilters(f: GanFilters): number {
   if (f.chugim != null && f.chugim.length > 0) n++;
   if (f.operating_hours != null && f.operating_hours.trim() !== "") n++;
   if (f.location_query != null && f.location_query.trim() !== "") n++;
+  if (f.rated_only) n++;
+  if (f.min_rating != null) n++;
   return n;
 }

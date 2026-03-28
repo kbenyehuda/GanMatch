@@ -71,6 +71,12 @@ export function applyFilters(
       if (!filters.categories.includes(g.category)) return false;
     }
 
+    if (filters.rated_only && g.avg_rating == null) return false;
+    if (filters.min_rating != null) {
+      const r = g.avg_rating;
+      if (r == null || r < filters.min_rating) return false;
+    }
+
     if (filters.location_query && filters.location_query.trim() && !skipLocationFilter(filters.location_query)) {
       const q = filters.location_query.toLowerCase();
       const match =

@@ -182,9 +182,21 @@ export function SearchResultsPanel({
         ganim={allGanimInView ?? ganim}
       />
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] space-y-3">
+        {(filters.rated_only || filters.min_rating != null) &&
+        ganim.length > 0 &&
+        ganim.length < 6 ? (
+          <p className="text-xs text-gray-600 font-hebrew bg-gan-muted/30 rounded-lg px-3 py-2 border border-gan-accent/20">
+            מעט דירוגים באיזור זה — עזרו לנו לשפר
+          </p>
+        ) : null}
         {ganim.length === 0 ? (
           <p className="text-center text-gray-500 py-8 font-hebrew">
             לא נמצאו גנים באזור. נסה להזיז את המפה או להרחיב את החיפוש.
+            {filters.rated_only || filters.min_rating != null ? (
+              <span className="block mt-2 text-sm">
+                אפשר גם להרכיך את סינון הדירוג — לבטל את סימון רק מדורגים או למחוק את מינימום הדירוג.
+              </span>
+            ) : null}
           </p>
         ) : (
           ganim.map((gan) => (

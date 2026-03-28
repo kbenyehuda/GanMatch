@@ -63,6 +63,21 @@ const AGE_TRACKS: { value: AgeTrack; label: string }[] = [
   { value: "3+", label: "3+" },
 ];
 
+function parseMinRatingInput(
+  raw: string
+): { ok: true; value: number | null } | { ok: false; message: string } {
+  const t = raw.trim().replace(",", ".");
+  if (t === "") return { ok: true, value: null };
+  if (!/^\d+(\.\d+)?$/.test(t)) {
+    return { ok: false, message: "הזינו מספר (למשל 3 או 3.5)" };
+  }
+  const n = parseFloat(t);
+  if (n < 0 || n > 5) {
+    return { ok: false, message: "הערך צריך להיות בין 0 ל־5" };
+  }
+  return { ok: true, value: n };
+}
+
 export function FilterPanel({
   filters,
   onFiltersChange,
@@ -74,6 +89,8 @@ export function FilterPanel({
   const [expanded, setExpanded] = useState(false);
   const [chugimSearch, setChugimSearch] = useState("");
   const [chugimDropdownOpen, setChugimDropdownOpen] = useState(false);
+  const [minRatingInput, setMinRatingInput] = useState("");
+  const [minRatingError, setMinRatingError] = useState<string | null>(null);
 
   const uniqueChugim = useMemo(() => {
     const set = new Set<string>();
@@ -98,6 +115,23 @@ export function FilterPanel({
 
   const update = (patch: Partial<GanFilters>) => {
     onFiltersChange({ ...filters, ...patch });
+  };
+
+  useEffect(() => {
+    setMinRatingInput(filters.min_rating == null ? "" : String(filters.min_rating));
+    setMinRatingError(null);
+  }, [filters.min_rating]);
+
+  const commitMinRatingField = () => {
+    const parsed = parseMinRatingInput(minRatingInput);
+    if (!parsed.ok) {
+      setMinRatingError(parsed.message);
+      setMinRatingInput(filters.min_rating == null ? "" : String(filters.min_rating));
+      return;
+    }
+    setMinRatingError(null);
+    update({ min_rating: parsed.value });
+    setMinRatingInput(parsed.value == null ? "" : String(parsed.value));
   };
 
   useEffect(() => {
@@ -258,6 +292,54 @@ export function FilterPanel({
             );
           })}
         </div>
+      </div>
+
+      {/* Rating — always visible */}
+      <div className="px-4 py-2 space-y-2 border-t border-gan-accent/20">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label className="flex items-center gap-2 text-sm font-hebrew text-gray-800 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filters.rated_only}
+              onChange={(e) => update({ rated_only: e.target.checked })}
+              className="rounded border-gan-accent/50"
+            />
+            רק מדורגים
+          </label>
+          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[12rem]">
+            <span className="text-xs font-medium text-gray-600 font-hebrew shrink-0">מינימום דירוג:</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="למשל 3.5"
+              value={minRatingInput}
+              onChange={(e) => {
+                setMinRatingInput(e.target.value);
+                if (minRatingError) setMinRatingError(null);
+              }}
+              onBlur={commitMinRatingField}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitMinRatingField();
+                }
+              }}
+              aria-invalid={minRatingError != null}
+              className={[
+                "w-24 rounded-lg border px-2 py-1.5 text-sm font-hebrew",
+                minRatingError
+                  ? "border-red-500 focus:ring-2 focus:ring-red-400/50"
+                  : "border-gan-accent/50 focus:outline-none focus:ring-2 focus:ring-gan-primary/50",
+              ].join(" ")}
+            />
+            <span className="text-xs text-gray-500 font-hebrew">0–5</span>
+          </div>
+        </div>
+        {minRatingError ? (
+          <p className="text-xs text-red-600 font-hebrew" role="alert">
+            {minRatingError}
+          </p>
+        ) : null}
       </div>
 
       <button
