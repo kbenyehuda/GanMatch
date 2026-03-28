@@ -31,10 +31,14 @@ type UnlockFlags = {
   onboarding_unlock: boolean;
 };
 
-export default function HomePage() {
+export interface HomeMapProps {
+  seedGan?: Gan | null;
+}
+
+export function HomeMap({ seedGan = null }: HomeMapProps) {
   const { user, loading } = useSession();
   const [skipLogin, setSkipLogin] = useState<boolean | null>(null);
-  const [selectedGan, setSelectedGan] = useState<Gan | null>(null);
+  const [selectedGan, setSelectedGan] = useState<Gan | null>(() => seedGan ?? null);
   const [selectedClusterGanim, setSelectedClusterGanim] = useState<Gan[] | null>(
     null
   );
@@ -81,6 +85,18 @@ export default function HomePage() {
     addGan,
     refetchViewport,
   } = useViewportGanim({ preserveGanIds });
+
+  useEffect(() => {
+    if (!seedGan) return;
+    addGan(seedGan);
+  }, [seedGan, addGan]);
+
+  useEffect(() => {
+    if (!seedGan) return;
+    setFitToAddress({ lon: seedGan.lon, lat: seedGan.lat, zoom: 18 });
+    const t = setTimeout(() => setFitToAddress(null), 700);
+    return () => clearTimeout(t);
+  }, [seedGan]);
 
   // Keep selectedGan in sync with refetched data so edits appear immediately.
   useEffect(() => {
@@ -490,4 +506,8 @@ export default function HomePage() {
       )}
     </div>
   );
+}
+
+export default function HomePage() {
+  return <HomeMap />;
 }

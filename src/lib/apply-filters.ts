@@ -24,6 +24,8 @@ export function applyFilters(
   const { bounds, selectedGanId } = options ?? {};
 
   return ganim.filter((g) => {
+    if (selectedGanId && g.id === selectedGanId) return true;
+
     if (bounds) {
       if (!pointInBounds(g.lon, g.lat, bounds) && g.id !== selectedGanId) return false;
     }

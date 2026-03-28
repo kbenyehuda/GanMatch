@@ -14,6 +14,8 @@ import {
   MessageCircle,
   Plus,
   Trash2,
+  Share2,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +34,7 @@ import {
 } from "@/lib/gan-format";
 import { getWhatsAppUrl, isPhoneWhatsApp } from "@/lib/phone-utils";
 import { cn } from "@/lib/utils";
+import { getGanShareUrl } from "@/lib/site-url";
 import {
   formatAgesHe,
   formatGanCategoryAddonLabelHe,
@@ -162,6 +165,7 @@ export function GanDetail({
   const [onboardingKidsAges, setOnboardingKidsAges] = useState("");
   const [onboardingNeighborhood, setOnboardingNeighborhood] = useState("");
   const [onboardingBudgetRange, setOnboardingBudgetRange] = useState("");
+  const [shareCopied, setShareCopied] = useState(false);
 
   const reviewFullAccessDays = Math.max(1, Math.floor(unlockDefaults?.review_full_access_days ?? 365));
   const onboardingReviewQuota = Math.max(1, Math.floor(unlockDefaults?.onboarding_review_quota ?? 3));
@@ -181,6 +185,21 @@ export function GanDetail({
       return `${keep}***@${domain}`;
     };
   }, []);
+
+  const copyShareLink = useCallback(async () => {
+    const url = getGanShareUrl(gan.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      try {
+        window.prompt("העתיקו את הקישור:", url);
+      } catch {
+        // ignore
+      }
+    }
+  }, [gan.id]);
 
   const formatReviewDate = useMemo(() => {
     return (iso: string) => {
@@ -1243,6 +1262,19 @@ export function GanDetail({
           </CardTitle>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => void copyShareLink()}
+            aria-label={shareCopied ? "הקישור הועתק" : "שיתוף קישור"}
+            title={shareCopied ? "הועתק" : "שיתוף קישור"}
+          >
+            {shareCopied ? (
+              <Check className="w-5 h-5 text-green-600" />
+            ) : (
+              <Share2 className="w-5 h-5" />
+            )}
+          </Button>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
             <X className="w-5 h-5" />
           </Button>
