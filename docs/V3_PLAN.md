@@ -230,6 +230,43 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ---
 
+## v3.2 — Go-live glue, trust, and growth mechanics
+
+**Why:** Most of v3’s map-and-discovery engineering can ship while this bucket stays implicit. v3.2 makes **launch, municipality-facing credibility, and campaign promises** explicit—so nothing critical is “missing from the plan” after landing + `review_scope` land.
+
+### Verification and polish (ship-quality)
+
+- **Cluster vs list parity** — QA large clusters so the count shown on the map matches what users can actually open in the list (historical “200 vs 50” class of bugs); fix any remaining cap mismatches in `MapContainer` / viewport fetch paths.
+- **Share links in the wild** — confirm production **`metadataBase` / public site URL** so Open Graph previews for `/gan/[id]` look correct in WhatsApp and similar clients (`generateMetadata`, `site-url` helpers).
+- **Sparse-results nudge** — optional copy when **rating filters** yield very few pins (per original v3 §5 intent): soft message, not an error.
+
+### Trust, safety, and compliance surfaces
+
+- **Legal / trust pages** — baseline **privacy**, **terms**, and plain-language explanation of **how contact-reviewer email relay works**, what is logged, and how abuse is handled (aligns with [PRODUCT_AUDIT.md](../PRODUCT_AUDIT.md) gaps). Enough for parents and for a municipal “this is not a rogue Facebook group” narrative.
+
+### Contact reviewer and email operations
+
+- **Production readiness** — `CONTACT_REVIEWER_ENABLED`, Resend (or equivalent) with a **verified sending domain**, `RESEND_FROM_EMAIL`, and operator clarity on triage if contact is abused.
+- **Feature flag symmetry** — server vs client toggles documented and consistent for pilots.
+
+### Data pipeline in production
+
+- **`process_user_inputs` (or realtime)** — documented runbook: approved rows that are not fast-pathed in API routes must **materialize** predictably so “I submitted a review/edit” matches what others see ([database.md](./database.md)).
+
+### Incentives that must match the product
+
+- If marketing promises **Founding Parent** status, **badges**, or **permanent VIP** (no Give-to-Get), v3.2 includes **entitlement/admin design** so campaigns do not over-promise vs `user_access_entitlements` and flags ([GIVE_TO_GET_ACCESS_MODEL.md](../GIVE_TO_GET_ACCESS_MODEL.md)).
+
+### Owner / operator track (early growth)
+
+- **“Claim your gan”** (or equivalent) — owners verify listing, correct details, optional photos, and a path to respond to parent-facing signals; separate milestone from the parent map UX (see also [COLD_START_COMMUNITY_UTILITY.md](./COLD_START_COMMUNITY_UTILITY.md) Phase 5).
+
+### Still later (do not fold into v3.2 unless scope expands)
+
+- **Referral loop**, **analytics dashboard**, **split rating headers per `review_scope`** — remain aligned with [Out of Scope for v3](#out-of-scope-for-v3) / v4 unless explicitly pulled forward.
+
+---
+
 ## Work Order (Suggested)
 
 | # | Task | Why first |
