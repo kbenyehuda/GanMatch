@@ -73,6 +73,23 @@ export interface Bounds {
 
 const ADDRESS_FIT_RADIUS_M = 1000;
 
+/** Initial map + cluster viewport when opening a deep link (avoids TLV → gan jump on first paint). */
+function initialViewportFromFocus(focus: { lon: number; lat: number; zoom?: number }): {
+  bounds: [number, number, number, number];
+  zoom: number;
+} {
+  const zoom = focus.zoom ?? 18;
+  const { lon, lat } = focus;
+  const metersPerDegreeLat = 111320;
+  const radiusM = 800;
+  const dLat = radiusM / metersPerDegreeLat;
+  const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+  return {
+    bounds: [lon - dLon, lat - dLat, lon + dLon, lat + dLat],
+    zoom,
+  };
+}
+
 interface MapContainerProps {
   ganim: Gan[];
   selectedGanId: string | null;
@@ -82,6 +99,8 @@ interface MapContainerProps {
   onMapClick?: (pos: { lon: number; lat: number }) => void;
   pendingPin?: { lon: number; lat: number } | null;
   fitToAddress?: { lon: number; lat: number; radiusM?: number; zoom?: number } | null;
+  /** When set, Mapbox initialViewState and cluster viewport start here (shared /gan/[id] links). */
+  initialMapFocus?: { lon: number; lat: number; zoom?: number } | null;
   loading?: boolean;
 }
 
@@ -94,17 +113,22 @@ export function MapContainer({
   onMapClick,
   pendingPin,
   fitToAddress,
+  initialMapFocus = null,
   loading = false,
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [mounted, setMounted] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lon: number; lat: number } | null>(null);
-  const [hasCenteredOnUser, setHasCenteredOnUser] = useState(false);
+  const [hasCenteredOnUser, setHasCenteredOnUser] = useState(() => Boolean(initialMapFocus));
   const [locating, setLocating] = useState(false);
-  const [viewport, setViewport] = useState({
-    bounds: [34.69, 32.03, 34.88, 32.16] as [number, number, number, number],
-    zoom: 11,
-  });
+  const [viewport, setViewport] = useState(() =>
+    initialMapFocus
+      ? initialViewportFromFocus(initialMapFocus)
+      : {
+          bounds: [34.69, 32.03, 34.88, 32.16] as [number, number, number, number],
+          zoom: 11,
+        }
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -426,11 +450,19 @@ export function MapContainer({
     );
   };
 
+  const initialViewState = initialMapFocus
+    ? {
+        longitude: initialMapFocus.lon,
+        latitude: initialMapFocus.lat,
+        zoom: initialMapFocus.zoom ?? 18,
+      }
+    : DEFAULT_VIEW;
+
   return (
     <Map
       ref={mapRef}
       mapboxAccessToken={MAPBOX_TOKEN}
-      initialViewState={DEFAULT_VIEW}
+      initialViewState={initialViewState}
       style={{ width: "100%", height: "100%" }}
       mapStyle="mapbox://styles/mapbox/light-v11"
       onLoad={handleMapLoad}

@@ -34,6 +34,7 @@ import {
 } from "@/lib/gan-format";
 import { getWhatsAppUrl, isPhoneWhatsApp } from "@/lib/phone-utils";
 import { cn } from "@/lib/utils";
+import { tryNavigatorShare } from "@/lib/native-share";
 import { getGanShareUrl } from "@/lib/site-url";
 import {
   formatAgesHe,
@@ -186,8 +187,19 @@ export function GanDetail({
     };
   }, []);
 
-  const copyShareLink = useCallback(async () => {
+  const shareOrCopyLink = useCallback(async () => {
     const url = getGanShareUrl(gan.id);
+    const title = `${gan.name_he} | GanMatch`;
+    const text = `מצאתי גן ב-GanMatch שאולי יעניין אותך: ${gan.name_he}`;
+
+    const outcome = await tryNavigatorShare({ title, text, url });
+    if (outcome === "shared") {
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2000);
+      return;
+    }
+    if (outcome === "aborted") return;
+
     try {
       await navigator.clipboard.writeText(url);
       setShareCopied(true);
@@ -199,7 +211,7 @@ export function GanDetail({
         // ignore
       }
     }
-  }, [gan.id]);
+  }, [gan.id, gan.name_he]);
 
   const formatReviewDate = useMemo(() => {
     return (iso: string) => {
@@ -1265,9 +1277,9 @@ export function GanDetail({
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => void copyShareLink()}
-            aria-label={shareCopied ? "הקישור הועתק" : "שיתוף קישור"}
-            title={shareCopied ? "הועתק" : "שיתוף קישור"}
+            onClick={() => void shareOrCopyLink()}
+            aria-label={shareCopied ? "בוצע" : "שיתוף (מערכת או העתקה)"}
+            title={shareCopied ? "בוצע" : "שיתוף"}
           >
             {shareCopied ? (
               <Check className="w-5 h-5 text-green-600" />

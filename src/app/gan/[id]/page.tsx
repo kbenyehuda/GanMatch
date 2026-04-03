@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { HomeMap } from "@/app/page";
+import { HomeMap } from "@/components/home/HomeMap";
 import { getCachedGanById } from "@/lib/server/fetch-gan-by-id";
-import { getGanShareUrl, getSiteUrl } from "@/lib/site-url";
+import { getGanShareUrl, tryGetMetadataBase } from "@/lib/site-url";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,13 +32,13 @@ export async function generateMetadata({
     : gan.name_he;
 
   const url = getGanShareUrl(gan.id);
-  const site = getSiteUrl();
+  const metadataBase = tryGetMetadataBase();
 
   return {
     title,
     description,
     alternates: { canonical: url },
-    metadataBase: new URL(site),
+    ...(metadataBase ? { metadataBase } : {}),
     openGraph: {
       title,
       description,

@@ -27,3 +27,12 @@ export function getGanShareUrl(ganId: string): string {
   const base = getSiteUrl();
   return `${base}/gan/${ganId}`;
 }
+
+/** Safe for `metadataBase`; skips invalid `NEXT_PUBLIC_SITE_URL` values. */
+export function tryGetMetadataBase(): URL | undefined {
+  try {
+    return new URL(getSiteUrl());
+  } catch {
+    return undefined;
+  }
+}

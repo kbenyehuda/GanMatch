@@ -1,9 +1,11 @@
 import "server-only";
 
 import { cache } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { publicEnv } from "@/lib/env/public";
 import { mapGanApiRow } from "@/lib/gan-row-map";
+import type { Gan } from "@/types/ganim";
+
+/** PostgREST only — avoids bundling @supabase/supabase-js into RSC (fixes missing vendor-chunks/@supabase.js). */
 
 /** PostGIS EWKB Point (with optional SRID), little-endian — common when PostgREST returns geography as hex. */
 function parseEwkbPointHex(hex: string): { lat: number; lon: number } | null {
@@ -54,7 +56,7 @@ function extractLatLonFromRow(row: Record<string, unknown>): { lat: number; lon:
   }
 
   if (typeof loc === "string") {
-    const trimmed = loc.trim();
+    const trimmed = loc.trim().replace(/^SRID=\d+;\s*/i, "");
     if (trimmed.startsWith("{")) {
       try {
         const j = JSON.parse(trimmed) as { type?: string; coordinates?: unknown };
@@ -80,6 +82,56 @@ function extractLatLonFromRow(row: Record<string, unknown>): { lat: number; lon:
   return null;
 }
 
+type RestRowResult =
+  | { ok: true; row: Record<string, unknown> | null }
+  | { ok: false; status: number; message: string };
+
+async function fetchGanimV2Row(
+  restBase: string,
+  anonKey: string,
+  id: string,
+  select: string
+): Promise<RestRowResult> {
+  const u = new URL(`${restBase}/rest/v1/ganim_v2`);
+  u.searchParams.set("id", `eq.${id}`);
+  u.searchParams.set("select", select);
+
+  const res = await fetch(u.toString(), {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    return { ok: false, status: res.status, message: text.slice(0, 200) };
+  }
+
+  if (!res.ok) {
+    const msg =
+      json && typeof json === "object" && "message" in json
+        ? String((json as { message?: unknown }).message)
+        : text.slice(0, 200);
+    return { ok: false, status: res.status, message: msg };
+  }
+
+  if (!Array.isArray(json)) {
+    return { ok: false, status: res.status, message: "unexpected PostgREST response" };
+  }
+
+  if (json.length === 0) {
+    return { ok: true, row: null };
+  }
+
+  return { ok: true, row: json[0] as Record<string, unknown> };
+}
+
 export const getCachedGanById = cache(async (id: string): Promise<Gan | null> => {
   const url = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -88,38 +140,31 @@ export const getCachedGanById = cache(async (id: string): Promise<Gan | null> =>
     return null;
   }
 
-  const supabase = createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
+  const restBase = url.replace(/\/+$/, "");
 
+  const selectWithCoords = "*,lat:ST_Y(location::geometry),lon:ST_X(location::geometry)";
   let row: Record<string, unknown> | null = null;
 
-  const withCoords = await supabase
-    .from("ganim_v2")
-    .select("*, lat:ST_Y(location::geometry), lon:ST_X(location::geometry)")
-    .eq("id", id)
-    .single();
+  const withCoords = await fetchGanimV2Row(restBase, anonKey, id, selectWithCoords);
 
-  if (!withCoords.error && withCoords.data) {
-    row = withCoords.data as Record<string, unknown>;
-  } else {
-    if (withCoords.error && withCoords.error.code !== "PGRST116") {
-      console.warn(
-        "[GanMatch] gan by id: ST_Y/ST_X select failed, using plain *:",
-        withCoords.error.code,
-        withCoords.error.message
-      );
-    }
+  if (!withCoords.ok) {
+    console.warn(
+      "[GanMatch] gan by id: ST_Y/ST_X select failed, using plain *:",
+      withCoords.status,
+      withCoords.message
+    );
 
-    const plain = await supabase.from("ganim_v2").select("*").eq("id", id).single();
-
-    if (plain.error) {
-      if (plain.error.code === "PGRST116") return null;
-      console.error("[GanMatch] gan by id:", plain.error.code, plain.error.message);
+    const plain = await fetchGanimV2Row(restBase, anonKey, id, "*");
+    if (!plain.ok) {
+      console.error("[GanMatch] gan by id:", plain.status, plain.message);
       return null;
     }
-    if (!plain.data) return null;
-    row = plain.data as Record<string, unknown>;
+    if (!plain.row) return null;
+    row = plain.row;
+  } else if (!withCoords.row) {
+    return null;
+  } else {
+    row = withCoords.row;
   }
 
   const coords = extractLatLonFromRow(row);
