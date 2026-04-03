@@ -217,14 +217,11 @@ Not all types exist in the DB today — some depend on community contributions.
 
 ---
 
-## Reviews — Gan vs. Tzaharon
+## Reviews — Gan vs. Tzaharon (`review_scope`)
 
-When a parent submits a review for a +3 framework, the review form defaults to **"הגן והצהרון יחד"** but can be changed to:
-- הגן (בוקר בלבד)
-- הצהרון
-- שניהם יחד
+Only **`TZAHARON_MUNICIPAL`** (גן עירייה + צהרון עירוני — the ✦ combined row above) is both a gan and a tzaharon in one map pin. **`MUNICIPAL_GAN`** is morning-only; **`TZAHARON_PRIVATE_*`** are standalone afternoon frameworks — no morning/tzaharon split on the same entity.
 
-This lets the community gradually build separate morning/afternoon signal without a data migration upfront.
+For **`TZAHARON_MUNICIPAL`** reviews only, the form offers **"הגן (בוקר)"**, **"הצהרון"**, **"שניהם"** (default **"שניהם"**) as `review_scope`, stored through triage and on `confirmed_reviews` after promotion. That builds separate morning/afternoon signal without guessing from free text.
 
 ---
 

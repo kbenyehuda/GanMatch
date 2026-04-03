@@ -193,14 +193,20 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ---
 
-### 6. Reviews — Gan vs. Tzaharon (3+ only)
+### 6. Reviews — `review_scope` (גן + צהרון combined only)
 
-When submitting a review for a `TZAHARON_MUNICIPAL` or `TZAHARON_PRIVATE_*` gan, the form defaults to **"הגן והצהרון יחד"** but offers:
-- הגן (בוקר בלבד)
-- הצהרון
-- שניהם יחד
+**When it applies:** Only **`TZAHARON_MUNICIPAL`** — the single category that is **both** a morning municipal gan and an afternoon tzaharon at the same place (see [GAN_TYPES.md](GAN_TYPES.md): `MUNICIPAL_GAN` = בוקר בלבד; private tzaharon types = עצמאי). Parents may be rating the morning gan, the tzaharon, or the full-day experience; `review_scope` records which so one star rating is not ambiguous.
 
-This adds a `review_scope` field to the review submission. Stored in `user_inputs` and eventually `confirmed_reviews`. Allows split ratings to be shown in the future without a data migration now.
+**Modal (`GanReviewModal.tsx`):** Scope picker with **"הגן (בוקר)"**, **"הצהרון"**, **"שניהם"** — default **"שניהם"**.
+
+**Data path:**
+- On submit: pass `review_scope` through **`/api/reviews`** into `user_inputs` metadata (same triage flow as today).
+- On promotion: copy into **`confirmed_reviews`** as a typed column (not only JSON) — e.g. `process_user_inputs.py` on approval.
+- DB: migration adding `review_scope` on `confirmed_reviews`.
+
+**Display (`GanDetail.tsx`):** Small badge on each review — **"ביקורת על הצהרון"** / **"ביקורת על הגן (בוקר)"** / **"גן + צהרון"** — only for **`TZAHARON_MUNICIPAL`** reviews.
+
+**Deferred (v3.1+):** Split rating header (separate averages per scope) once there is enough scoped data and design.
 
 ---
 
