@@ -210,6 +210,45 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ---
 
+### 7. Contact reviewer modal — tablet / phone UX
+
+**Problem:** On iPad and phones, the “שלח הודעה לממליץ” flow is hard to use: the modal competes with the gan detail sheet, lacks a strong scrim, and can feel clipped or cramped (fixed positioning inside scrollable ancestors can make this worse on WebKit).
+
+**Direction:**
+- Treat as a **full-screen or bottom-sheet style** dialog on small viewports / touch-first breakpoints, with **safe-area insets**, **scrollable body**, and a clear **dimmed backdrop**; tap outside to dismiss where appropriate.
+- Prefer rendering the dialog in a **portal to `document.body`** so it is not clipped by `overflow` on the detail card or the home layout.
+- Keep desktop as a compact centered card if that still reads well.
+
+**Files likely involved:** `src/components/gan/ContactReviewerModal.tsx`, possibly `GanDetail.tsx` (mount point only).
+
+---
+
+### 8. Search panel and map — collapse / expand (drag optional)
+
+**Goal:** Let users **hide the search UI** to see more map, and **bring it back** without losing context—especially on **tablet** (today the `md` breakpoint uses a fixed side panel like a small laptop, so there is no bottom-sheet drag).
+
+**Direction:**
+- **Tablet / medium widths:** Either extend the **mobile bottom sheet + drag handle** behavior up to a higher breakpoint (e.g. `lg`), or add an explicit **collapse / expand** control (and optional **edge drag**) for the search column so the map uses full width when search is tucked away.
+- **Desktop:** Optional **collapse to a slim tab** or icon strip that re-opens the search panel; persist preference in `localStorage` if it improves repeat use.
+- **“Same for the map”:** Interpret as **more map real estate when chrome is hidden**, not necessarily a second draggable map layer—unless you later want a **resizable split** (heavier scope; call out as optional follow-up).
+
+**Files likely involved:** `src/components/layout/SearchResultsPanel.tsx`, `src/components/home/HomeMap.tsx` (breakpoints, offsets when panel width changes).
+
+---
+
+### 9. Gan attribute icons — touch + “(?)” legend
+
+**Problem:** In `GanAttributeIcons`, meaning is mostly in **`title` tooltips** — fine on desktop with hover, **invisible on phone / iPad**.
+
+**Direction:**
+- **Tap an icon** → show its explanation (inline expansion, popover, or small bottom chip)—same Hebrew labels as today, without relying on hover.
+- Add a **(?)** control next to the icon row that opens a **full legend** (modal or slide-over) listing **all attribute icons and what they mean** (ארוחות, כשרות, שפות, חוגים, מקום פנוי, וכו׳).
+- **Single source of truth** for copy: shared between the in-app legend and the future **general info / about** section (see §1). Prefer a small static route (e.g. `/about/gan-icons`) that mirrors the legend so links from marketing or municipality materials stay stable.
+
+**Files likely involved:** `src/components/gan/GanAttributeIcons.tsx`, `src/components/gan/GanDetail.tsx`, `src/components/layout/SearchResultsPanel.tsx` (list cards reuse icons), new `src/app/about/...` page when §1 lands.
+
+---
+
 ## Out of Scope for v3
 
 | Item | Why |
@@ -246,6 +285,7 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ### Contact reviewer and email operations
 
+- **Modal UX on touch devices** — see **[§7](#7-contact-reviewer-modal--tablet--phone-ux)** (layout, portal, scrim); v3.2 here covers **backend, flags, and policy**.
 - **Production readiness** — `CONTACT_REVIEWER_ENABLED`, Resend (or equivalent) with a **verified sending domain**, `RESEND_FROM_EMAIL`, and operator clarity on triage if contact is abused.
 - **Feature flag symmetry** — server vs client toggles documented and consistent for pilots.
 
@@ -281,3 +321,7 @@ Allow filtering by gan type on the map (multi-select chips).
 | 8 | Filter by rating | Connects to the core "trusted by parents" hook |
 | 9 | Shareable gan URL | PLG — enables sharing in WhatsApp |
 | 10 | Landing + Explanatory page | TBD design; can be last since it wraps the product |
+| 11 | Reviews — `review_scope` | Unambiguous stars for גן+צהרון (see §6) |
+| 12 | Contact reviewer modal — tablet/phone UX | Core differentiator must work on touch (see §7); complements v3.2 contact ops |
+| 13 | Search panel collapse / tablet sheet | More map + optional drag (see §8) |
+| 14 | Gan attribute icons — tap + (?) legend | Touch parity + link to `/about` content (see §9) |
