@@ -140,35 +140,36 @@ Colors convey supervision and subsidy status at a glance. Applies to all icons a
 
 ---
 
-## `category` Enum — Current State + v3 Changes
+## `category` enum — database mapping
 
-### Currently in DB (`gan_category` PostgreSQL enum)
+PostgreSQL enum `gan_category`. Values below are what the app and imports use today. Three tzaharon-related values (`TZAHARON_*`) were added in v3 (migration `supabase/migrations/20260328000000_v3_gan_category_tzaharon.sql`).
 
-| `category` value | Hebrew label | Sub-field | Color | Data source |
+### All `category` values
+
+| `category` value | Hebrew label | Sub-field | Color | How rows typically arrive |
 |---|---|---|---|---|
 | `MAON_SYMBOL` | מעון סמל (ויצו/נעמת) | `maon_symbol_code` | 🔵 Blue | data.gov.il (`maon_type_code = 0`) |
-| `MISHPACHTON` | משפחתון | `mishpachton_affiliation`: `TAMAT` / `PRIVATE` | 🔵 / 🟠 | Scraper (name inference) |
-| `PRIVATE_GAN` | גן פרטי | `private_supervision`: `SUPERVISED` / `NOT_SUPERVISED` | 🟢 / 🟠 | Scraper (name inference) |
-| `MUNICIPAL_GAN` | גן עירייה | `municipal_grade`: `TTAH` / `TAH` / `HOVA` | 🔵 Blue | Scraper (name inference) |
-| `UNSPECIFIED` | לא ידוע | — | ⚫ Gray | Scraper (no match) |
+| `MISHPACHTON` | משפחתון | `mishpachton_affiliation`: `TAMAT` / `PRIVATE` | 🔵 / 🟠 | data.gov.il (`maon_type_code = 1`, affiliation `TAMAT`) or scraper / community |
+| `PRIVATE_GAN` | גן פרטי | `private_supervision`: `SUPERVISED` / `NOT_SUPERVISED` | 🟢 / 🟠 | Scraper (name inference) / community |
+| `MUNICIPAL_GAN` | גן עירייה | `municipal_grade`: `TTAH` / `TAH` / `HOVA` | 🔵 Blue | Scraper (name inference) / community |
+| `TZAHARON_MUNICIPAL` | גן + צהרון עירוני | — | 🔵 Blue | data.gov.il (`maon_type_code = 2`) + migration backfill on existing DBs |
+| `TZAHARON_PRIVATE_SUPERVISED` | צהרון פרטי בפיקוח | — | 🟢 Green | Community (suggest a gan, edits) |
+| `TZAHARON_PRIVATE_UNSUPERVISED` | צהרון פרטי ללא פיקוח | — | 🟠 Orange | Community (suggest a gan, edits) |
+| `UNSPECIFIED` | לא ידוע | — | ⚫ Gray | Scraper (no match) / fallback |
 
-### The problem: gov import sets everything to `MAON_SYMBOL`
+### Gov import (`data.gov.il`)
 
-All rows imported from `data.gov.il` are currently stored as `MAON_SYMBOL` regardless of their real type. The actual type is in `metadata->'gov'->>'maon_type_code'`:
+The importer (`scripts/gov_import/import_maon_symbol_datagovil.py`) sets `category` from the registry’s `maon_type_code` (also present under `metadata.gov`):
 
-| `maon_type_code` | Real type | Current category | Correct category |
+| `maon_type_code` | Meaning | `category` | Other fields |
 |---|---|---|---|
-| `0` | מעון סמל | `MAON_SYMBOL` | `MAON_SYMBOL` ✅ |
-| `1` | משפחתון סמל | `MAON_SYMBOL` | `MISHPACHTON` (affiliation=`TAMAT`) ❌ needs fix |
-| `2` | צהרון | `MAON_SYMBOL` | `TZAHARON_MUNICIPAL` ❌ needs fix |
+| `0` | מעון סמל | `MAON_SYMBOL` | — |
+| `1` | משפחתון סמל | `MISHPACHTON` | `mishpachton_affiliation = TAMAT` |
+| `2` | צהרון (רישום משרדי) | `TZAHARON_MUNICIPAL` | — |
 
-### New enum values added in v3
+**Legacy DBs:** If migrations through `20260328000000_v3_gan_category_tzaharon.sql` have not been applied, older rows may still have types `1` / `2` stored as `MAON_SYMBOL` until that migration (and a fresh import) run.
 
-| New `category` value | Hebrew label | גיל | Color | How rows get in |
-|---|---|---|---|---|
-| `TZAHARON_MUNICIPAL` | גן + צהרון עירוני | +3 | 🔵 Blue | Backfill from `maon_type_code = 2` + future gov import |
-| `TZAHARON_PRIVATE_SUPERVISED` | צהרון פרטי בפיקוח | +3 | 🟢 Green | Community-contributed (suggest a gan) |
-| `TZAHARON_PRIVATE_UNSUPERVISED` | צהרון פרטי ללא פיקוח | +3 | 🟠 Orange | Community-contributed (suggest a gan) |
+The parent-facing Type Table at the top distinguishes **גן + צהרון ✦** from **צהרון עירוני עצמאי**; in the DB, municipal facilities coming from this feed as `maon_type_code = 2` share **`TZAHARON_MUNICIPAL`** (one enum for that registry track).
 
 ### Icon mapping per category
 
@@ -199,21 +200,20 @@ The DB field that drives the icon is `category`. For `MISHPACHTON` and `PRIVATE_
 
 ---
 
-## Data Sources per Type
+## Data sources per type (vs Type Table above)
 
-Not all types exist in the DB today — some depend on community contributions.
+Rough mapping from the **Type Table** rows to **whether we usually have rows** and **where they come from**. “Partial” means some listings exist from the municipal scraper / UGC, not necessarily full national coverage.
 
-| Type | Exists today? | Source |
+| Type (as in Type Table) | In DB / map? | Source |
 |---|---|---|
-| מעון סמל | ✅ Yes | data.gov.il (type 0) |
-| משפחתון סמל | ✅ Yes (wrongly labeled as MAON_SYMBOL) | data.gov.il (type 1) |
-| צהרון עירוני | ✅ Yes (wrongly labeled as MAON_SYMBOL) | data.gov.il (type 2) |
-| משפחתון פרטי | Partial (scraper) | Community suggest |
-| גן פרטי בפיקוח | Partial (scraper) | Community suggest |
-| גן פרטי ללא פיקוח | Partial (scraper) | Community suggest |
-| גן עירייה (בוקר בלבד) | Partial (scraper) | Community suggest |
-| צהרון פרטי בפיקוח | ❌ No | Community suggest only |
-| צהרון פרטי ללא פיקוח | ❌ No | Community suggest only |
+| מעון סמל | ✅ Yes | data.gov.il → `MAON_SYMBOL` |
+| משפחתון סמל (משרד העבודה) | ✅ Yes | data.gov.il → `MISHPACHTON` + `TAMAT` |
+| משפחתון פרטי | Partial | Scraper / name inference → `MISHPACHTON` (`PRIVATE` or unknown) / suggest |
+| גן פרטי בפיקוח / ללא פיקוח | Partial | Scraper → `PRIVATE_GAN` / suggest |
+| גן עירייה — בוקר בלבד | Partial | Scraper → `MUNICIPAL_GAN` / suggest |
+| גן עירייה + צהרון ✦ / צהרון עירוני עצמאי | ✅ Yes (municipal registry track) | data.gov.il type `2` → `TZAHARON_MUNICIPAL` (see note above) |
+| צהרון פרטי בפיקוח / ללא פיקוח | When contributed | Suggest a gan / edits → `TZAHARON_PRIVATE_*` |
+| לא ידוע | As needed | `UNSPECIFIED` |
 
 ---
 
@@ -221,7 +221,7 @@ Not all types exist in the DB today — some depend on community contributions.
 
 Only **`TZAHARON_MUNICIPAL`** (גן עירייה + צהרון עירוני — the ✦ combined row above) is both a gan and a tzaharon in one map pin. **`MUNICIPAL_GAN`** is morning-only; **`TZAHARON_PRIVATE_*`** are standalone afternoon frameworks — no morning/tzaharon split on the same entity.
 
-For **`TZAHARON_MUNICIPAL`** reviews only, the form offers **"הגן (בוקר)"**, **"הצהרון"**, **"שניהם"** (default **"שניהם"**) as `review_scope`, stored through triage and on `confirmed_reviews` after promotion. That builds separate morning/afternoon signal without guessing from free text.
+**Planned (v3 — see [V3_PLAN.md](V3_PLAN.md) §6):** For **`TZAHARON_MUNICIPAL`** reviews only, the form should offer **"הגן (בוקר)"**, **"הצהרון"**, **"שניהם"** (default **"שניהם"**) as `review_scope`, flowing through triage into **`confirmed_reviews`**. That flow is **not implemented in the app yet**; the paragraph above explains **why** only this category needs a scope, once reviews support it.
 
 ---
 

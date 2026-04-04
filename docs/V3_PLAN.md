@@ -25,13 +25,38 @@ The map is the tool. The emotional hook is community trust — reviews, ratings,
 
 ---
 
+## Progress snapshot (vs work order below)
+
+Tracked against the numbered **Work Order** at the end of this doc. Status reflects **this repository** as of the last doc update (verify after large merges).
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | DB migration (enum + backfill) | **Done** — `supabase/migrations/20260328000000_v3_gan_category_tzaharon.sql` |
+| 2 | Fix gov import script | **Done** — `scripts/gov_import/import_maon_symbol_datagovil.py` maps `maon_type_code` |
+| 3 | TypeScript types + display | **Done** — `src/types/ganim.ts`, `src/lib/gan-display.ts` |
+| 4 | Map icons + colors | **Done** — `src/components/map/MapContainer.tsx` (`getGanPinConfig`) |
+| 5 | Age toggle + category filter | **Done** — `FilterPanel`, `apply-filters`, `filters.ts` |
+| 6 | Cluster count vs opened list | **Done** — cluster click uses full cluster size for `getLeaves` in `MapContainer.tsx` |
+| 7 | Suggest a gan — all types | **Done** — `SuggestGanModal.tsx` (+ related API paths) |
+| 8 | Filter by rating | **Done** — `min_rating` / rated-only + soft nudge in `SearchResultsPanel.tsx` when few matches |
+| 9 | Shareable gan URL | **Done** — `src/app/gan/[id]/page.tsx`, share/copy in `GanDetail.tsx`, `src/lib/site-url.ts` |
+| 10 | Landing + explanatory page | **Not started** — app home is still map-only (`src/app/page.tsx` → `HomeMap`); no `/about` or `/how-it-works` route yet |
+| 11 | Reviews — `review_scope` | **Not started** — no column/API/UI wired end-to-end yet (see §6, [GAN_TYPES.md](GAN_TYPES.md)) |
+| 12 | Contact reviewer modal — touch UX | **Not started** — see §7 |
+| 13 | Search panel collapse / tablet | **Not started** — see §8 |
+| 14 | Gan attribute icons — tap + legend | **Not started** — see §9 |
+
+**Note on item 10:** If you expected landing + about to be done, they are **not present under `src/app/`** today (only `/`, `/gan/[id]`, `/admin/triage`). Treat §1 as the remaining “wrap the product” milestone.
+
+---
+
 ## Features
 
 ---
 
 ### 1. Landing + Explanatory Page
 
-**Status:** TBD — design-first
+**Status:** **Not started** — design-first; no dedicated routes or in-app links yet (map remains the default home).
 
 **What:**
 - A landing screen that is impressive and immediately communicates the value proposition
@@ -53,13 +78,15 @@ The map is the tool. The emotional hook is community trust — reviews, ratings,
 
 ### 2. Gan Type System — Icons, Colors, Data
 
-This is the largest feature in v3. It touches the DB, import pipeline, TypeScript types, map rendering, and the suggest flow. Full type reference: [GAN_TYPES.md](GAN_TYPES.md).
+**Status:** **Done** in this repo (DB, import, types, map, filters, suggest). Canonical reference: [GAN_TYPES.md](GAN_TYPES.md).
+
+This was the largest feature in v3. It touches the DB, import pipeline, TypeScript types, map rendering, and the suggest flow.
 
 #### 2a. DB Migration
 
-**Problem:** All rows imported from data.gov.il are currently stored as `MAON_SYMBOL` regardless of their real type. The actual type lives in `metadata->'gov'->>'maon_type_code'`.
+**Historical note:** Before v3, gov rows were often stored as `MAON_SYMBOL` regardless of `maon_type_code`. **Shipped** migration (excerpt; see file for full):
 
-**Migration (one SQL file):**
+**Migration (reference — applied in repo):**
 
 ```sql
 -- Step 1: Add new enum values
@@ -83,27 +110,20 @@ WHERE category = 'MAON_SYMBOL'
 
 **What is NOT touched:** `PRIVATE_GAN`, `UNSPECIFIED`, `MISHPACHTON`, `MUNICIPAL_GAN` rows from the scraper — left as-is.
 
-#### 2b. Fix Gov Import Script
+#### 2b. Gov Import Script
 
-`scripts/gov_import/import_maon_symbol_datagovil.py` currently hardcodes `MAON_SYMBOL` for all imported rows. It must be updated to set `category` based on `maon_type_code`:
+**Done.** `scripts/gov_import/import_maon_symbol_datagovil.py` sets `category` from `maon_type_code`:
 - `0` → `MAON_SYMBOL`
 - `1` → `MISHPACHTON` + `mishpachton_affiliation = TAMAT`
 - `2` → `TZAHARON_MUNICIPAL`
 
 #### 2c. TypeScript Types
 
-File: `src/types/ganim.ts`
-- Add `TZAHARON_MUNICIPAL`, `TZAHARON_PRIVATE_SUPERVISED`, `TZAHARON_PRIVATE_UNSUPERVISED` to `GanCategory`
-
-File: `src/lib/gan-display.ts`
-- Add Hebrew labels in `formatGanCategoryHe()` for the 3 new values
+**Done.** `GanCategory` includes the three `TZAHARON_*` values in `src/types/ganim.ts`. Hebrew labels for `formatGanCategoryHe()` / related helpers live in `src/lib/gan-display.ts`.
 
 #### 2d. Map Icons + Colors
 
-File: `src/components/map/MapContainer.tsx`
-- Implement icon + color per `category` (and sub-field where relevant) according to `GAN_TYPES.md`
-- Icon shape = type of setting; color = supervision/subsidy level
-- Final SVG assets TBD with design; emoji concepts are in `GAN_TYPES.md`
+**Done.** `src/components/map/MapContainer.tsx` maps icon + color per `category` (and sub-fields where relevant) per `GAN_TYPES.md`. Emoji pins today; custom SVG assets remain optional design follow-up.
 
 | category | icon | color |
 |---|---|---|
@@ -127,23 +147,18 @@ A bold, prominent toggle at the top of the map UI. Both options can be selected 
 - `3+`: show ganim where `min_age_months >= 36` (or null, for tzaharon types)
 - Default: both selected (show all)
 
-**Changes:**
-- `src/types/filters.ts` — add `age_track: ('0-3' | '3+')[] | null` to `GanFilters`
+**Changes (done):**
+- `src/types/filters.ts` — `age_track` on `GanFilters`
 - `src/lib/apply-filters.ts` — filter logic
 - `src/components/layout/FilterPanel.tsx` — toggle UI
 
 #### 2f. Category Filter
 
-Allow filtering by gan type on the map (multi-select chips).
-
-**Changes:**
-- `src/types/filters.ts` — add `categories: GanCategory[] | null`
-- `src/lib/apply-filters.ts` — filter logic
-- `src/components/layout/FilterPanel.tsx` — type filter UI with icons
+**Done.** Multi-select type chips: `filters.categories`, `apply-filters`, `FilterPanel`.
 
 #### 2g. Suggest a Gan — Support All Types
 
-`src/components/gan/SuggestGanModal.tsx` must expose all types from the full type table, with correct sub-fields per type:
+**Done.** `src/components/gan/SuggestGanModal.tsx` exposes types and sub-fields per type:
 - Type picker: all `GanCategory` values (with Hebrew labels)
 - Conditional sub-fields:
   - `MISHPACHTON` → show `mishpachton_affiliation` picker (TAMAT / PRIVATE)
@@ -155,45 +170,48 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ### 3. Fix Cluster 200/50 Bug
 
-**Problem:** The map shows 200 ganim in a cluster, but clicking it shows only 50. This is a cap/default mismatch between the clustering display count and the actual data loaded.
+**Status:** **Done.** Opening a cluster passes the cluster’s point count into `getLeaves`, so the list can include every pin in that cluster (see `MapContainer.tsx`).
 
-**Fix:** Align the cluster label count with the actual number of ganim loaded in the viewport. Either increase the load cap to match the cluster display, or cap the cluster label to match what's actually loaded.
+**Original issue:** The map showed N ganim on a cluster bubble, but only 50 appeared after tap (default leaf limit).
 
-**Files likely involved:** `src/hooks/useViewportGanim.ts`, `src/components/map/MapContainer.tsx`
+**Regression check:** If counts ever diverge again, compare viewport fetch limits with clustering input and cluster leaf limit.
 
 ---
 
 ### 4. Shareable Gan URL
 
-**What:** A "Copy link" button on every gan detail panel that generates a shareable URL for that specific gan.
+**Status:** **Done.**
+
+**What:** A "Copy link" / share control on the gan detail panel and a stable URL per gan.
 
 **URL structure:** `/gan/[id]` — a new Next.js dynamic route
 
-**Requirements:**
-- `src/app/gan/[id]/page.tsx` — new server-side page that loads the gan and renders it
-- OG meta tags (name, type, address, city) so the link preview looks good in WhatsApp/iMessage
-- The page loads the gan detail and allows the user to interact (same UX as clicking a pin on the map, ideally)
-- Copy link button in the gan detail panel (`src/components/gan/GanDetail.tsx`)
+**Shipped:**
+- `src/app/gan/[id]/page.tsx` — server page + `generateMetadata` for previews
+- OG-oriented metadata (title, description, canonical) via `src/lib/site-url.ts`
+- Map deep-link focus for shared URLs
+- Share/copy affordance in `src/components/gan/GanDetail.tsx`
 
 ---
 
 ### 5. Filter by Rating
 
-**What:** A hard filter chip in the filter panel: "מדורג בלבד" or a minimum stars slider.
+**Status:** **Done** (filters + soft nudge when few rated results in view).
+
+**What:** "מדורג בלבד" and minimum stars in the filter panel.
 
 **Behavior:**
 - Filters out ganim with `avg_rating = null` or below threshold
 - If results are sparse after filtering, show an inline nudge: _"מעט דירוגים באיזור זה — עזרו לנו לשפר"_ (not a hard error, just a soft message)
 - No "beta" label on the filter chip itself — just let it work
 
-**Changes:**
-- `src/types/filters.ts` — add `min_rating: number | null`
-- `src/lib/apply-filters.ts` — filter logic
-- `src/components/layout/FilterPanel.tsx` — rating filter UI
+**Implemented in:** `src/types/filters.ts`, `src/lib/apply-filters.ts`, `src/components/layout/FilterPanel.tsx`, nudge copy in `src/components/layout/SearchResultsPanel.tsx`.
 
 ---
 
 ### 6. Reviews — `review_scope` (גן + צהרון combined only)
+
+**Status:** **Not started** — spec only; see [GAN_TYPES.md](GAN_TYPES.md) (planned behavior).
 
 **When it applies:** Only **`TZAHARON_MUNICIPAL`** — the single category that is **both** a morning municipal gan and an afternoon tzaharon at the same place (see [GAN_TYPES.md](GAN_TYPES.md): `MUNICIPAL_GAN` = בוקר בלבד; private tzaharon types = עצמאי). Parents may be rating the morning gan, the tzaharon, or the full-day experience; `review_scope` records which so one star rating is not ambiguous.
 
@@ -212,6 +230,8 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ### 7. Contact reviewer modal — tablet / phone UX
 
+**Status:** **Not started** (improvements below still the target).
+
 **Problem:** On iPad and phones, the “שלח הודעה לממליץ” flow is hard to use: the modal competes with the gan detail sheet, lacks a strong scrim, and can feel clipped or cramped (fixed positioning inside scrollable ancestors can make this worse on WebKit).
 
 **Direction:**
@@ -225,6 +245,8 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ### 8. Search panel and map — collapse / expand (drag optional)
 
+**Status:** **Not started**.
+
 **Goal:** Let users **hide the search UI** to see more map, and **bring it back** without losing context—especially on **tablet** (today the `md` breakpoint uses a fixed side panel like a small laptop, so there is no bottom-sheet drag).
 
 **Direction:**
@@ -237,6 +259,8 @@ Allow filtering by gan type on the map (multi-select chips).
 ---
 
 ### 9. Gan attribute icons — touch + “(?)” legend
+
+**Status:** **Not started** (tooltips only today).
 
 **Problem:** In `GanAttributeIcons`, meaning is mostly in **`title` tooltips** — fine on desktop with hover, **invisible on phone / iPad**.
 
@@ -275,9 +299,9 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ### Verification and polish (ship-quality)
 
-- **Cluster vs list parity** — QA large clusters so the count shown on the map matches what users can actually open in the list (historical “200 vs 50” class of bugs); fix any remaining cap mismatches in `MapContainer` / viewport fetch paths.
+- **Cluster vs list parity** — Primary fix shipped in `MapContainer` (leaf limit matches cluster size); keep an occasional **smoke test** on huge clusters after viewport/limit changes.
 - **Share links in the wild** — confirm production **`metadataBase` / public site URL** so Open Graph previews for `/gan/[id]` look correct in WhatsApp and similar clients (`generateMetadata`, `site-url` helpers).
-- **Sparse-results nudge** — optional copy when **rating filters** yield very few pins (per original v3 §5 intent): soft message, not an error.
+- **Sparse-results nudge** — **Shipped** in-app when rating filters are on and few ganim match (`SearchResultsPanel`); revisit copy/threshold if needed.
 
 ### Trust, safety, and compliance surfaces
 
@@ -309,19 +333,21 @@ Allow filtering by gan type on the map (multi-select chips).
 
 ## Work Order (Suggested)
 
-| # | Task | Why first |
-|---|---|---|
-| 1 | DB migration (enum + backfill) | Everything else depends on correct categories |
-| 2 | Fix gov import script | Prevent re-importing wrong categories |
-| 3 | TypeScript types + display functions | Unblocks map icons and filter work |
-| 4 | Map icons + colors | Core visual identity of v3 |
-| 5 | Age toggle + category filter | Ties the icon system into discovery |
-| 6 | Fix cluster 200/50 bug | Quick win, fixes a confusing experience |
-| 7 | Suggest a gan — all types | Enables community data for missing types |
-| 8 | Filter by rating | Connects to the core "trusted by parents" hook |
-| 9 | Shareable gan URL | PLG — enables sharing in WhatsApp |
-| 10 | Landing + Explanatory page | TBD design; can be last since it wraps the product |
-| 11 | Reviews — `review_scope` | Unambiguous stars for גן+צהרון (see §6) |
-| 12 | Contact reviewer modal — tablet/phone UX | Core differentiator must work on touch (see §7); complements v3.2 contact ops |
-| 13 | Search panel collapse / tablet sheet | More map + optional drag (see §8) |
-| 14 | Gan attribute icons — tap + (?) legend | Touch parity + link to `/about` content (see §9) |
+| # | Task | Status | Why first |
+|---|------|--------|-----------|
+| 1 | DB migration (enum + backfill) | Done | Everything else depends on correct categories |
+| 2 | Fix gov import script | Done | Prevent re-importing wrong categories |
+| 3 | TypeScript types + display functions | Done | Unblocks map icons and filter work |
+| 4 | Map icons + colors | Done | Core visual identity of v3 |
+| 5 | Age toggle + category filter | Done | Ties the icon system into discovery |
+| 6 | Fix cluster 200/50 bug | Done | Quick win, fixes a confusing experience |
+| 7 | Suggest a gan — all types | Done | Enables community data for missing types |
+| 8 | Filter by rating | Done | Connects to the core "trusted by parents" hook |
+| 9 | Shareable gan URL | Done | PLG — enables sharing in WhatsApp |
+| 10 | Landing + Explanatory page | **Not started** | Wraps the product; still map-only home |
+| 11 | Reviews — `review_scope` | **Not started** | Unambiguous stars for גן+צהרון (see §6) |
+| 12 | Contact reviewer modal — tablet/phone UX | **Not started** | Core differentiator must work on touch (see §7); complements v3.2 contact ops |
+| 13 | Search panel collapse / tablet sheet | **Not started** | More map + optional drag (see §8) |
+| 14 | Gan attribute icons — tap + (?) legend | **Not started** | Touch parity + link to `/about` content (see §9) |
+
+See **[Progress snapshot](#progress-snapshot-vs-work-order-below)** above for file pointers and notes.

@@ -9,6 +9,8 @@
 | [GIVE_TO_GET_ACCESS_MODEL.md](../GIVE_TO_GET_ACCESS_MODEL.md) | How review access works today (entitlements, onboarding, bounty, admin). |
 | [SPEC_ENTITLEMENTS_AND_MODERATION.md](../SPEC_ENTITLEMENTS_AND_MODERATION.md) | **Non-normative** target/backlog spec (moderation, future tables, events). **Do not treat as production contract**—use **GIVE_TO_GET_ACCESS_MODEL.md** + **database.md**; read the warning box at the top of the spec. |
 | [PRODUCT_AUDIT.md](../PRODUCT_AUDIT.md) | Product backlog and risk register (living document). |
+| [GAN_TYPES.md](./GAN_TYPES.md) | Gan `category` enum, icons, colors, gov import mapping, type table for parents. |
+| [V3_PLAN.md](./V3_PLAN.md) | v3 product and engineering plan (north star, features, work order). |
 
 ## Scripts
 
