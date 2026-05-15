@@ -212,12 +212,17 @@ export function MapContainer({
   const handleMapLoad = useCallback(() => updateViewport(), [updateViewport]);
   const handleMoveEnd = useCallback(() => updateViewport(), [updateViewport]);
 
-  // Pan+zoom to selected place
+  // Pan+zoom to selected place — only once per unique selectedPlaceId
+  const lastPannedPlaceId = useRef<string | null>(null);
   useEffect(() => {
+    if (!selectedPlaceId) { lastPannedPlaceId.current = null; return; }
+    // Skip if we already panned to this place (prevents re-pan when `places` refreshes)
+    if (lastPannedPlaceId.current === selectedPlaceId) return;
     const map = mapRef.current;
-    if (!map || !selectedPlaceId) return;
+    if (!map) return;
     const place = places.find((p) => p.id === selectedPlaceId);
     if (!place || !isFinite(place.lon) || !isFinite(place.lat)) return;
+    lastPannedPlaceId.current = selectedPlaceId;
     const currentZoom = map.getZoom?.() ?? DEFAULT_VIEW.zoom;
     map.easeTo({
       center: [place.lon, place.lat],
@@ -330,6 +335,13 @@ export function MapContainer({
     [getClusterId, index]
   );
 
+  // Change cursor to crosshair when in pin-picking mode
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    try { map.getMap().getCanvas().style.cursor = onMapClick ? "crosshair" : ""; } catch {}
+  }, [onMapClick]);
+
   const handleMapClick = useCallback(
     (e: MapLayerMouseEvent) => {
       const target = e.originalEvent.target as HTMLElement;
@@ -341,6 +353,18 @@ export function MapContainer({
       onSelectPlace(null);
     },
     [onMapClick, onSelectPlace]
+  );
+
+  // Use mouseup for pin placement — more reliable than onClick which Mapbox
+  // swallows when the pointer moves even 1px (treating it as a pan).
+  const handleMouseUp = useCallback(
+    (e: MapLayerMouseEvent) => {
+      if (!onMapClick) return;
+      const target = e.originalEvent.target as HTMLElement;
+      if (target.closest(".mapboxgl-marker")) return;
+      onMapClick({ lon: e.lngLat.lng, lat: e.lngLat.lat });
+    },
+    [onMapClick]
   );
 
   // ─── Render guards ────────────────────────────────────────────────────────
@@ -413,7 +437,8 @@ export function MapContainer({
       mapStyle="mapbox://styles/mapbox/light-v11"
       onLoad={handleMapLoad}
       onMoveEnd={handleMoveEnd}
-      onClick={handleMapClick}
+      onClick={onMapClick ? undefined : handleMapClick}
+      onMouseUp={onMapClick ? handleMouseUp : undefined}
     >
       <NavigationControl position="bottom-right" />
 

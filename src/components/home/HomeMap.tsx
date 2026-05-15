@@ -5,6 +5,8 @@ import { MapContainer } from "@/components/map/MapContainer";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
 import { PlaceFeedPanel } from "@/components/places/PlaceFeedPanel";
+import { PlaceDetail } from "@/components/places/PlaceDetail";
+import { AddPlaceModal } from "@/components/places/AddPlaceModal";
 import { usePlacesInViewport } from "@/hooks/usePlacesInViewport";
 import type { Bounds } from "@/lib/places-api";
 import type { Place, PlaceCategory } from "@/types/places";
@@ -18,7 +20,7 @@ import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import {
   Loader2, Star, X, ChevronLeft,
-  Map, Home, Plus, Heart, User, Navigation,
+  Map, Home, Plus, Heart, User, MapPin,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -74,10 +76,12 @@ function applyPlaceFilters(
 function MapPeekSheet({
   place,
   onClose,
+  onOpenDetail,
   userLocation,
 }: {
   place: Place;
   onClose: () => void;
+  onOpenDetail: () => void;
   userLocation: { lon: number; lat: number } | null;
 }) {
   const color = PLACE_CATEGORY_COLORS[place.place_category];
@@ -154,6 +158,7 @@ function MapPeekSheet({
         {/* Nav arrow */}
         <button
           type="button"
+          onClick={onOpenDetail}
           className="w-[38px] h-[38px] rounded-[12px] flex items-center justify-center shrink-0"
           style={{ backgroundColor: "#0A2B6B" }}
           aria-label="פרטים"
@@ -363,8 +368,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(() => seedPlace ?? null);
+  const [detailPlace, setDetailPlace] = useState<Place | null>(null);
   const [selectedClusterPlaces, setSelectedClusterPlaces] = useState<Place[] | null>(null);
-  const [filters, setFilters] = useState<PlaceFilters>(DEFAULT_PLACE_FILTERS);
+  const [filters, setFilters] = useState<PlaceFilters>({ ...DEFAULT_PLACE_FILTERS, rated_only: true });
   const [fitToAddress, setFitToAddress] = useState<{
     lon: number; lat: number; radiusM?: number; zoom?: number;
   } | null>(null);
@@ -373,6 +379,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   const [activeTab, setActiveTab] = useState<MobileTab>("home");
   const [pickingPin, setPickingPin] = useState(false);
   const [suggestPin, setSuggestPin] = useState<{ lon: number; lat: number } | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lon: number; lat: number } | null>(null);
 
   useEffect(() => {
@@ -441,6 +448,19 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Open add modal immediately — no pin-picking required first
+  const startAddFlow = useCallback(() => {
+    setShowAddModal(true);
+  }, []);
+
+  // Called from inside AddPlaceModal when user wants to pick a pin on the map
+  const handlePickPin = useCallback(() => {
+    setShowAddModal(false);
+    setSuggestPin(null);
+    setPickingPin(true);
+    setActiveTab("map");
+  }, []);
+
   const handleBoundsChange = useCallback(
     (bounds: Bounds) => { setCurrentBounds(bounds); onBoundsChange(bounds); },
     [onBoundsChange]
@@ -492,7 +512,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           <PlaceFeedPanel
             places={filteredPlaces}
             selectedPlaceId={selectedPlace?.id ?? null}
-            onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); }}
+            onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); setDetailPlace(p); }}
             filters={filters}
             onFiltersChange={setFilters}
             userLocation={userLocation}
@@ -511,14 +531,30 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             onBoundsChange={handleBoundsChange}
             loading={placesLoading || placesPending}
             pendingPin={suggestPin}
+            onMapClick={pickingPin ? (pos) => { setSuggestPin(pos); setPickingPin(false); setShowAddModal(true); } : undefined}
           />
           {/* Desktop detail: right-side overlay */}
-          {(selectedPlace || selectedClusterPlaces) && (
-            <div className="absolute top-4 end-4 w-[360px] z-20 max-h-[calc(100dvh-2rem)] overflow-auto">
-              {selectedPlace ? (
+          {(detailPlace || selectedPlace || selectedClusterPlaces) && (
+            <div
+              className="absolute top-4 end-4 w-[360px] z-20 overflow-hidden"
+              style={{
+                maxHeight: "calc(100dvh - 2rem)",
+                borderRadius: 20,
+                boxShadow: "0 16px 40px rgba(10,43,107,.22)",
+              }}
+            >
+              {detailPlace ? (
+                <div className="h-full" style={{ maxHeight: "calc(100dvh - 2rem)" }}>
+                  <PlaceDetail
+                    place={detailPlace}
+                    onClose={() => { setDetailPlace(null); setSelectedPlace(null); }}
+                  />
+                </div>
+              ) : selectedPlace ? (
                 <MapPeekSheet
                   place={selectedPlace}
                   onClose={() => { setSelectedPlace(null); setSelectedClusterPlaces(null); }}
+                  onOpenDetail={() => setDetailPlace(selectedPlace)}
                   userLocation={userLocation}
                 />
               ) : selectedClusterPlaces ? (
@@ -530,6 +566,17 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               ) : null}
             </div>
           )}
+          {/* Desktop add-place FAB */}
+          <button
+            type="button"
+            onClick={startAddFlow}
+            className="absolute bottom-24 end-4 z-10 hidden md:flex items-center gap-2 font-hebrew font-bold"
+            style={{ padding: "12px 18px", borderRadius: 999, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, boxShadow: "0 8px 20px rgba(10,43,107,.35)" }}
+          >
+            <Plus style={{ width: 18, height: 18 }} />
+            הוסף מקום
+          </button>
+
           {/* Auth */}
           <div className="absolute top-4 start-4 z-10 flex items-center gap-2">
             {isAdmin && (
@@ -559,7 +606,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               onSelectPlace={(p) => {
                 setSelectedClusterPlaces(null);
                 setSelectedPlace(p);
-                setActiveTab("map");
+                setDetailPlace(p);
               }}
               filters={filters}
               onFiltersChange={setFilters}
@@ -580,7 +627,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             onSelectCluster={(list) => { setSelectedClusterPlaces(list); setSelectedPlace(null); }}
             onBoundsChange={handleBoundsChange}
             loading={placesLoading || placesPending}
-            onMapClick={pickingPin ? (pos) => { setSuggestPin(pos); setPickingPin(false); } : undefined}
+            onMapClick={pickingPin ? (pos) => { setSuggestPin(pos); setPickingPin(false); setShowAddModal(true); setActiveTab("home"); } : undefined}
             pendingPin={suggestPin}
           />
 
@@ -630,6 +677,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             <MapPeekSheet
               place={selectedPlace}
               onClose={() => { setSelectedPlace(null); setSelectedClusterPlaces(null); }}
+              onOpenDetail={() => setDetailPlace(selectedPlace)}
               userLocation={userLocation}
             />
           )}
@@ -643,6 +691,81 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
         </div>
       </div>
 
+      {/* Mobile full-screen PlaceDetail overlay */}
+      {detailPlace && (
+        <div className="md:hidden absolute inset-0 z-40 bg-white overflow-hidden">
+          <PlaceDetail
+            place={detailPlace}
+            onClose={() => setDetailPlace(null)}
+          />
+        </div>
+      )}
+
+      {/* Pin-picking guidance banner */}
+      {pickingPin && (
+        <div
+          className="absolute inset-x-4 z-30 pointer-events-none"
+          style={{ top: "calc(var(--safe-top, 0px) + 16px)" }}
+        >
+          <div
+            className="flex items-center justify-center gap-2 font-hebrew font-semibold rounded-2xl py-3 px-5"
+            style={{
+              background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)",
+              color: "#fff", fontSize: 14,
+              boxShadow: "0 8px 20px rgba(10,43,107,.35)",
+            }}
+          >
+            <MapPin style={{ width: 16, height: 16 }} />
+            הקש על המפה כדי לסמן מיקום
+          </div>
+        </div>
+      )}
+
+      {/* AddPlaceModal — full-screen on mobile, centered card on desktop */}
+      {showAddModal && (
+        <>
+          {/* Desktop backdrop */}
+          <div
+            className="hidden md:block fixed inset-0 z-50"
+            style={{ background: "rgba(10,43,107,.45)", backdropFilter: "blur(4px)" }}
+            onClick={() => { setShowAddModal(false); setSuggestPin(null); }}
+          />
+          {/* Mobile: full screen */}
+          <div className="md:hidden absolute inset-0 z-50 bg-white overflow-hidden">
+            <AddPlaceModal
+              initialLocation={suggestPin}
+              onClose={() => { setShowAddModal(false); setSuggestPin(null); }}
+              onPickPin={handlePickPin}
+              onSuccess={(place) => {
+                addPlace(place);
+                setSuggestPin(null);
+                setShowAddModal(false);
+                setSelectedPlace(place);
+                setDetailPlace(place);
+              }}
+            />
+          </div>
+          {/* Desktop: centered card */}
+          <div className="hidden md:flex fixed inset-0 z-50 items-center justify-center pointer-events-none">
+            <div className="pointer-events-auto overflow-hidden"
+              style={{ width: "min(520px, 92vw)", maxHeight: "88dvh", borderRadius: 24, boxShadow: "0 24px 60px rgba(10,43,107,.35)", display: "flex", flexDirection: "column" }}>
+              <AddPlaceModal
+                initialLocation={suggestPin}
+                onClose={() => { setShowAddModal(false); setSuggestPin(null); }}
+                onPickPin={handlePickPin}
+                onSuccess={(place) => {
+                  addPlace(place);
+                  setSuggestPin(null);
+                  setShowAddModal(false);
+                  setSelectedPlace(place);
+                  setDetailPlace(place);
+                }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Error banner */}
       {fetchError && (
         <div className="fixed top-20 inset-x-4 z-50 bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2 rounded-2xl text-sm font-hebrew">
@@ -654,12 +777,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
       <BottomTabBar
         active={activeTab}
         onChange={(tab) => {
+          if (tab === "add") { startAddFlow(); return; }
           setActiveTab(tab);
-          if (tab === "add") {
-            setPickingPin(true);
-            setSuggestPin(null);
-            setActiveTab("map");
-          }
         }}
       />
     </div>

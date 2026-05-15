@@ -33,6 +33,7 @@ function distanceLabel(
   user: { lon: number; lat: number } | null
 ): string | null {
   if (!user) return null;
+  if (!isFinite(place.lat) || !isFinite(place.lon)) return null;
   const R = 6371e3;
   const dLat = ((place.lat - user.lat) * Math.PI) / 180;
   const dLon = ((place.lon - user.lon) * Math.PI) / 180;

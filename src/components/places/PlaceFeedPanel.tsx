@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, X, SlidersHorizontal, ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, X, SlidersHorizontal, ChevronDown, Loader2, MapPin } from "lucide-react";
+import { AuthButton } from "@/components/auth/AuthButton";
 import type { Place, PlaceCategory } from "@/types/places";
 import { PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
+import { searchPlaces } from "@/lib/places-api";
 import { PlaceCard } from "./PlaceCard";
 
 // ─── Sort ─────────────────────────────────────────────────────────────────────
@@ -78,18 +80,42 @@ export function PlaceFeedPanel({
 }: PlaceFeedPanelProps) {
   const [sort, setSort] = useState<SortOption>("top");
   const [searchQuery, setSearchQuery] = useState("");
+  const [apiSearchResults, setApiSearchResults] = useState<Place[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (!isVisible) return null;
+  // Debounced search API call — fires when query ≥ 2 chars
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
 
-  const toggleCategory = (cat: PlaceCategory) => {
-    const current = filters.categories ?? [];
-    const next = current.includes(cat)
-      ? current.filter((c) => c !== cat)
-      : [...current, cat];
-    onFiltersChange({ ...filters, categories: next.length ? next : null });
-  };
+    if (searchQuery.trim().length < 2) {
+      setApiSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    setSearchLoading(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await searchPlaces(searchQuery.trim(), { limit: 30 });
+        setApiSearchResults(results as Place[]);
+      } catch {
+        setApiSearchResults(null);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [searchQuery]);
 
   const visiblePlaces = useMemo(() => {
+    // Use API search results when available; fall back to local viewport filter
+    if (apiSearchResults !== null) {
+      return sortPlaces(apiSearchResults, sort, userLocation);
+    }
     let result = places;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -101,7 +127,7 @@ export function PlaceFeedPanel({
       );
     }
     return sortPlaces(result, sort, userLocation);
-  }, [places, sort, searchQuery, userLocation]);
+  }, [places, sort, searchQuery, apiSearchResults, userLocation]);
 
   const featuredPlace = useMemo(
     () => visiblePlaces.find((p) => p.avg_rating != null) ?? null,
@@ -115,45 +141,38 @@ export function PlaceFeedPanel({
     (filters.price_range?.length ?? 0) +
     (filters.hmo?.length ?? 0);
 
+  const toggleCategory = (cat: PlaceCategory) => {
+    const current = filters.categories ?? [];
+    const next = current.includes(cat)
+      ? current.filter((c) => c !== cat)
+      : [...current, cat];
+    onFiltersChange({ ...filters, categories: next.length ? next : null });
+  };
+
+  if (!isVisible) return null;
+
   return (
     <div
       className="flex flex-col h-full"
       style={{ background: "#F6F9FE", overflow: "hidden" }}
       dir="rtl"
     >
-      {/* ── Greeting header ─────────────────────────────────────────────────── */}
-      <div style={{ background: "#fff", padding: "6px 20px 14px", flexShrink: 0 }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p style={{ fontSize: 12, color: "#8A95A8", fontWeight: 500, lineHeight: 1.1 }}
-               className="font-hebrew">
-              ברוכים הבאים,
-            </p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F5BB5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
-              </svg>
-              <p
-                className="font-hebrew"
-                style={{ fontSize: 17, fontWeight: 800, color: "#0A2B6B", lineHeight: 1.1,
-                         fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif" }}
-              >
-                גבעתיים
-              </p>
-            </div>
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div style={{ background: "#fff", padding: "14px 16px 12px", flexShrink: 0 }}>
+        <div className="flex items-center justify-between gap-2">
+          {/* City name */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <MapPin style={{ width: 15, height: 15, color: "#1F5BB5", flexShrink: 0 }} />
+            <span
+              className="font-hebrew font-bold truncate"
+              style={{ fontSize: 18, color: "#0A2B6B", fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", lineHeight: 1 }}
+            >
+              גבעתיים
+            </span>
           </div>
-          {/* Avatar */}
-          <div
-            className="flex items-center justify-center text-white font-bold"
-            style={{
-              width: 38, height: 38, borderRadius: "50%",
-              background: "linear-gradient(135deg, #E59A2C, #C8A24B)",
-              fontSize: 13, fontWeight: 700, border: "2px solid #fff",
-              boxShadow: "var(--shadow-sm)", flexShrink: 0,
-            }}
-          >
-            G
-          </div>
+
+          {/* Auth */}
+          <AuthButton />
         </div>
       </div>
 
@@ -230,11 +249,9 @@ export function PlaceFeedPanel({
 
       {/* ── Category chips ──────────────────────────────────────────────────── */}
       <div
-        className="scrollbar-hide"
         style={{
-          display: "flex", padding: "0 20px 14px", gap: 8,
-          overflowX: "auto", flexShrink: 0, background: "#fff",
-          minWidth: 0, width: "100%",
+          display: "flex", flexWrap: "wrap", padding: "0 20px 14px", gap: 8,
+          flexShrink: 0, background: "#fff",
         }}
       >
         {ALL_CATEGORIES.map((cat) => {
@@ -249,7 +266,7 @@ export function PlaceFeedPanel({
               style={{
                 gap: 6, padding: "8px 14px", borderRadius: 999,
                 fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
-                flexShrink: 0, cursor: "pointer", border: "1px solid",
+                cursor: "pointer", border: "1px solid",
                 transition: "background .15s, color .15s, border-color .15s, transform .1s",
                 background: active ? "#0A2B6B" : "#fff",
                 color: active ? "#fff" : "#4A5568",
@@ -269,20 +286,20 @@ export function PlaceFeedPanel({
         style={{ padding: "0 20px 96px" }}
       >
         {/* Section header */}
-        <div
-          className="flex items-center justify-between"
-          style={{ margin: "6px 0 12px" }}
-        >
+        <div style={{ margin: "6px 0 10px" }}>
+          <div className="flex items-center justify-between">
           <h3
-            className="font-hebrew"
+            className="font-hebrew flex items-center gap-1.5"
             style={{
               fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif",
               fontSize: 13, fontWeight: 800, color: "#0F1A2E", letterSpacing: ".02em",
             }}
           >
-            המלצות בגבעתיים
-            {visiblePlaces.length > 0 && (
-              <span style={{ color: "#8A95A8", fontWeight: 500, marginInlineStart: 6 }}>
+            {apiSearchResults !== null ? "תוצאות חיפוש" : "המלצות"}
+            {searchLoading ? (
+              <Loader2 style={{ width: 12, height: 12, color: "#8A95A8" }} className="animate-spin" />
+            ) : visiblePlaces.length > 0 && (
+              <span style={{ color: "#8A95A8", fontWeight: 500 }}>
                 ({visiblePlaces.length})
               </span>
             )}
@@ -301,6 +318,25 @@ export function PlaceFeedPanel({
             {SORT_LABELS[sort]}
             <ChevronDown style={{ width: 12, height: 12 }} />
           </button>
+          </div>
+          {/* Rated-only toggle chip */}
+          {apiSearchResults === null && (
+            <button
+              type="button"
+              onClick={() => onFiltersChange({ ...filters, rated_only: !filters.rated_only })}
+              className="flex items-center gap-1 font-hebrew font-semibold mt-2"
+              style={{
+                fontSize: 11, padding: "4px 10px", borderRadius: 999,
+                border: "1px solid", cursor: "pointer",
+                background: filters.rated_only ? "#0A2B6B" : "#F6F9FE",
+                color: filters.rated_only ? "#fff" : "#8A95A8",
+                borderColor: filters.rated_only ? "#0A2B6B" : "#E5E9F0",
+                transition: "all .15s",
+              }}
+            >
+              ★ {filters.rated_only ? "עם המלצות בלבד" : "הצג הכל"}
+            </button>
+          )}
         </div>
 
         {/* Empty state */}

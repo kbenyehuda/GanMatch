@@ -583,7 +583,7 @@ export function GanEditForm({ gan, onSaved, onCancel }: GanEditFormProps) {
                 placeholder="לדוגמה: 'גן עירייה', 'פרטי', 'מעון יום'..."
               />
               <div className="mt-1 text-[11px] text-gray-500 font-hebrew">
-                נשמר לשקיפות (ב־metadata), אבל הסיווג הראשי הוא "סוג".
+                נשמר לשקיפות (ב־metadata), אבל הסיווג הראשי הוא &quot;סוג&quot;.
               </div>
             </div>
             <div className="col-span-2">
