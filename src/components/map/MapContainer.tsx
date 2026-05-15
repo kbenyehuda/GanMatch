@@ -10,59 +10,56 @@ import type { MapRef } from "react-map-gl";
 import Supercluster from "supercluster";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { LocateFixed, MapPin } from "lucide-react";
-import type { Gan } from "@/types/ganim";
+import type { Place, PlaceCategory } from "@/types/places";
+import { PLACE_CATEGORY_COLORS } from "@/types/places";
 import { publicEnv } from "@/lib/env/public";
 
-type GanPointProps = { gan: Gan };
+// ─── Pin appearance ──────────────────────────────────────────────────────────
+
+const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
+  doctor: "🩺",
+  cafe: "☕",
+  kids: "🧩",
+  wellness: "🧘",
+  attraction: "🎡",
+  food: "🍽️",
+};
+
+function getPlacePinConfig(place: Place): { color: string; emoji: string } {
+  return {
+    color: PLACE_CATEGORY_COLORS[place.place_category] ?? "#6B7280",
+    emoji: CATEGORY_EMOJI[place.place_category] ?? "📍",
+  };
+}
+
+// ─── Supercluster types ───────────────────────────────────────────────────────
+
+type PlacePointProps = { place: Place };
 type ClusterOrPoint =
   | Supercluster.ClusterFeature<Supercluster.AnyProps>
-  | Supercluster.PointFeature<GanPointProps>;
+  | Supercluster.PointFeature<PlacePointProps>;
 
-function getGanPinConfig(gan: Gan): { color: string; emoji: string } {
-  switch (gan.category) {
-    case "MAON_SYMBOL":
-      return { color: "#3B82F6", emoji: "🏛️" };
-    case "MISHPACHTON": {
-      const aff = gan.mishpachton_affiliation ?? null;
-      if (aff === "TAMAT") return { color: "#3B82F6", emoji: "🏠" };
-      if (aff === "PRIVATE") return { color: "#F97316", emoji: "🏠" };
-      return { color: "#6B7280", emoji: "🏠" };
-    }
-    case "PRIVATE_GAN": {
-      const sup = gan.private_supervision ?? null;
-      if (sup === "SUPERVISED") return { color: "#22C55E", emoji: "🧩" };
-      if (sup === "NOT_SUPERVISED") return { color: "#F97316", emoji: "🧩" };
-      return { color: "#6B7280", emoji: "🧩" };
-    }
-    case "MUNICIPAL_GAN":
-      return { color: "#3B82F6", emoji: "🏙️" };
-    case "TZAHARON_MUNICIPAL":
-      return { color: "#3B82F6", emoji: "🌆" };
-    case "TZAHARON_PRIVATE_SUPERVISED":
-      return { color: "#22C55E", emoji: "🚐" };
-    case "TZAHARON_PRIVATE_UNSUPERVISED":
-      return { color: "#F97316", emoji: "🚐" };
-    case "UNSPECIFIED":
-    default:
-      return { color: "#6B7280", emoji: "📍" };
-  }
+function isClusterFeature(
+  f: ClusterOrPoint
+): f is Supercluster.ClusterFeature<Supercluster.AnyProps> {
+  return (f as Supercluster.ClusterFeature<Supercluster.AnyProps>)?.properties
+    ?.cluster === true;
 }
 
-function isClusterFeature(f: ClusterOrPoint): f is Supercluster.ClusterFeature<Supercluster.AnyProps> {
-  return (f as any)?.properties?.cluster === true;
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAPBOX_TOKEN = publicEnv.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? undefined;
 
-// Default: Tel Aviv + Givatayim area
+// Centered on Givatayim
 const DEFAULT_VIEW = {
-  longitude: 34.79,
-  latitude: 32.08,
-  zoom: 11,
+  longitude: 34.812,
+  latitude: 32.068,
+  zoom: 14,
 };
 
-const USER_RADIUS_M = 1000;
-const FOCUS_GAN_ZOOM = 15.5;
+const USER_RADIUS_M = 800;
+const FOCUS_PLACE_ZOOM = 16;
+const ADDRESS_FIT_RADIUS_M = 800;
 
 export interface Bounds {
   minLon: number;
@@ -71,43 +68,50 @@ export interface Bounds {
   maxLat: number;
 }
 
-const ADDRESS_FIT_RADIUS_M = 1000;
-
-/** Initial map + cluster viewport when opening a deep link (avoids TLV → gan jump on first paint). */
-function initialViewportFromFocus(focus: { lon: number; lat: number; zoom?: number }): {
-  bounds: [number, number, number, number];
-  zoom: number;
-} {
-  const zoom = focus.zoom ?? 18;
+function initialViewportFromFocus(focus: {
+  lon: number;
+  lat: number;
+  zoom?: number;
+}): { bounds: [number, number, number, number]; zoom: number } {
+  const zoom = focus.zoom ?? 16;
   const { lon, lat } = focus;
   const metersPerDegreeLat = 111320;
-  const radiusM = 800;
+  const radiusM = 600;
   const dLat = radiusM / metersPerDegreeLat;
-  const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+  const dLon =
+    radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
   return {
     bounds: [lon - dLon, lat - dLat, lon + dLon, lat + dLat],
     zoom,
   };
 }
 
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 interface MapContainerProps {
-  ganim: Gan[];
-  selectedGanId: string | null;
-  onSelectGan: (gan: Gan | null) => void;
-  onSelectCluster?: (ganim: Gan[]) => void;
+  places: Place[];
+  selectedPlaceId: string | null;
+  onSelectPlace: (place: Place | null) => void;
+  onSelectCluster?: (places: Place[]) => void;
   onBoundsChange: (bounds: Bounds) => void;
   onMapClick?: (pos: { lon: number; lat: number }) => void;
   pendingPin?: { lon: number; lat: number } | null;
-  fitToAddress?: { lon: number; lat: number; radiusM?: number; zoom?: number } | null;
-  /** When set, Mapbox initialViewState and cluster viewport start here (shared /gan/[id] links). */
+  fitToAddress?: {
+    lon: number;
+    lat: number;
+    radiusM?: number;
+    zoom?: number;
+  } | null;
   initialMapFocus?: { lon: number; lat: number; zoom?: number } | null;
   loading?: boolean;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function MapContainer({
-  ganim,
-  selectedGanId,
-  onSelectGan,
+  places,
+  selectedPlaceId,
+  onSelectPlace,
   onSelectCluster,
   onBoundsChange,
   onMapClick,
@@ -118,15 +122,25 @@ export function MapContainer({
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lon: number; lat: number } | null>(null);
-  const [hasCenteredOnUser, setHasCenteredOnUser] = useState(() => Boolean(initialMapFocus));
+  const [userLocation, setUserLocation] = useState<{
+    lon: number;
+    lat: number;
+  } | null>(null);
+  const [hasCenteredOnUser, setHasCenteredOnUser] = useState(() =>
+    Boolean(initialMapFocus)
+  );
   const [locating, setLocating] = useState(false);
   const [viewport, setViewport] = useState(() =>
     initialMapFocus
       ? initialViewportFromFocus(initialMapFocus)
       : {
-          bounds: [34.69, 32.03, 34.88, 32.16] as [number, number, number, number],
-          zoom: 11,
+          bounds: [34.78, 32.05, 34.85, 32.09] as [
+            number,
+            number,
+            number,
+            number,
+          ],
+          zoom: 14,
         }
   );
 
@@ -134,51 +148,46 @@ export function MapContainer({
     setMounted(true);
   }, []);
 
-  const fitToRadius = useCallback((pos: { lon: number; lat: number }, radiusM: number) => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const { lon, lat } = pos;
-    const metersPerDegreeLat = 111320;
-    const dLat = radiusM / metersPerDegreeLat;
-    const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
-
-    map.fitBounds(
-      [
-        [lon - dLon, lat - dLat],
-        [lon + dLon, lat + dLat],
-      ],
-      { padding: 80, duration: 650 }
-    );
-  }, []);
+  const fitToRadius = useCallback(
+    (pos: { lon: number; lat: number }, radiusM: number) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const { lon, lat } = pos;
+      const metersPerDegreeLat = 111320;
+      const dLat = radiusM / metersPerDegreeLat;
+      const dLon =
+        radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+      map.fitBounds(
+        [
+          [lon - dLon, lat - dLat],
+          [lon + dLon, lat + dLat],
+        ],
+        { padding: 80, duration: 650 }
+      );
+    },
+    []
+  );
 
   const fitToUserRadius = useCallback(
     (pos: { lon: number; lat: number }) => fitToRadius(pos, USER_RADIUS_M),
     [fitToRadius]
   );
 
-  // One-time geolocation lookup (if supported)
+  // One-time geolocation on mount
   useEffect(() => {
     if (!mounted) return;
     if (userLocation || hasCenteredOnUser) return;
-    if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
-
+    if (typeof navigator === "undefined" || !("geolocation" in navigator))
+      return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        if (typeof lat !== "number" || typeof lon !== "number") return;
         if (!isFinite(lat) || !isFinite(lon)) return;
         setUserLocation({ lat, lon });
       },
-      () => {
-        // Permission denied / unavailable - keep default view silently
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 60_000,
-      }
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 }
     );
   }, [mounted, userLocation, hasCenteredOnUser]);
 
@@ -186,140 +195,115 @@ export function MapContainer({
     const map = mapRef.current;
     if (!map) return;
     const b = map.getBounds();
-    if (b) {
-      const bounds: Bounds = {
-        minLon: b.getWest(),
-        minLat: b.getSouth(),
-        maxLon: b.getEast(),
-        maxLat: b.getNorth(),
-      };
-      onBoundsChange(bounds);
-      setViewport({
-        bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
-        zoom: Math.floor(map.getZoom() ?? 11),
-      });
-    }
+    if (!b) return;
+    const bounds: Bounds = {
+      minLon: b.getWest(),
+      minLat: b.getSouth(),
+      maxLon: b.getEast(),
+      maxLat: b.getNorth(),
+    };
+    onBoundsChange(bounds);
+    setViewport({
+      bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
+      zoom: Math.floor(map.getZoom() ?? DEFAULT_VIEW.zoom),
+    });
   }, [onBoundsChange]);
 
-  const handleMapLoad = useCallback(() => {
-    updateViewport();
-  }, [updateViewport]);
+  const handleMapLoad = useCallback(() => updateViewport(), [updateViewport]);
+  const handleMoveEnd = useCallback(() => updateViewport(), [updateViewport]);
 
-  const handleMoveEnd = useCallback(() => {
-    updateViewport();
-  }, [updateViewport]);
-
-  // When a gan is selected from the UI (search / list / pin), center it and zoom in.
+  // Pan+zoom to selected place
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    if (!selectedGanId) return;
-    const gan = ganim.find((g) => g.id === selectedGanId);
-    if (!gan) return;
-    if (typeof gan.lon !== "number" || typeof gan.lat !== "number") return;
-    if (!isFinite(gan.lon) || !isFinite(gan.lat)) return;
-
+    if (!map || !selectedPlaceId) return;
+    const place = places.find((p) => p.id === selectedPlaceId);
+    if (!place || !isFinite(place.lon) || !isFinite(place.lat)) return;
     const currentZoom = map.getZoom?.() ?? DEFAULT_VIEW.zoom;
-    const targetZoom = Math.max(Number(currentZoom) || DEFAULT_VIEW.zoom, FOCUS_GAN_ZOOM);
     map.easeTo({
-      center: [gan.lon, gan.lat],
-      zoom: targetZoom,
+      center: [place.lon, place.lat],
+      zoom: Math.max(Number(currentZoom), FOCUS_PLACE_ZOOM),
       duration: 650,
     });
-  }, [selectedGanId, ganim]);
+  }, [selectedPlaceId, places]);
 
-  // When we have the user's location, fit the map to a 1km radius around it.
+  // Center on user location (first time)
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (!userLocation) return;
-    if (hasCenteredOnUser) return;
-
+    if (!mapRef.current || !userLocation || hasCenteredOnUser) return;
     fitToUserRadius(userLocation);
     setHasCenteredOnUser(true);
   }, [userLocation, hasCenteredOnUser, fitToUserRadius]);
 
-  // When user selects an address or city from search, fit map and fetch ganim for that area.
+  // Fit to address (search result selection)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    if (!fitToAddress) return;
-
+    if (!map || !fitToAddress) return;
     const { lon, lat } = fitToAddress;
     const radiusM = fitToAddress.radiusM ?? ADDRESS_FIT_RADIUS_M;
     const targetZoom = fitToAddress.zoom;
-
     if (targetZoom != null) {
       map.easeTo({ center: [lon, lat], zoom: targetZoom, duration: 650 });
+      const d = 100 / 111320;
+      onBoundsChange({
+        minLon: lon - d,
+        minLat: lat - d,
+        maxLon: lon + d,
+        maxLat: lat + d,
+      });
+    } else {
       const metersPerDegreeLat = 111320;
-      const dLat = 100 / metersPerDegreeLat;
-      const dLon = 100 / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
+      const dLat = radiusM / metersPerDegreeLat;
+      const dLon =
+        radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
       onBoundsChange({
         minLon: lon - dLon,
         minLat: lat - dLat,
         maxLon: lon + dLon,
         maxLat: lat + dLat,
       });
-      setViewport({ bounds: [lon - dLon, lat - dLat, lon + dLon, lat + dLat], zoom: targetZoom });
-    } else {
-      const metersPerDegreeLat = 111320;
-      const dLat = radiusM / metersPerDegreeLat;
-      const dLon = radiusM / (metersPerDegreeLat * Math.cos((lat * Math.PI) / 180));
-      const bounds: Bounds = {
-        minLon: lon - dLon,
-        minLat: lat - dLat,
-        maxLon: lon + dLon,
-        maxLat: lat + dLat,
-      };
-      onBoundsChange(bounds);
-      setViewport({
-        bounds: [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat],
-        zoom: radiusM > 2000 ? 12 : 14,
-      });
       fitToRadius(fitToAddress, radiusM);
     }
   }, [fitToAddress, fitToRadius, onBoundsChange]);
 
+  // ─── Supercluster ──────────────────────────────────────────────────────────
+
   const index = useMemo(() => {
-    const sc = new Supercluster<GanPointProps>({ radius: 60, maxZoom: 18 });
+    const sc = new Supercluster<PlacePointProps>({ radius: 60, maxZoom: 18 });
     sc.load(
-      ganim
-        .filter((g) => typeof g.lat === "number" && typeof g.lon === "number")
-        .map((g) => ({
+      places
+        .filter((p) => isFinite(p.lat) && isFinite(p.lon))
+        .map((p) => ({
           type: "Feature" as const,
-          properties: { gan: g },
-          geometry: {
-            type: "Point" as const,
-            coordinates: [g.lon, g.lat],
-          },
-          id: g.id,
+          properties: { place: p },
+          geometry: { type: "Point" as const, coordinates: [p.lon, p.lat] },
+          id: p.id,
         }))
     );
     return sc;
-  }, [ganim]);
+  }, [places]);
 
   const clusters = useMemo(() => {
     const [west, south, east, north] = viewport.bounds;
     return index.getClusters([west, south, east, north], viewport.zoom);
   }, [index, viewport]);
 
-  const getClusterId = useCallback((clusterObj: unknown): number | null => {
-    const c: any = clusterObj as any;
-    const clusterId =
-      c?.properties?.cluster_id ??
-      (typeof c?.id === "number" ? c.id : undefined) ??
-      (typeof c?.properties?.clusterId === "number" ? c.properties.clusterId : undefined);
-    return typeof clusterId === "number" ? clusterId : null;
+  const getClusterId = useCallback((c: unknown): number | null => {
+    const obj = c as Supercluster.ClusterFeature<Supercluster.AnyProps>;
+    const id =
+      obj?.properties?.cluster_id ??
+      (typeof (obj as { id?: unknown })?.id === "number"
+        ? (obj as { id: number }).id
+        : undefined);
+    return typeof id === "number" ? id : null;
   }, []);
 
-  const getClusterGanim = useCallback(
-    (clusterObj: unknown, limit = 50): Gan[] => {
-      const clusterId = getClusterId(clusterObj);
+  const getClusterPlaces = useCallback(
+    (c: unknown, limit = 50): Place[] => {
+      const clusterId = getClusterId(c);
       if (clusterId === null) return [];
       try {
         return index
           .getLeaves(clusterId, limit, 0)
-          .map((f) => f.properties.gan)
+          .map((f) => (f.properties as PlacePointProps).place)
           .filter(Boolean);
       } catch {
         return [];
@@ -329,15 +313,14 @@ export function MapContainer({
   );
 
   const zoomToCluster = useCallback(
-    (clusterObj: unknown, center: { lon: number; lat: number }) => {
-      const clusterId = getClusterId(clusterObj);
+    (c: unknown, center: { lon: number; lat: number }) => {
+      const clusterId = getClusterId(c);
       const map = mapRef.current;
       if (!map || clusterId === null) return;
       try {
-        const expansionZoom = index.getClusterExpansionZoom(clusterId);
         map.easeTo({
           center: [center.lon, center.lat],
-          zoom: expansionZoom,
+          zoom: index.getClusterExpansionZoom(clusterId),
           duration: 450,
         });
       } catch {
@@ -349,64 +332,35 @@ export function MapContainer({
 
   const handleMapClick = useCallback(
     (e: MapLayerMouseEvent) => {
-      // Prevent selecting nothing when clicking the map background
       const target = e.originalEvent.target as HTMLElement;
       if (target.closest(".mapboxgl-marker")) return;
       if (onMapClick) {
         onMapClick({ lon: e.lngLat.lng, lat: e.lngLat.lat });
         return;
       }
-      onSelectGan(null);
+      onSelectPlace(null);
     },
-    [onMapClick, onSelectGan]
+    [onMapClick, onSelectPlace]
   );
 
+  // ─── Render guards ────────────────────────────────────────────────────────
+
   if (!mounted) {
-    return <div className="absolute inset-0 bg-gan-muted/20" />;
+    return <div className="absolute inset-0 bg-gray-100" />;
   }
 
   if (!MAPBOX_TOKEN) {
-    const rawValue = publicEnv.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? undefined;
-    const debug = {
-      hasRawValue: rawValue !== undefined,
-      rawType: typeof rawValue,
-      rawLength: typeof rawValue === "string" ? rawValue.length : 0,
-      isPlaceholder:
-        typeof rawValue === "string" &&
-        rawValue.includes("your_") &&
-        rawValue.includes("token"),
-    };
-
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-gan-muted/50">
-        <div className="rounded-lg bg-white p-6 shadow-lg text-center max-w-md">
-          <h3 className="font-semibold text-gan-dark mb-2">Mapbox Token Required</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Set <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> in .env.local or system environment variables.
+      <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+        <div className="rounded-2xl bg-white p-6 shadow-lg text-center max-w-sm">
+          <p className="font-semibold text-gray-800 mb-2">Mapbox Token Required</p>
+          <p className="text-sm text-gray-500">
+            Set{" "}
+            <code className="bg-gray-100 px-1 rounded">
+              NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
+            </code>{" "}
+            in .env.local
           </p>
-          <div className="text-left text-xs text-gray-500 mb-4 p-3 bg-gray-50 rounded space-y-1 font-mono">
-            {debug.rawLength === 0 ? (
-              <>
-                <p className="text-amber-600 font-medium">
-                  Variable exists but value is empty. Ensure the token (starts with pk.) is set correctly.
-                </p>
-                <p className="mt-1">
-                  If using system env vars: open a new terminal (or restart Cursor) so the process sees the updated variables, then run npm run dev.
-                </p>
-              </>
-            ) : debug.isPlaceholder ? (
-              <p className="text-amber-600">Replace the example placeholder with your real token.</p>
-            ) : null}
-            <p>Example: <code>NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.eyJ1...</code></p>
-          </div>
-          <a
-            href="https://account.mapbox.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gan-primary hover:underline"
-          >
-            Get a free token →
-          </a>
         </div>
       </div>
     );
@@ -417,20 +371,16 @@ export function MapContainer({
 
   const locateMe = () => {
     if (!canLocate || locating) return;
-
-    // If we already have a recent location, just re-center immediately.
     if (userLocation) {
       fitToUserRadius(userLocation);
       return;
     }
-
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         try {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
-          if (typeof lat !== "number" || typeof lon !== "number") return;
           if (!isFinite(lat) || !isFinite(lon)) return;
           const next = { lat, lon };
           setUserLocation(next);
@@ -439,14 +389,8 @@ export function MapContainer({
           setLocating(false);
         }
       },
-      () => {
-        setLocating(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 0,
-      }
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
   };
 
@@ -454,9 +398,11 @@ export function MapContainer({
     ? {
         longitude: initialMapFocus.lon,
         latitude: initialMapFocus.lat,
-        zoom: initialMapFocus.zoom ?? 18,
+        zoom: initialMapFocus.zoom ?? FOCUS_PLACE_ZOOM,
       }
     : DEFAULT_VIEW;
+
+  // ─── JSX ─────────────────────────────────────────────────────────────────
 
   return (
     <Map
@@ -470,7 +416,8 @@ export function MapContainer({
       onClick={handleMapClick}
     >
       <NavigationControl position="bottom-right" />
-      {canLocate ? (
+
+      {canLocate && (
         <div className="absolute bottom-[92px] end-3 z-10">
           <button
             type="button"
@@ -478,13 +425,14 @@ export function MapContainer({
             disabled={locating}
             title="אתר אותי"
             aria-label="אתר אותי"
-            className="h-10 w-10 rounded-md bg-white/95 backdrop-blur shadow-lg border border-gray-200 flex items-center justify-center hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+            className="h-10 w-10 rounded-xl bg-white/95 backdrop-blur shadow-lg border border-gray-200 flex items-center justify-center hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <LocateFixed className="h-5 w-5 text-gan-dark" />
+            <LocateFixed className="h-5 w-5 text-gray-700" />
           </button>
         </div>
-      ) : null}
-      {userLocation ? (
+      )}
+
+      {userLocation && (
         <Marker
           key="user-location"
           longitude={userLocation.lon}
@@ -494,31 +442,35 @@ export function MapContainer({
         >
           <div className="w-3 h-3 rounded-full bg-blue-600 ring-4 ring-blue-600/25 shadow" />
         </Marker>
-      ) : null}
-      {pendingPin ? (
+      )}
+
+      {pendingPin && (
         <Marker
           key="pending-pin"
           longitude={pendingPin.lon}
           latitude={pendingPin.lat}
           anchor="bottom"
-          onClick={(e) => {
-            e.originalEvent.stopPropagation();
-          }}
+          onClick={(e) => e.originalEvent.stopPropagation()}
           className="cursor-default"
         >
           <div className="flex items-center justify-center rounded-full bg-amber-500 text-white shadow-lg ring-4 ring-amber-500/30">
             <MapPin className="w-6 h-6" />
           </div>
         </Marker>
-      ) : null}
-      {selectedGanId &&
+      )}
+
+      {/* Selected place — rendered on top if it has been clustered away */}
+      {selectedPlaceId &&
         (() => {
-          const sel = ganim.find((g) => g.id === selectedGanId);
-          if (!sel || typeof sel.lat !== "number" || typeof sel.lon !== "number") return null;
+          const sel = places.find((p) => p.id === selectedPlaceId);
+          if (!sel || !isFinite(sel.lat) || !isFinite(sel.lon)) return null;
           const inClusters = (clusters as ClusterOrPoint[]).some(
-            (c) => !isClusterFeature(c) && (c.properties as { gan?: Gan })?.gan?.id === selectedGanId
+            (c) =>
+              !isClusterFeature(c) &&
+              (c.properties as PlacePointProps).place?.id === selectedPlaceId
           );
           if (inClusters) return null;
+          const { color, emoji } = getPlacePinConfig(sel);
           return (
             <Marker
               key={`selected-${sel.id}`}
@@ -527,36 +479,40 @@ export function MapContainer({
               anchor="bottom"
               onClick={(e) => {
                 e.originalEvent.stopPropagation();
-                onSelectGan(sel);
+                onSelectPlace(sel);
               }}
               className="cursor-pointer"
             >
-              {(() => {
-                const { color, emoji } = getGanPinConfig(sel);
-                return (
-                  <div
-                    title={sel.name_he}
-                    className="flex items-center justify-center rounded-full text-base shadow-lg scale-125 border-2 border-white"
-                    style={{ backgroundColor: color, width: "2rem", height: "2rem", outline: `3px solid ${color}60`, outlineOffset: "2px" }}
-                  >
-                    {emoji}
-                  </div>
-                );
-              })()}
+              <div
+                title={sel.name}
+                className="flex items-center justify-center rounded-full text-base shadow-lg scale-125 border-2 border-white"
+                style={{
+                  backgroundColor: color,
+                  width: "2rem",
+                  height: "2rem",
+                  outline: `3px solid ${color}60`,
+                  outlineOffset: "2px",
+                }}
+              >
+                {emoji}
+              </div>
             </Marker>
           );
         })()}
+
+      {/* Clusters and individual pins */}
       {(clusters as ClusterOrPoint[]).map((cluster) => {
         const [lon, lat] = cluster.geometry.coordinates;
+
         if (isClusterFeature(cluster)) {
           const count = cluster.properties.point_count ?? 0;
-          const leafNames = getClusterGanim(cluster, 10).map((g) => g.name_he).filter(Boolean);
+          const names = getClusterPlaces(cluster, 10)
+            .map((p) => p.name)
+            .filter(Boolean);
           const tooltip =
-            leafNames.length > 0
-              ? `${count} גנים\n` +
-                leafNames.join("\n") +
-                (count > leafNames.length ? `\n+${count - leafNames.length} עוד...` : "")
-              : `${count} גנים`;
+            names.length > 0
+              ? `${count} מקומות\n${names.join("\n")}${count > names.length ? `\n+${count - names.length} עוד...` : ""}`
+              : `${count} מקומות`;
           return (
             <Marker
               key={`cluster-${cluster.id}`}
@@ -566,38 +522,40 @@ export function MapContainer({
               onClick={(e) => {
                 e.originalEvent.stopPropagation();
                 zoomToCluster(cluster, { lon, lat });
-                const ganList = getClusterGanim(cluster, count);
-                if (ganList.length > 0) onSelectCluster?.(ganList);
+                const list = getClusterPlaces(cluster, count);
+                if (list.length > 0) onSelectCluster?.(list);
               }}
               className="cursor-pointer"
             >
               <div
                 title={tooltip}
-                className="flex items-center justify-center rounded-full bg-gan-secondary text-white font-hebrew font-semibold text-sm min-w-[28px] h-7 px-2 shadow-md border-2 border-white hover:brightness-95"
+                className="flex items-center justify-center rounded-full bg-[#0A2B6B] text-white font-semibold text-sm min-w-[28px] h-7 px-2 shadow-md border-2 border-white hover:brightness-95"
               >
                 {count}
               </div>
             </Marker>
           );
         }
-        const gan = cluster.properties?.gan;
-        if (!gan) return null;
-        const { color, emoji } = getGanPinConfig(gan);
-        const isSelected = selectedGanId === gan.id;
+
+        const place = (cluster.properties as PlacePointProps).place;
+        if (!place) return null;
+        const { color, emoji } = getPlacePinConfig(place);
+        const isSelected = selectedPlaceId === place.id;
+
         return (
           <Marker
-            key={gan.id}
+            key={place.id}
             longitude={lon}
             latitude={lat}
             anchor="bottom"
             onClick={(e) => {
               e.originalEvent.stopPropagation();
-              onSelectGan(gan);
+              onSelectPlace(place);
             }}
             className="cursor-pointer"
           >
             <div
-              title={gan.name_he}
+              title={place.name}
               className={`flex items-center justify-center rounded-full text-base border-2 border-white shadow-md transition-all duration-150 hover:scale-110 ${isSelected ? "scale-125 shadow-lg" : ""}`}
               style={{
                 backgroundColor: color,

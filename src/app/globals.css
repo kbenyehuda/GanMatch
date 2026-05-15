@@ -2,23 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
-/* RTL support for Hebrew - add dir="rtl" to html when locale is he */
-[dir="rtl"] {
-  direction: rtl;
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
+:root {
+  /* Brand colors */
+  --navy:        #0A2B6B;
+  --navy-deep:   #061E55;
+  --blue:        #1F5BB5;
+  --blue-bright: #3E7BD9;
+  --sky:         #A8C8EE;
+  --mist:        #E8F0FB;
+  --gold:        #C8A24B;
+  --gold-soft:   #E8D49F;
+
+  /* Text */
+  --ink:         #0F1A2E;
+  --graphite:    #4A5568;
+  --mute:        #8A95A8;
+
+  /* Surfaces */
+  --paper:       #FFFFFF;
+  --bg:          #F6F9FE;
+  --line:        #E5E9F0;
+
+  /* Category */
+  --green:       #2EA86B;
+  --warn:        #E59A2C;
+  --rose:        #D86B7D;
+  --purple:      #9C5BBD;
+
+  /* Shadows */
+  --shadow-sm:   0 2px 8px rgba(10,43,107,.06);
+  --shadow-md:   0 8px 24px rgba(10,43,107,.10);
+  --shadow-lg:   0 24px 60px rgba(10,43,107,.16);
+
+  /* Safe areas */
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Legacy shadcn tokens */
+  --background: 0 0% 98%;
+  --foreground: 222.2 84% 4.9%;
 }
 
-[dir="rtl"] .rtl\:text-right {
-  text-align: right;
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes slide-up {
+  from { transform: translateY(120%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-@layer base {
-  :root {
-    --background: 0 0% 98%;
-    --foreground: 222.2 84% 4.9%;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-  }
+.animate-slide-up  { animation: slide-up  .3s  cubic-bezier(.22,1,.36,1) both; }
+.animate-slide-in  { animation: slide-in  .35s cubic-bezier(.22,1,.36,1) both; }
+.animate-shimmer   {
+  background: linear-gradient(90deg, #EEF3FB 25%, #F6F9FE 50%, #EEF3FB 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite linear;
 }
+
+/* ── Utilities ─────────────────────────────────────────────────────────────── */
+.scrollbar-hide                      { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-hide::-webkit-scrollbar   { display: none; }
+
+/* ── RTL ───────────────────────────────────────────────────────────────────── */
+[dir="rtl"] { direction: rtl; }
+[dir="rtl"] .rtl\:text-right { text-align: right; }

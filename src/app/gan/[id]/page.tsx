@@ -59,8 +59,7 @@ export default async function GanSharePage({ params }: { params: { id: string } 
   const { id } = params;
   if (!UUID_RE.test(id)) notFound();
 
-  const gan = await getCachedGanById(id);
-  if (!gan) notFound();
-
-  return <HomeMap seedGan={gan} />;
+  // TODO(pivot): fetch Place by id once /api/places/[id] exists and pass as seedPlace
+  void id;
+  return <HomeMap />;
 }
