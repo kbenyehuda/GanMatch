@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X, SlidersHorizontal, ChevronDown, Loader2 } from "lucide-react";
-import type { Place, PlaceCategory, NeighborhoodGivatayim } from "@/types/places";
+import type { Place, PlaceCategory, NeighborhoodGivatayim, KosherStatus } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS,
 } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
+import { DEFAULT_PLACE_FILTERS } from "@/types/place-filters";
 import { searchPlaces } from "@/lib/places-api";
 import { PlaceCard } from "./PlaceCard";
 import { useSession } from "@/lib/useSession";
@@ -90,6 +91,9 @@ export interface PlaceFeedPanelProps {
   isVisible: boolean;
   savedIds?: Set<string>;
   onToggleSave?: (id: string) => void;
+  /** Lifted search query — shared with map tab search. When provided, replaces internal state. */
+  searchQuery?: string;
+  onSearchQueryChange?: (q: string) => void;
 }
 
 // ─── Sort bottom sheet ────────────────────────────────────────────────────────
@@ -173,12 +177,24 @@ export function FilterSheet({
     const next = cur.includes(n) ? cur.filter(x => x !== n) : [...cur, n];
     setPending({ ...pending, neighborhoods: next.length ? next : null });
   };
+  const toggleKosher = (k: KosherStatus) => {
+    const cur = pending.kosher ?? [];
+    const next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
+    setPending({ ...pending, kosher: next.length ? next : null });
+  };
+  const togglePrice = (p: 1 | 2 | 3) => {
+    const cur = pending.price_range ?? [];
+    const next = cur.includes(p) ? cur.filter(x => x !== p) : [...cur, p];
+    setPending({ ...pending, price_range: next.length ? next : null });
+  };
 
   const count = useMemo(() => {
     return places.filter(p => {
       if (pending.categories?.length && !pending.categories.includes(p.place_category)) return false;
       if (pending.hmo?.length && !p.hmo?.some(h => pending.hmo!.includes(h))) return false;
       if (pending.neighborhoods?.length && (!p.neighborhood || !pending.neighborhoods.includes(p.neighborhood))) return false;
+      if (pending.kosher?.length && (!p.kosher || !pending.kosher.includes(p.kosher))) return false;
+      if (pending.price_range?.length && (!p.price_range || !pending.price_range.includes(p.price_range as 1|2|3))) return false;
       return true;
     }).length;
   }, [places, pending]);
@@ -238,7 +254,7 @@ export function FilterSheet({
             </div>
           </div>
           {/* Neighborhood */}
-          <div style={{ paddingTop: 16, paddingBottom: 24, borderTop: "1px solid #E5E9F0" }}>
+          <div style={{ paddingTop: 16, paddingBottom: 16, borderTop: "1px solid #E5E9F0" }}>
             <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>שכונה</div>
             <div className="flex flex-wrap gap-1.5">
               {ALL_NEIGHBORHOODS.map(n => {
@@ -253,10 +269,43 @@ export function FilterSheet({
               })}
             </div>
           </div>
+          {/* Kosher */}
+          <div style={{ paddingTop: 16, paddingBottom: 16, borderTop: "1px solid #E5E9F0" }}>
+            <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>כשרות</div>
+            <div className="flex flex-wrap gap-1.5">
+              {([["CERTIFIED", "כשר"], ["NOT_CERTIFIED", "לא כשר"]] as [KosherStatus, string][]).map(([k, label]) => {
+                const active = pending.kosher?.includes(k) ?? false;
+                return (
+                  <button key={k} type="button" onClick={() => toggleKosher(k)}
+                    className="font-hebrew"
+                    style={{ padding: "9px 14px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {/* Price range */}
+          <div style={{ paddingTop: 16, paddingBottom: 24, borderTop: "1px solid #E5E9F0" }}>
+            <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>מחיר</div>
+            <div className="flex flex-wrap gap-1.5">
+              {([1, 2, 3] as (1|2|3)[]).map(p => {
+                const label = "₪".repeat(p);
+                const active = pending.price_range?.includes(p) ?? false;
+                return (
+                  <button key={p} type="button" onClick={() => togglePrice(p)}
+                    className="font-hebrew"
+                    style={{ padding: "9px 18px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all .15s", letterSpacing: ".05em" }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
         {/* Footer */}
         <div className="shrink-0 flex gap-2.5" style={{ padding: "14px 18px calc(24px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)" }}>
-          <button type="button" onClick={() => { setPending({ categories: null, hmo: null, neighborhoods: null, kosher: null, price_range: null, rated_only: false, min_rating: null, search_query: null }); }}
+          <button type="button" onClick={() => { setPending({ ...DEFAULT_PLACE_FILTERS }); }}
             className="font-hebrew font-bold" style={{ flex: "0 0 35%", background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, padding: 14, fontSize: 14, color: "#4A5568", cursor: "pointer" }}>
             איפוס
           </button>
@@ -285,10 +334,17 @@ export function PlaceFeedPanel({
   isVisible,
   savedIds = new Set(),
   onToggleSave,
+  searchQuery: externalSearchQuery,
+  onSearchQueryChange,
 }: PlaceFeedPanelProps) {
   const { user } = useSession();
   const [sort, setSort] = useState<SortOption>("top");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const searchQuery = externalSearchQuery ?? internalSearchQuery;
+  const setSearchQuery = (q: string) => {
+    setInternalSearchQuery(q);
+    onSearchQueryChange?.(q);
+  };
   const [apiSearchResults, setApiSearchResults] = useState<Place[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);

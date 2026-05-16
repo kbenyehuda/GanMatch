@@ -580,6 +580,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             isVisible
             savedIds={savedIds}
             onToggleSave={(id) => { const wasSaved = savedIds.has(id); toggleSave(id); showToast(wasSaved ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️"); }}
+            searchQuery={mapSearchQuery}
+            onSearchQueryChange={(q) => { setMapSearchQuery(q); setFilters(f => ({ ...f, search_query: q.trim() || null })); }}
           />
         </div>
         {/* Map */}
@@ -686,6 +688,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 toggleSave(id);
                 showToast(wasSaved ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️");
               }}
+              searchQuery={mapSearchQuery}
+              onSearchQueryChange={(q) => { setMapSearchQuery(q); setFilters(f => ({ ...f, search_query: q.trim() || null })); }}
             />
           </div>
         )}
@@ -1003,12 +1007,21 @@ function SavedScreen({
 function ProfileScreen({
   user, savedIds, onGoSaved,
 }: {
-  user: { email?: string | null } | null;
+  user: { id?: string; email?: string | null } | null;
   savedIds: Set<string>;
   onGoSaved: () => void;
 }) {
   const displayName = user?.email?.split("@")[0] ?? "אורח";
   const initial = displayName[0]?.toUpperCase() ?? "א";
+  const [recCount, setRecCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`/api/place-reviews?user_id=${encodeURIComponent(user.id)}`)
+      .then(r => r.json())
+      .then(d => { if (typeof d.count === "number") setRecCount(d.count); })
+      .catch(() => {});
+  }, [user?.id]);
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col overflow-hidden" style={{ background: "#F6F9FE" }} dir="rtl">
@@ -1033,13 +1046,10 @@ function ProfileScreen({
         {/* Floating stats card */}
         <div className="absolute flex" style={{ left: 20, right: 20, bottom: -28, background: "#fff", borderRadius: 18, padding: 14, boxShadow: "0 12px 24px rgba(10,43,107,.20)" }}>
           <div className="flex-1 text-center">
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", lineHeight: 1 }}>12</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", lineHeight: 1 }}>
+              {recCount ?? "—"}
+            </div>
             <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginTop: 4 }}>המלצות</div>
-          </div>
-          <div style={{ width: 1, background: "#E5E9F0", margin: "6px 0" }} />
-          <div className="flex-1 text-center">
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", lineHeight: 1 }}>38</div>
-            <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginTop: 4 }}>מועיל</div>
           </div>
           <div style={{ width: 1, background: "#E5E9F0", margin: "6px 0" }} />
           <div className="flex-1 text-center">

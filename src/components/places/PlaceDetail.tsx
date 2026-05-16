@@ -94,7 +94,6 @@ function ReviewCard({ review, helpfulIds, onHelpful }: { review: PlaceReview; he
           </svg>
           מועיל
         </button>
-        <span>השב</span>
       </div>
     </div>
   );
@@ -209,7 +208,6 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
     detailTags.push({ label: "כשר", style: { background: "#DCF3E6", color: "#1D7F4F" } });
   }
 
-  const verifiedPct = place.avg_rating != null ? `${Math.round(place.avg_rating * 19)}%` : "—";
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F6F9FE", borderRadius: "inherit" }} dir="rtl">
@@ -316,13 +314,6 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               </div>
               <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>המלצות</div>
             </div>
-            <div style={{ width: 1, background: "rgba(31,91,181,.15)", margin: "4px 0" }} />
-            <div className="flex-1 text-center">
-              <div style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
-                {verifiedPct}
-              </div>
-              <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>מאומת</div>
-            </div>
           </div>
 
           {/* Detail rows */}
@@ -354,7 +345,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             </div>
           )}
           {place.website && (
-            <a href={place.website.startsWith("http") ? place.website : `https://${place.website}`} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
+            <a href={/^https?:\/\//i.test(place.website) ? place.website : `https://${place.website}`} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
               <Globe style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div>
                 <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700, marginBottom: 2 }}>אתר</span>
@@ -393,9 +384,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
           {/* Reviews section */}
           <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
-            <h4 className="font-hebrew flex justify-between items-center" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 15, fontWeight: 800, marginBottom: 10 }}>
-              <span>המלצות {reviews.length > 0 && <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 12 }}>{reviews.length}</span>}</span>
-              <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 12 }}>הצג הכל ←</span>
+            <h4 className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 15, fontWeight: 800, marginBottom: 10 }}>
+              המלצות {reviews.length > 0 && <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 12 }}>{reviews.length}</span>}
             </h4>
 
             {reviewsLoading ? (

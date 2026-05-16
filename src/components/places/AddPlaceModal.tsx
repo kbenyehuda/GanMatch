@@ -34,7 +34,7 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
           type="button"
           onMouseEnter={() => setHover(n)}
           onMouseLeave={() => setHover(0)}
-          onClick={() => onChange(n === value ? 0 : n)}
+          onClick={() => onChange(n)}
           className="transition-transform active:scale-90"
         >
           <Star style={{ width: 26, height: 26, fill: (hover || value) >= n ? "#C8A24B" : "none", color: (hover || value) >= n ? "#C8A24B" : "#CBD5E0" }} />
