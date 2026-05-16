@@ -1,6 +1,6 @@
 "use client";
 
-import { Star, BadgeCheck } from "lucide-react";
+import { Star, BadgeCheck, Heart } from "lucide-react";
 import type { Place } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS,
@@ -10,28 +10,60 @@ import {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const CATEGORY_EMOJI: Record<string, string> = {
-  doctor: "🩺", cafe: "☕", kids: "🧩",
-  wellness: "🧘", attraction: "🎡", food: "🍽️",
-};
-
 const HMO_LABELS: Record<string, string> = {
   maccabi: "מכבי", clalit: "כללית", meuhedet: "מאוחדת", leumit: "לאומית",
 };
 
-const TAG_VARIANTS = {
-  blue:  { bg: "#E8F0FB", color: "#0A2B6B" },
-  gold:  { bg: "#FBF1D8", color: "#9C7A21" },
-  green: { bg: "#DCF3E6", color: "#1D7F4F" },
-  rose:  { bg: "#FBE2E8", color: "#9C2F45" },
-} as const;
+// Category SVG icons — match give-my-time-app.html CATEGORIES[].iconSvg
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  doctor: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </svg>
+  ),
+  cafe: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
+      <path d="M2 8h15v8a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V8z"/>
+      <path d="M17 11h2a3 3 0 0 1 0 6h-2"/>
+      <path d="M6 2v3M10 2v3M14 2v3"/>
+    </svg>
+  ),
+  kids: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+    </svg>
+  ),
+  wellness: (
+    <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 22, height: 22 }}>
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
+    </svg>
+  ),
+  attraction: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+      <circle cx="12" cy="10" r="3"/>
+    </svg>
+  ),
+  food: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
+      <path d="M18 8h1a4 4 0 1 1 0 8h-1"/>
+      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+    </svg>
+  ),
+};
 
-type TagVariant = keyof typeof TAG_VARIANTS;
+// Lighten a hex color by mixing toward white (match HTML lighten function)
+function lightenColor(hex: string, t = 0.35): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const mix = (x: number) => Math.round(x + (255 - x) * t);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
 
-function distanceLabel(
-  place: Place,
-  user: { lon: number; lat: number } | null
-): string | null {
+function distanceLabel(place: Place, user: { lon: number; lat: number } | null): string | null {
   if (!user) return null;
   if (!isFinite(place.lat) || !isFinite(place.lon)) return null;
   const R = 6371e3;
@@ -54,86 +86,84 @@ export interface PlaceCardProps {
   onSelect: (place: Place) => void;
   userLocation?: { lon: number; lat: number } | null;
   featured?: boolean;
+  isSaved?: boolean;
+  onToggleSave?: (id: string) => void;
 }
 
-// ─── Featured card (top pick) ─────────────────────────────────────────────────
+// ─── Featured card ────────────────────────────────────────────────────────────
 
-function FeaturedCard({ place, onSelect, userLocation }: PlaceCardProps) {
+function FeaturedCard({ place, onSelect, userLocation, isSaved, onToggleSave }: PlaceCardProps) {
   const dist = distanceLabel(place, userLocation ?? null);
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(place)}
-      className="w-full text-start relative overflow-hidden"
-      style={{
-        background: "linear-gradient(135deg, #0A2B6B 0%, #1F5BB5 100%)",
-        borderRadius: 20,
-        padding: 16,
-        marginBottom: 14,
-        color: "#fff",
-        boxShadow: "0 10px 28px rgba(10,43,107,.25)",
-      }}
-    >
-      {/* Gold radial accent */}
+    <div className="relative">
       <div
-        className="absolute inset-0 pointer-events-none"
+        role="button"
+        tabIndex={0}
+        onClick={() => onSelect(place)}
+        onKeyDown={(e) => e.key === "Enter" && onSelect(place)}
+        className="w-full text-start relative overflow-hidden cursor-pointer"
         style={{
-          background:
-            "radial-gradient(300px 200px at 90% 100%, rgba(200,162,75,.3), transparent 60%)",
+          background: "linear-gradient(135deg, #0A2B6B 0%, #1F5BB5 100%)",
+          borderRadius: 20,
+          padding: 16,
+          marginBottom: 14,
+          color: "#fff",
+          boxShadow: "0 10px 28px rgba(10,43,107,.25)",
+          display: "block",
         }}
-      />
-
-      {/* Tag */}
-      <div
-        className="flex items-center gap-1.5 mb-2.5"
-        style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#E8D49F", textTransform: "uppercase" }}
       >
-        <Star className="w-3 h-3 fill-[#E8D49F] text-[#E8D49F]" />
-        המומלץ ביותר השבוע
+        {/* Gold radial */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          background: "radial-gradient(300px 200px at 90% 100%, rgba(200,162,75,.3), transparent 60%)",
+        }} />
+        {/* Eyebrow */}
+        <div className="flex items-center gap-1.5 mb-2.5" style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: ".12em",
+          color: "#E8D49F", textTransform: "uppercase",
+        }}>
+          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 11, height: 11 }}>
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
+          </svg>
+          המומלץ ביותר · השבוע
+        </div>
+        {/* Name */}
+        <h4 className="font-hebrew mb-1" style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.15 }}>
+          {place.name}
+        </h4>
+        {/* Sub */}
+        <div className="font-hebrew mb-3.5" style={{ fontSize: 13, opacity: 0.78 }}>
+          {[PLACE_CATEGORY_LABELS[place.place_category], neighborhood, dist].filter(Boolean).join(" · ")}
+        </div>
+        {/* Rating row */}
+        <div className="flex items-center gap-3" style={{ fontSize: 12 }}>
+          {place.avg_rating != null && (
+            <div className="flex items-center gap-1" style={{ fontWeight: 700 }}>
+              <svg viewBox="0 0 24 24" fill="#C8A24B" style={{ width: 13, height: 13 }}>
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
+              </svg>
+              {place.avg_rating.toFixed(1)}
+              <span style={{ opacity: 0.7, fontWeight: 500 }}>· {place.rec_count} המלצות</span>
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* Title */}
-      <h4
-        className="font-hebrew mb-1 leading-[1.15]"
-        style={{ fontSize: 20, fontWeight: 800 }}
-      >
-        {place.name}
-      </h4>
-
-      {/* Sub */}
-      <p style={{ fontSize: 13, opacity: 0.78, marginBottom: 14 }} className="font-hebrew">
-        {[PLACE_CATEGORY_LABELS[place.place_category], neighborhood, dist]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-
-      {/* Rating row */}
-      <div className="flex items-center gap-3" style={{ fontSize: 12 }}>
-        {place.avg_rating != null && (
-          <div className="flex items-center gap-1" style={{ fontWeight: 700 }}>
-            <Star className="w-3 h-3 fill-[#C8A24B] text-[#C8A24B]" />
-            <span>{place.avg_rating.toFixed(1)}</span>
-            <span style={{ opacity: 0.7, fontWeight: 500 }}>({place.rec_count} המלצות)</span>
-          </div>
-        )}
-        {place.is_verified && (
-          <div className="flex items-center gap-1" style={{ opacity: 0.8 }}>
-            <BadgeCheck className="w-3.5 h-3.5" />
-            <span style={{ fontWeight: 600 }}>מאומת</span>
-          </div>
-        )}
-      </div>
-
-      {/* Watermark emoji */}
-      <span
-        className="absolute bottom-0 end-4 select-none pointer-events-none"
-        style={{ fontSize: 56, opacity: 0.15 }}
-      >
-        {CATEGORY_EMOJI[place.place_category]}
-      </span>
-    </button>
+      {/* Heart — sibling, not nested */}
+      {onToggleSave && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onToggleSave(place.id); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onToggleSave(place.id); } }}
+          className="absolute cursor-pointer"
+          style={{ top: 14, insetInlineEnd: 14, background: "rgba(255,255,255,.15)", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
+          aria-label={isSaved ? "הסר מהמועדפים" : "שמור למועדפים"}
+        >
+          <Heart style={{ width: 16, height: 16, color: isSaved ? "#D86B7D" : "rgba(255,255,255,.7)", fill: isSaved ? "#D86B7D" : "none" }} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -145,157 +175,138 @@ export function PlaceCard({
   onSelect,
   userLocation = null,
   featured = false,
+  isSaved = false,
+  onToggleSave,
 }: PlaceCardProps) {
   if (featured) {
-    return <FeaturedCard place={place} isSelected={isSelected} onSelect={onSelect} userLocation={userLocation} />;
+    return <FeaturedCard place={place} isSelected={isSelected} onSelect={onSelect} userLocation={userLocation} isSaved={isSaved} onToggleSave={onToggleSave} />;
   }
 
   const color = PLACE_CATEGORY_COLORS[place.place_category];
-  const emoji = CATEGORY_EMOJI[place.place_category] ?? "📍";
+  const lightColor = lightenColor(color);
   const dist = distanceLabel(place, userLocation);
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
 
-  // Build tags
-  const tags: { label: string; variant: TagVariant }[] = [];
+  // Meta: category · first HMO · neighborhood · distance
+  const metaParts = [
+    PLACE_CATEGORY_LABELS[place.place_category],
+    place.hmo?.[0] ? HMO_LABELS[place.hmo[0]] : null,
+    neighborhood,
+    dist,
+  ].filter(Boolean) as string[];
+
+  // Tags
+  const tags: { label: string; variant: "blue" | "green" | "gold" | "rose" }[] = [];
   if (place.kosher === "CERTIFIED") tags.push({ label: "כשר", variant: "green" });
   if (place.price_range === 1) tags.push({ label: "זול", variant: "green" });
   if (place.price_range === 3) tags.push({ label: "יקר", variant: "rose" });
-  place.hmo?.slice(0, 2).forEach((h) => {
-    if (HMO_LABELS[h]) {
-      const variant: TagVariant =
-        h === "maccabi" ? "blue" : h === "clalit" ? "green" : h === "meuhedet" ? "gold" : "rose";
-      tags.push({ label: HMO_LABELS[h], variant });
-    }
+  place.hmo?.slice(0, 1).forEach((h) => {
+    if (HMO_LABELS[h]) tags.push({ label: HMO_LABELS[h], variant: h === "clalit" ? "green" : h === "meuhedet" ? "gold" : "blue" });
   });
+  const TAG_STYLES = {
+    blue:  { background: "#E8F0FB", color: "#0A2B6B" },
+    green: { background: "#DCF3E6", color: "#1D7F4F" },
+    gold:  { background: "#FBF1D8", color: "#9C7A21" },
+    rose:  { background: "#FBE2E8", color: "#9C2F45" },
+  };
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(place)}
-      className="w-full text-start flex gap-3 transition-all duration-150 active:scale-[.98]"
+      onKeyDown={(e) => e.key === "Enter" && onSelect(place)}
+      className="w-full text-start transition-transform duration-100 active:scale-[.98] cursor-pointer"
       style={{
         background: "#fff",
         borderRadius: 18,
         padding: 14,
         marginBottom: 10,
         border: isSelected ? `1.5px solid ${color}` : "1px solid #E5E9F0",
-        boxShadow: isSelected
-          ? "0 4px 16px rgba(10,43,107,.14)"
-          : "0 1px 3px rgba(10,43,107,.04)",
+        boxShadow: isSelected ? "0 4px 16px rgba(10,43,107,.14)" : "0 1px 3px rgba(10,43,107,.04)",
+        display: "flex",
+        gap: 12,
         alignItems: "flex-start",
+        position: "relative",
       }}
     >
-      {/* Thumbnail — 68×68 */}
+      {/* Thumbnail */}
       <div
-        className="relative flex-shrink-0 flex items-center justify-center overflow-hidden"
+        className="relative flex-shrink-0 overflow-hidden"
         style={{
-          width: 68,
-          height: 68,
-          borderRadius: 14,
-          background: `${color}18`,
-          border: `1.5px solid ${color}30`,
-          fontSize: 28,
+          width: 68, height: 68, borderRadius: 14,
+          background: `linear-gradient(135deg, ${color} 0%, ${lightColor} 100%)`,
+          display: "flex", alignItems: "flex-end", padding: 6, color: "#fff",
+          flexShrink: 0,
         }}
       >
-        {emoji}
-        {/* Category pill overlay */}
+        {/* Category pill */}
         <span
           className="absolute font-hebrew uppercase"
           style={{
-            top: 6,
-            insetInlineStart: 6,
-            background: "rgba(255,255,255,.95)",
-            color: "#0A2B6B",
-            fontSize: 9,
-            fontWeight: 800,
-            padding: "2px 6px",
-            borderRadius: 6,
-            letterSpacing: ".04em",
+            top: 6, insetInlineStart: 6,
+            background: "rgba(255,255,255,.95)", color: "#0A2B6B",
+            fontSize: 9, fontWeight: 800, padding: "2px 6px",
+            borderRadius: 6, letterSpacing: ".04em",
           }}
         >
           {PLACE_CATEGORY_LABELS[place.place_category]}
         </span>
+        {/* Icon */}
+        {CATEGORY_ICONS[place.place_category]}
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0 flex flex-col" style={{ minHeight: 68 }}>
-        {/* Title row */}
+        {/* Name */}
         <div className="flex items-center gap-1.5 mb-0.5">
           <h5
             className="font-hebrew flex-1 line-clamp-1"
             style={{
               fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif",
-              fontSize: 15,
-              fontWeight: 700,
-              color: "#0F1A2E",
-              lineHeight: 1.25,
+              fontSize: 15, fontWeight: 700, color: "#0F1A2E", lineHeight: 1.25,
             }}
           >
             {place.name}
           </h5>
           {place.is_verified && (
-            <BadgeCheck style={{ width: 13, height: 13, color: "#1F5BB5", flexShrink: 0 }} />
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1F5BB5" strokeWidth="2.5" style={{ width: 13, height: 13, flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/>
+            </svg>
           )}
         </div>
 
-        {/* Meta row */}
-        <div
-          className="flex items-center flex-wrap font-hebrew mb-1.5"
-          style={{ fontSize: 11, color: "#8A95A8", gap: 4 }}
-        >
-          {[place.address?.split(",")[0], neighborhood, dist]
-            .filter(Boolean)
-            .map((item, i, arr) => (
-              <span key={i} className="flex items-center gap-1">
-                {item}
-                {i < arr.length - 1 && (
-                  <span
-                    className="rounded-full inline-block"
-                    style={{ width: 3, height: 3, background: "#8A95A8" }}
-                  />
-                )}
-              </span>
-            ))}
+        {/* Meta */}
+        <div className="flex items-center flex-wrap font-hebrew mb-1.5" style={{ fontSize: 11, color: "#8A95A8", gap: 4 }}>
+          {metaParts.map((item, i) => (
+            <span key={i} className="flex items-center gap-1">
+              {item}
+              {i < metaParts.length - 1 && (
+                <span style={{ width: 3, height: 3, borderRadius: "50%", background: "#8A95A8", display: "inline-block" }} />
+              )}
+            </span>
+          ))}
         </div>
 
-        {/* Bottom row: rating + tags */}
+        {/* Bottom: rating + tags */}
         <div className="flex items-center justify-between gap-2 mt-auto flex-wrap">
-          {/* Rating */}
           <div className="flex items-center gap-1">
             {place.avg_rating != null ? (
               <>
-                <Star style={{ width: 12, height: 12, fill: "#C8A24B", color: "#C8A24B" }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#0F1A2E" }}>
-                  {place.avg_rating.toFixed(1)}
-                </span>
-                <span style={{ fontSize: 11, color: "#8A95A8", fontWeight: 500 }}>
-                  ({place.rec_count})
-                </span>
+                <svg viewBox="0 0 24 24" fill="#C8A24B" style={{ width: 12, height: 12 }}>
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
+                </svg>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#0F1A2E" }}>{place.avg_rating.toFixed(1)}</span>
+                <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8", fontWeight: 500 }}>· {place.rec_count}</span>
               </>
             ) : (
-              <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>
-                אין דירוג
-              </span>
+              <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>אין דירוג</span>
             )}
           </div>
-
-          {/* Tags */}
           {tags.length > 0 && (
             <div className="flex gap-1 flex-wrap justify-end">
-              {tags.slice(0, 2).map((tag) => (
-                <span
-                  key={tag.label}
-                  className="font-hebrew"
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    padding: "3px 7px",
-                    borderRadius: 6,
-                    background: TAG_VARIANTS[tag.variant].bg,
-                    color: TAG_VARIANTS[tag.variant].color,
-                    letterSpacing: ".01em",
-                  }}
-                >
+              {tags.slice(0, 2).map((tag, i) => (
+                <span key={i} className="font-hebrew" style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 6, letterSpacing: ".01em", ...TAG_STYLES[tag.variant] }}>
                   {tag.label}
                 </span>
               ))}
@@ -303,6 +314,21 @@ export function PlaceCard({
           )}
         </div>
       </div>
-    </button>
+
+      {/* Heart — div to avoid nested interactive elements */}
+      {onToggleSave && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onToggleSave(place.id); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onToggleSave(place.id); } }}
+          className="absolute cursor-pointer"
+          style={{ top: 12, insetInlineEnd: 12, background: "none", padding: 2, lineHeight: 0 }}
+          aria-label={isSaved ? "הסר מהמועדפים" : "שמור למועדפים"}
+        >
+          <Heart style={{ width: 18, height: 18, color: isSaved ? "#D86B7D" : "#C5CDD8", fill: isSaved ? "#D86B7D" : "none" }} />
+        </div>
+      )}
+    </div>
   );
 }

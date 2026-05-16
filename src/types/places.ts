@@ -141,12 +141,12 @@ export const PRICE_RANGE_LABELS: Record<1 | 2 | 3, string> = {
   3: "יקר",
 };
 
-// Category color for map pins and UI chips
+// Category color for map pins and UI chips — matches give-my-time mockup exactly
 export const PLACE_CATEGORY_COLORS: Record<PlaceCategory, string> = {
-  doctor: "#1F5BB5",    // blue
-  cafe: "#92400E",      // brown
-  kids: "#166534",      // green
-  wellness: "#9F1239",  // rose
+  doctor:     "#1F5BB5", // civic blue
+  cafe:       "#D86B7D", // rose-pink
+  kids:       "#2EA86B", // green
+  wellness:   "#9C5BBD", // purple
   attraction: "#C8A24B", // gold
-  food: "#C2410C",      // orange
+  food:       "#E59A2C", // amber
 };

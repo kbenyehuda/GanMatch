@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, {
   Marker,
-  NavigationControl,
   MapLayerMouseEvent,
 } from "react-map-gl";
 import type { MapRef } from "react-map-gl";
 import Supercluster from "supercluster";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { LocateFixed, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 import type { Place, PlaceCategory } from "@/types/places";
 import { PLACE_CATEGORY_COLORS } from "@/types/places";
 import { publicEnv } from "@/lib/env/public";
@@ -440,22 +439,6 @@ export function MapContainer({
       onClick={onMapClick ? undefined : handleMapClick}
       onMouseUp={onMapClick ? handleMouseUp : undefined}
     >
-      <NavigationControl position="bottom-right" />
-
-      {canLocate && (
-        <div className="absolute bottom-[92px] end-3 z-10">
-          <button
-            type="button"
-            onClick={locateMe}
-            disabled={locating}
-            title="אתר אותי"
-            aria-label="אתר אותי"
-            className="h-10 w-10 rounded-xl bg-white/95 backdrop-blur shadow-lg border border-gray-200 flex items-center justify-center hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <LocateFixed className="h-5 w-5 text-gray-700" />
-          </button>
-        </div>
-      )}
 
       {userLocation && (
         <Marker

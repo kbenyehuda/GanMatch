@@ -42,3 +42,9 @@ scripts/maintenance/out/*.xlsx
 scripts/gov_import/out
 scripts/gov_import/__pycache__
 *.log
+
+# IDE
+.idea/
+
+# Reference files used during development
+pivot_import_context/

@@ -11,7 +11,7 @@ const VALID_CATEGORIES: PlaceCategory[] = [
 const supabaseUrl = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// GET /api/places?minLon=&minLat=&maxLon=&maxLat=[&categories=doctor,cafe]
+// GET /api/places?minLon=&minLat=&maxLon=&maxLat=&[categories=doctor,cafe]
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
@@ -27,9 +27,9 @@ export async function GET(request: NextRequest) {
   const maxLon = parseFloat(searchParams.get("maxLon") ?? "");
   const maxLat = parseFloat(searchParams.get("maxLat") ?? "");
 
-  if ([minLon, minLat, maxLon, maxLat].some((n) => isNaN(n))) {
+  if ([minLon, minLat, maxLon, maxLat].some((v) => !isFinite(v))) {
     return NextResponse.json(
-      { error: "Invalid bounds (minLon, minLat, maxLon, maxLat required)" },
+      { error: "minLon, minLat, maxLon, maxLat are required" },
       { status: 400 }
     );
   }
@@ -43,11 +43,8 @@ export async function GET(request: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   const rpcParams: Record<string, unknown> = {
-    min_lon: minLon,
-    min_lat: minLat,
-    max_lon: maxLon,
-    max_lat: maxLat,
-    p_limit: 500,
+    min_lon: minLon, min_lat: minLat, max_lon: maxLon, max_lat: maxLat,
+    p_limit: 200,
   };
   if (categories) rpcParams.p_categories = categories;
 
