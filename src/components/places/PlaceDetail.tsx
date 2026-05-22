@@ -61,7 +61,7 @@ function ReviewCard({ review, helpfulIds, onHelpful }: { review: PlaceReview; he
     <div style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 14, padding: 14, marginBottom: 8 }}>
       {/* Head */}
       <div className="flex items-center gap-2.5 mb-2">
-        <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: "50%", background: avaColor, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif" }}>
+        <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: "50%", background: avaColor, color: "#fff", fontSize: 12, fontWeight: 700, }}>
           {initials}
         </div>
         <div className="flex-1">
@@ -137,7 +137,7 @@ export interface PlaceDetailProps {
 
 export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onShowToast, userLocation = null }: PlaceDetailProps) {
   const { user, session } = useSession();
-  const color = PLACE_CATEGORY_COLORS[place.place_category];
+  const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
   const lightColor = lightenColor(color);
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
   const dist = distanceLabel(place, userLocation);
@@ -285,7 +285,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           </div>
 
           {/* Name */}
-          <div className="flex items-center gap-2 mb-1" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 24, fontWeight: 800, color: "#0F1A2E", lineHeight: 1.15 }}>
+          <div className="flex items-center gap-2 mb-1" style={{ fontSize: 24, fontWeight: 800, color: "#0F1A2E", lineHeight: 1.15 }}>
             {place.name}
             {place.is_verified && (
               <svg viewBox="0 0 24 24" fill="none" stroke="#1F5BB5" strokeWidth="2.5" style={{ width: 18, height: 18, flexShrink: 0 }}>
@@ -302,14 +302,14 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {/* Stats box */}
           <div className="flex mb-4" style={{ background: "linear-gradient(135deg,#F4F8FE,#E8F0FB)", borderRadius: 18, padding: 14 }}>
             <div className="flex-1 text-center">
-              <div style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
                 {place.avg_rating?.toFixed(1) ?? "—"}
               </div>
               <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>דירוג</div>
             </div>
             <div style={{ width: 1, background: "rgba(31,91,181,.15)", margin: "4px 0" }} />
             <div className="flex-1 text-center">
-              <div style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
                 {place.rec_count}
               </div>
               <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>המלצות</div>
@@ -377,14 +377,14 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {/* About */}
           {place.description && (
             <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
-              <h4 className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 15, fontWeight: 800, marginBottom: 10 }}>אודות</h4>
+              <h4 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>אודות</h4>
               <p className="font-hebrew" style={{ fontSize: 13, lineHeight: 1.55, color: "#4A5568" }}>{place.description}</p>
             </div>
           )}
 
           {/* Reviews section */}
           <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
-            <h4 className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 15, fontWeight: 800, marginBottom: 10 }}>
+            <h4 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>
               המלצות {reviews.length > 0 && <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 12 }}>{reviews.length}</span>}
             </h4>
 

@@ -18,10 +18,11 @@ import { publicEnv } from "@/lib/env/public";
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
   doctor: "🩺",
   cafe: "☕",
-  kids: "🧩",
-  wellness: "🧘",
+  kids: "🧸",
+  sport: "⚽",
   attraction: "🎡",
   food: "🍽️",
+  cosmetics: "💄",
 };
 
 function getPlacePinConfig(place: Place): { color: string; emoji: string } {

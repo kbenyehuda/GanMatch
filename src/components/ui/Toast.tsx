@@ -31,7 +31,6 @@ export function Toast({ text, visible }: { text: string; visible: boolean }) {
         gap: 8,
         maxWidth: "90%",
         whiteSpace: "nowrap",
-        fontFamily: "'Heebo',sans-serif",
       }}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2EA86B" strokeWidth="2.5">

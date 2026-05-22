@@ -8,16 +8,20 @@ export type PlaceCategory =
   | "doctor"
   | "cafe"
   | "kids"
-  | "wellness"
+  | "sport"
   | "attraction"
-  | "food";
+  | "food"
+  | "cosmetics";
 
 export type NeighborhoodGivatayim =
   | "BOROCHOV"
-  | "RAMBAM"
-  | "SIRKIN"
   | "ARLOZOROV"
-  | "GIVAT_RAMBAM";
+  | "GIVAT_RAMBAM"
+  | "KIRYAT_YOSEF"
+  | "SHEINKIN"
+  | "KOZLOVSKY"
+  | "HATEKUMA"
+  | "BEN_GURION";
 
 export type KosherStatus = "CERTIFIED" | "NOT_CERTIFIED" | "UNKNOWN";
 
@@ -43,7 +47,7 @@ export interface DoctorAttributes {
   specialty?: string; // e.g. "רופא משפחה", "עור", "ילדים"
 }
 
-export interface WellnessAttributes {
+export interface SportAttributes {
   specialty?: string; // e.g. "יוגה", "פילאטיס", "חדר כושר"
   gender_restriction?: "women_only" | "men_only" | null;
 }
@@ -57,7 +61,7 @@ export interface AttractionAttributes {
 export type PlaceAttributes =
   | KidsAttributes
   | DoctorAttributes
-  | WellnessAttributes
+  | SportAttributes
   | AttractionAttributes
   | Record<string, unknown>;
 
@@ -115,17 +119,21 @@ export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   doctor: "רופאים",
   cafe: "קפה",
   kids: "ילדים",
-  wellness: "בריאות",
+  sport: "ספורט",
   attraction: "אטרקציות",
   food: "אוכל",
+  cosmetics: "קוסמטיקה",
 };
 
 export const NEIGHBORHOOD_LABELS: Record<NeighborhoodGivatayim, string> = {
   BOROCHOV: "בורוכוב",
-  RAMBAM: "רמב\"ם",
-  SIRKIN: "סירקין",
   ARLOZOROV: "ארלוזורוב",
   GIVAT_RAMBAM: "גבעת רמב\"ם",
+  KIRYAT_YOSEF: "קריית יוסף",
+  SHEINKIN: "שינקין",
+  KOZLOVSKY: "קוזלובסקי",
+  HATEKUMA: "התקומה",
+  BEN_GURION: "בן גוריון",
 };
 
 export const HMO_LABELS: Record<string, string> = {
@@ -146,7 +154,8 @@ export const PLACE_CATEGORY_COLORS: Record<PlaceCategory, string> = {
   doctor:     "#1F5BB5", // civic blue
   cafe:       "#D86B7D", // rose-pink
   kids:       "#2EA86B", // green
-  wellness:   "#9C5BBD", // purple
+  sport:      "#2196F3", // blue
   attraction: "#C8A24B", // gold
   food:       "#E59A2C", // amber
+  cosmetics:  "#E0669A", // pink
 };

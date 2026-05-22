@@ -18,6 +18,11 @@
 .DS_Store
 *.pem
 
+# Places import — sentinels and raw output files
+scripts/places_import/.enrich_complete
+scripts/places_import/.discovery_complete
+scripts/places_import/out/
+
 # Debug
 npm-debug.log*
 yarn-debug.log*

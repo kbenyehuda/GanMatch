@@ -5,7 +5,7 @@ import { serverEnv } from "@/lib/env/server";
 import type { Place, PlaceCategory } from "@/types/places";
 
 const VALID_CATEGORIES: PlaceCategory[] = [
-  "doctor", "cafe", "kids", "wellness", "attraction", "food",
+  "doctor", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
 ];
 
 const supabaseUrl = publicEnv.NEXT_PUBLIC_SUPABASE_URL;

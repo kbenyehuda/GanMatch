@@ -2,16 +2,15 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "GanMatch | גן מתאים",
-    short_name: "GanMatch",
-    description:
-      "Map-centric discovery platform for Israeli daycares (ages 0–3). Find licensed daycares based on location and community reviews.",
+    name: "GiveMyTime | גבעתיים",
+    short_name: "GiveMyTime",
+    description: "גלו מקומות, שירותים ועסקים מומלצים בגבעתיים.",
     id: "/",
     start_url: "/",
     scope: "/",
     display: "standalone",
-    background_color: "#F9FAFB",
-    theme_color: "#2D6A4F",
+    background_color: "#0A2B6B",
+    theme_color: "#0A2B6B",
     dir: "rtl",
     lang: "he",
     icons: [

@@ -23,18 +23,18 @@ import { supabase } from "@/lib/supabase";
 import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
-  ChevronRight, Coffee, Shield, Activity,
+  ChevronRight,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ALL_CATEGORIES: PlaceCategory[] = [
-  "doctor", "cafe", "kids", "wellness", "attraction", "food",
+  "doctor", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
 ];
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "⚕️", cafe: "☕", kids: "🧒",
-  wellness: "💆", attraction: "📍", food: "🍽️",
+  doctor: "🩺", cafe: "☕", kids: "🧸",
+  sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",
 };
 
 // ─── Client-side filter ───────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ function MapPeekSheet({
   place: Place; onClose: () => void; onOpenDetail: () => void;
   userLocation: { lon: number; lat: number } | null;
 }) {
-  const color = PLACE_CATEGORY_COLORS[place.place_category];
+  const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
   const lightColor = lightenHex(color);
 
   const dist = useMemo(() => {
@@ -156,7 +156,7 @@ function MapPeekSheet({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h5 className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 15, fontWeight: 700, color: "#0F1A2E", marginBottom: 2, lineHeight: 1.25 }}>
+          <h5 className="font-hebrew" style={{ fontSize: 15, fontWeight: 700, color: "#0F1A2E", marginBottom: 2, lineHeight: 1.25 }}>
             {place.name}
           </h5>
           <div className="font-hebrew flex flex-wrap items-center gap-1" style={{ fontSize: 11, color: "#8A95A8", margin: "3px 0" }}>
@@ -226,7 +226,7 @@ function PlaceClusterList({
               onClick={() => onSelect(p)}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F6FA] text-start"
             >
-              <span className="text-base">{CATEGORY_EMOJI[p.place_category]}</span>
+              <span className="text-base">{CATEGORY_EMOJI[p.place_category] ?? "📍"}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-hebrew font-medium text-[#0A2B6B] text-sm truncate">
                   {p.name}
@@ -358,9 +358,9 @@ function BottomTabBar({
             key={id}
             type="button"
             onClick={() => onChange(id)}
-            className="flex flex-col items-center"
+            className="flex flex-col items-center justify-center"
             style={{
-              flex: 1, gap: 3, padding: "6px 0",
+              flex: 1, gap: isAdd ? 0 : 3, padding: "6px 0",
               background: "none", border: 0, cursor: "pointer",
               color: isActive ? "#0A2B6B" : "#8A95A8",
               fontSize: 10, fontWeight: 600,
@@ -371,11 +371,10 @@ function BottomTabBar({
               <span
                 className="flex items-center justify-center"
                 style={{
-                  width: 54, height: 54, borderRadius: "50%",
+                  width: 46, height: 46, borderRadius: "50%",
                   background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)",
-                  color: "#fff", marginTop: -26,
-                  boxShadow: "0 12px 22px rgba(10,43,107,.35)",
-                  border: "4px solid #fff",
+                  color: "#fff",
+                  boxShadow: "0 4px 14px rgba(10,43,107,.35)",
                 }}
               >
                 <Plus style={{ width: 22, height: 22 }} />
@@ -690,6 +689,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               }}
               searchQuery={mapSearchQuery}
               onSearchQueryChange={(q) => { setMapSearchQuery(q); setFilters(f => ({ ...f, search_query: q.trim() || null })); }}
+              onGoProfile={() => setActiveTab("profile")}
             />
           </div>
         )}
@@ -713,6 +713,12 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             user={user}
             savedIds={savedIds}
             onGoSaved={() => setActiveTab("saved")}
+            onLogout={async () => {
+              await supabase?.auth.signOut();
+              try { window.localStorage.removeItem(SKIP_LOGIN_STORAGE_KEY); } catch {}
+              setSkipLogin(false);
+              setActiveTab("home");
+            }}
           />
         )}
 
@@ -959,9 +965,12 @@ function SavedScreen({
     <div className="absolute inset-0 z-10 flex flex-col" style={{ background: "#F6F9FE" }} dir="rtl">
       {/* Topbar */}
       <div style={{ background: "#fff", flexShrink: 0, padding: "6px 20px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 500, lineHeight: 1.1 }}>מקומות שמורים</div>
-          <div className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 17, fontWeight: 800, color: "#0A2B6B", marginTop: 2 }}>המועדפים שלך</div>
+        <div className="flex items-center gap-2">
+          <img src="/app-icon.png" alt="GiveMyTime" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.12)" }} />
+          <div>
+            <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 500, lineHeight: 1.1 }}>מקומות שמורים</div>
+            <div className="font-hebrew" style={{ fontSize: 17, fontWeight: 800, color: "#0A2B6B", marginTop: 2 }}>המועדפים שלך</div>
+          </div>
         </div>
         <button type="button" onClick={onGoProfile} className="flex items-center justify-center font-hebrew font-bold"
           style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "pointer" }}>
@@ -981,7 +990,7 @@ function SavedScreen({
         ) : (
           <>
             <div style={{ margin: "6px 0 12px" }}>
-              <h3 className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 13, fontWeight: 800, color: "#0F1A2E" }}>
+              <h3 className="font-hebrew" style={{ fontSize: 13, fontWeight: 800, color: "#0F1A2E" }}>
                 {saved.length} מקומות שמורים
               </h3>
             </div>
@@ -1005,11 +1014,12 @@ function SavedScreen({
 // ─── ProfileScreen ────────────────────────────────────────────────────────────
 
 function ProfileScreen({
-  user, savedIds, onGoSaved,
+  user, savedIds, onGoSaved, onLogout,
 }: {
   user: { id?: string; email?: string | null } | null;
   savedIds: Set<string>;
   onGoSaved: () => void;
+  onLogout: () => void;
 }) {
   const displayName = user?.email?.split("@")[0] ?? "אורח";
   const initial = displayName[0]?.toUpperCase() ?? "א";
@@ -1029,31 +1039,32 @@ function ProfileScreen({
       <div className="relative shrink-0" style={{ background: "linear-gradient(160deg,#0A2B6B,#1F5BB5)", padding: "calc(var(--safe-top, 0px) + 24px) 20px 56px" }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(300px 200px at 90% 10%,rgba(200,162,75,.3),transparent 60%)" }} />
         <div className="flex items-center gap-3.5 relative">
-          <div className="flex items-center justify-center shrink-0" style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 22, fontWeight: 800, fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", border: "3px solid rgba(255,255,255,.3)" }}>
+          <img src="/app-icon.png" alt="GiveMyTime" className="shrink-0" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.3)", opacity: 0.9 }} />
+          <div className="flex items-center justify-center shrink-0" style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 22, fontWeight: 800, border: "3px solid rgba(255,255,255,.3)" }}>
             {initial}
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span style={{ color: "#fff", fontSize: 19, fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontWeight: 800 }}>{displayName}</span>
+              <span style={{ color: "#fff", fontSize: 19, fontWeight: 800 }}>{displayName}</span>
               <span className="flex items-center gap-1" style={{ background: "rgba(200,162,75,.25)", color: "#FCE7B2", fontSize: 10, padding: "3px 7px", borderRadius: 6, fontWeight: 700 }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 10, height: 10 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
                 תושב/ת מאומת/ת
               </span>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.7, color: "#fff", marginTop: 2 }} className="font-hebrew">בורוכוב · חבר/ה מאז 2024</div>
+            <div style={{ fontSize: 12, opacity: 0.7, color: "#fff", marginTop: 2 }} className="font-hebrew">גבעתיים · חבר/ה מאז 2024</div>
           </div>
         </div>
         {/* Floating stats card */}
         <div className="absolute flex" style={{ left: 20, right: 20, bottom: -28, background: "#fff", borderRadius: 18, padding: 14, boxShadow: "0 12px 24px rgba(10,43,107,.20)" }}>
           <div className="flex-1 text-center">
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", lineHeight: 1 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
               {recCount ?? "—"}
             </div>
             <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginTop: 4 }}>המלצות</div>
           </div>
           <div style={{ width: 1, background: "#E5E9F0", margin: "6px 0" }} />
           <div className="flex-1 text-center">
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", lineHeight: 1 }}>{savedIds.size}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>{savedIds.size}</div>
             <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginTop: 4 }}>שמור</div>
           </div>
         </div>
@@ -1065,12 +1076,20 @@ function ProfileScreen({
           הרשימות שלך
         </div>
         <ProfileListCard icon={<Heart style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#D86B7D,#E8A5B0)" title="מועדפים" sub={`${savedIds.size} מקומות שמורים`} onClick={onGoSaved} />
-        <ProfileListCard icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/></svg>} iconBg="linear-gradient(135deg,#2EA86B,#5DC58E)" title="לילדים" sub="22 מקומות · עודכן לאחרונה" />
-        <ProfileListCard icon={<Coffee style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#E59A2C,#C8A24B)" title="ברנץ' שבת" sub="8 מקומות" />
 
-        <div className="font-hebrew" style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E", margin: "18px 0 10px" }}>הגדרות</div>
-        <ProfileListCard icon={<Activity style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#1F5BB5,#3E7BD9)" title="קופת החולים שלי" sub="מכבי · לחץ לשינוי" />
-        <ProfileListCard icon={<Shield style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#9C5BBD,#C28BD7)" title="פרטיות" sub="ניהול נתונים ונראות" />
+        <button
+          type="button"
+          onClick={onLogout}
+          className="w-full font-hebrew flex items-center justify-center gap-2"
+          style={{ marginTop: 24, padding: "14px 20px", borderRadius: 16, background: "none", border: "1.5px solid #E5E9F0", fontSize: 14, fontWeight: 700, color: "#E53E3E", cursor: "pointer" }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}>
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          התנתקות
+        </button>
       </div>
     </div>
   );
@@ -1083,7 +1102,7 @@ function ProfileListCard({ icon, iconBg, title, sub, onClick }: { icon: React.Re
       style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 14, padding: 12, marginBottom: 8, cursor: onClick ? "pointer" : "default", transition: "transform .12s" }}>
       <div className="flex items-center justify-center shrink-0" style={{ width: 42, height: 42, borderRadius: 12, background: iconBg, color: "#fff" }}>{icon}</div>
       <div className="flex-1">
-        <h6 className="font-hebrew font-bold" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 14, color: "#0F1A2E", margin: "0 0 2px" }}>{title}</h6>
+        <h6 className="font-hebrew font-bold" style={{ fontSize: 14, color: "#0F1A2E", margin: "0 0 2px" }}>{title}</h6>
         {sub && <div className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>{sub}</div>}
       </div>
       <ChevronRight style={{ width: 18, height: 18, color: "#8A95A8" }} />

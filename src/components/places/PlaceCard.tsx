@@ -1,6 +1,6 @@
 "use client";
 
-import { Star, BadgeCheck, Heart } from "lucide-react";
+import { Star, Heart } from "lucide-react";
 import type { Place } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS,
@@ -14,44 +14,6 @@ const HMO_LABELS: Record<string, string> = {
   maccabi: "מכבי", clalit: "כללית", meuhedet: "מאוחדת", leumit: "לאומית",
 };
 
-// Category SVG icons — match give-my-time-app.html CATEGORIES[].iconSvg
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  doctor: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-    </svg>
-  ),
-  cafe: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
-      <path d="M2 8h15v8a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V8z"/>
-      <path d="M17 11h2a3 3 0 0 1 0 6h-2"/>
-      <path d="M6 2v3M10 2v3M14 2v3"/>
-    </svg>
-  ),
-  kids: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
-      <circle cx="9" cy="7" r="4"/>
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-    </svg>
-  ),
-  wellness: (
-    <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 22, height: 22 }}>
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
-    </svg>
-  ),
-  attraction: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-      <circle cx="12" cy="10" r="3"/>
-    </svg>
-  ),
-  food: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 22, height: 22 }}>
-      <path d="M18 8h1a4 4 0 1 1 0 8h-1"/>
-      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
-    </svg>
-  ),
-};
 
 // Lighten a hex color by mixing toward white (match HTML lighten function)
 function lightenColor(hex: string, t = 0.35): string {
@@ -182,7 +144,7 @@ export function PlaceCard({
     return <FeaturedCard place={place} isSelected={isSelected} onSelect={onSelect} userLocation={userLocation} isSaved={isSaved} onToggleSave={onToggleSave} />;
   }
 
-  const color = PLACE_CATEGORY_COLORS[place.place_category];
+  const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
   const lightColor = lightenColor(color);
   const dist = distanceLabel(place, userLocation);
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
@@ -236,7 +198,7 @@ export function PlaceCard({
         style={{
           width: 68, height: 68, borderRadius: 14,
           background: `linear-gradient(135deg, ${color} 0%, ${lightColor} 100%)`,
-          display: "flex", alignItems: "flex-end", padding: 6, color: "#fff",
+          position: "relative",
           flexShrink: 0,
         }}
       >
@@ -252,8 +214,6 @@ export function PlaceCard({
         >
           {PLACE_CATEGORY_LABELS[place.place_category]}
         </span>
-        {/* Icon */}
-        {CATEGORY_ICONS[place.place_category]}
       </div>
 
       {/* Content */}
@@ -263,17 +223,11 @@ export function PlaceCard({
           <h5
             className="font-hebrew flex-1 line-clamp-1"
             style={{
-              fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif",
               fontSize: 15, fontWeight: 700, color: "#0F1A2E", lineHeight: 1.25,
             }}
           >
             {place.name}
           </h5>
-          {place.is_verified && (
-            <svg viewBox="0 0 24 24" fill="none" stroke="#1F5BB5" strokeWidth="2.5" style={{ width: 13, height: 13, flexShrink: 0 }}>
-              <circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/>
-            </svg>
-          )}
         </div>
 
         {/* Meta */}

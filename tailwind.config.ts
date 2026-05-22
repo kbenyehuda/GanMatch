@@ -21,7 +21,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        hebrew: ["var(--font-assistant)", "Heebo", "sans-serif"],
+        hebrew: ["var(--font-jakarta)", "var(--font-assistant)", "Heebo", "sans-serif"],
       },
       // RTL-aware utilities
       "logical": {

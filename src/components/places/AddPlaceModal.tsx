@@ -9,12 +9,13 @@ import { useSession } from "@/lib/useSession";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "🩺", cafe: "☕", kids: "🧩",
-  wellness: "🧘", attraction: "🎡", food: "🍽️",
+  doctor: "🩺", cafe: "☕", kids: "🧸",
+  sport: "⚽", attraction: "🎭", food: "🍴",
+  cosmetics: "💄",
 };
 
 const ALL_CATEGORIES: PlaceCategory[] = [
-  "doctor", "cafe", "kids", "wellness", "attraction", "food",
+  "doctor", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
 ];
 
 interface GeoSuggestion {
@@ -189,7 +190,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
           style={{ width: 32, height: 32, borderRadius: "50%", background: "#F5F6FA", border: "none", cursor: "pointer" }}>
           <X style={{ width: 16, height: 16, color: "#4A5568" }} />
         </button>
-        <h2 className="font-hebrew font-bold" style={{ fontSize: 16, color: "#0A2B6B", fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif" }}>
+        <h2 className="font-hebrew font-bold" style={{ fontSize: 16, color: "#0A2B6B", }}>
           הוסף מקום
         </h2>
         <button type="button" onClick={submit} disabled={!canSubmit}

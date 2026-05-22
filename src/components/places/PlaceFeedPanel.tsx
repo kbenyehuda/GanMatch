@@ -39,20 +39,20 @@ const SORT_OPTIONS: { id: SortOption; label: string; sub: string; icon: React.Re
   )},
 ];
 
-const ALL_CATEGORIES: PlaceCategory[] = ["doctor", "cafe", "kids", "wellness", "attraction", "food"];
+const ALL_CATEGORIES: PlaceCategory[] = ["doctor", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "⚕️", cafe: "☕", kids: "🧒", wellness: "💆", attraction: "📍", food: "🍽️",
+  doctor: "🩺", cafe: "☕", kids: "🧸", sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",
 };
 
 const HMO_LIST = [
-  { id: "maccabi",  label: "מכבי",    letter: "מ", color: "#1F5BB5" },
-  { id: "clalit",   label: "כללית",   letter: "כ", color: "#2EA86B" },
-  { id: "meuhedet", label: "מאוחדת",  letter: "מ", color: "#E59A2C" },
-  { id: "leumit",   label: "לאומית",  letter: "ל", color: "#9C2F45" },
+  { id: "maccabi",  label: "מכבי",   logo: "/hmo/maccabi.png"  },
+  { id: "clalit",   label: "כללית",  logo: "/hmo/clalit.png"   },
+  { id: "meuhedet", label: "מאוחדת", logo: "/hmo/meuhedet.png" },
+  { id: "leumit",   label: "לאומית", logo: "/hmo/leumit.png"   },
 ];
 
-const ALL_NEIGHBORHOODS: NeighborhoodGivatayim[] = ["BOROCHOV","RAMBAM","SIRKIN","ARLOZOROV","GIVAT_RAMBAM"];
+const ALL_NEIGHBORHOODS: NeighborhoodGivatayim[] = ["BOROCHOV","ARLOZOROV","GIVAT_RAMBAM","KIRYAT_YOSEF","SHEINKIN","KOZLOVSKY","HATEKUMA","BEN_GURION"];
 
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
@@ -94,6 +94,7 @@ export interface PlaceFeedPanelProps {
   /** Lifted search query — shared with map tab search. When provided, replaces internal state. */
   searchQuery?: string;
   onSearchQueryChange?: (q: string) => void;
+  onGoProfile?: () => void;
 }
 
 // ─── Sort bottom sheet ────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
         </div>
         {/* Header */}
         <div className="flex items-center justify-between px-5 pb-3">
-          <h3 className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 20, fontWeight: 800 }}>מיין לפי</h3>
+          <h3 className="font-hebrew" style={{ fontSize: 20, fontWeight: 800 }}>מיין לפי</h3>
           <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%", background: "#E8F0FB", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
           </button>
@@ -132,7 +133,7 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
                 {opt.icon}
               </div>
               <div className="flex-1">
-                <strong className="font-hebrew block" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontWeight: 700, fontSize: 14, color: "#0F1A2E" }}>{opt.label}</strong>
+                <strong className="font-hebrew block" style={{ fontWeight: 700, fontSize: 14, color: "#0F1A2E" }}>{opt.label}</strong>
                 <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>{opt.sub}</span>
               </div>
               <div style={{ width: 22, height: 22, borderRadius: "50%", border: sort === opt.id ? "none" : "2px solid #E5E9F0", background: sort === opt.id ? "#0A2B6B" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -210,7 +211,7 @@ export function FilterSheet({
         </div>
         {/* Header */}
         <div className="flex items-center justify-between px-5 pb-3 shrink-0">
-          <h3 className="font-hebrew" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 20, fontWeight: 800 }}>פילטרים</h3>
+          <h3 className="font-hebrew" style={{ fontSize: 20, fontWeight: 800 }}>פילטרים</h3>
           <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%", background: "#E8F0FB", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
           </button>
@@ -242,12 +243,9 @@ export function FilterSheet({
                 const active = pending.hmo?.includes(hmo.id) ?? false;
                 return (
                   <button key={hmo.id} type="button" onClick={() => toggleHmo(hmo.id)}
-                    className="flex items-center gap-2.5 font-hebrew"
-                    style={{ border: `1.5px solid ${active ? "#0A2B6B" : "#E5E9F0"}`, borderRadius: 14, padding: 12, background: active ? "#E8F0FB" : "#fff", color: active ? "#0A2B6B" : "#4A5568", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all .15s" }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: hmo.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
-                      {hmo.letter}
-                    </div>
-                    {hmo.label}
+                    className="flex flex-col items-center font-hebrew"
+                    style={{ border: `1.5px solid ${active ? "#0A2B6B" : "#E5E9F0"}`, borderRadius: 14, padding: "10px 8px", background: active ? "#E8F0FB" : "#fff", cursor: "pointer", transition: "all .15s" }}>
+                    <img src={hmo.logo} alt={hmo.label} style={{ width: "100%", height: 36, objectFit: "contain" }} />
                   </button>
                 );
               })}
@@ -304,10 +302,10 @@ export function FilterSheet({
           </div>
         </div>
         {/* Footer */}
-        <div className="shrink-0 flex gap-2.5" style={{ padding: "14px 18px calc(24px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)" }}>
-          <button type="button" onClick={() => { setPending({ ...DEFAULT_PLACE_FILTERS }); }}
+        <div className="shrink-0 flex gap-2.5" style={{ padding: "14px 18px calc(86px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)" }}>
+          <button type="button" onClick={() => { setPending({ ...DEFAULT_PLACE_FILTERS }); onApply({ ...DEFAULT_PLACE_FILTERS }); onClose(); }}
             className="font-hebrew font-bold" style={{ flex: "0 0 35%", background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, padding: 14, fontSize: 14, color: "#4A5568", cursor: "pointer" }}>
-            איפוס
+            נקה הכל
           </button>
           <button type="button" onClick={() => { onApply(pending); onClose(); }}
             disabled={count === 0}
@@ -336,6 +334,7 @@ export function PlaceFeedPanel({
   onToggleSave,
   searchQuery: externalSearchQuery,
   onSearchQueryChange,
+  onGoProfile,
 }: PlaceFeedPanelProps) {
   const { user } = useSession();
   const [sort, setSort] = useState<SortOption>("top");
@@ -401,21 +400,18 @@ export function PlaceFeedPanel({
 
       {/* ── Topbar ──────────────────────────────────────────────────────────── */}
       <div style={{ background: "#fff", flexShrink: 0, padding: "6px 20px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 500, lineHeight: 1.1 }}>{greeting}</div>
-          <div className="font-hebrew flex items-center gap-1.5" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 17, fontWeight: 800, color: "#0A2B6B", marginTop: 2 }}>
-            <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 14, height: 14, color: "#1F5BB5" }}>
-              <path d="M12 2a8 8 0 0 0-8 8c0 5.5 8 12 8 12s8-6.5 8-12a8 8 0 0 0-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
-            </svg>
-            גבעתיים · בורוכוב
-          </div>
+        <div className="flex items-center gap-2">
+          <img src="/app-icon.png" alt="GiveMyTime" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.12)" }} />
+          <div className="font-hebrew" style={{ fontSize: 17, fontWeight: 800, color: "#0A2B6B" }}>{greeting}</div>
         </div>
-        <div
+        <button
+          type="button"
+          onClick={onGoProfile}
           className="flex items-center justify-center font-hebrew font-bold shrink-0"
-          style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "default" }}
+          style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: onGoProfile ? "pointer" : "default" }}
         >
           {userInitial}
-        </div>
+        </button>
       </div>
 
       {/* ── Search + filter ──────────────────────────────────────────────────── */}
@@ -469,7 +465,7 @@ export function PlaceFeedPanel({
         {/* Section head */}
         <div style={{ margin: "6px 0 12px" }}>
           <div className="flex items-center justify-between">
-            <h3 className="font-hebrew flex items-center gap-1.5" style={{ fontFamily: "'Plus Jakarta Sans','Heebo',sans-serif", fontSize: 13, fontWeight: 800, color: "#0F1A2E", letterSpacing: ".02em" }}>
+            <h3 className="font-hebrew flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 800, color: "#0F1A2E", letterSpacing: ".02em" }}>
               {apiSearchResults !== null ? "תוצאות חיפוש" : "המלצות קרוב אליך"}
               {searchLoading ? (
                 <Loader2 style={{ width: 12, height: 12, color: "#8A95A8" }} className="animate-spin" />

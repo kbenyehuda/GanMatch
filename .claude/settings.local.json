@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp \"c:/Users/kbeny/OneDrive/Desktop/9d7606e4c515491086e7918f789dce09.png\" \"C:/Users/kbeny/Documents/Repos/GanMatch/public/hmo/maccabi.png\")",
+      "Bash(cp \"c:/Users/kbeny/OneDrive/Desktop/Clalit_Logo_Clean_2020.svg.png\" \"C:/Users/kbeny/Documents/Repos/GanMatch/public/hmo/clalit.png\")",
+      "Bash(cp \"c:/Users/kbeny/OneDrive/Desktop/Leumit_New_Logo.svg.png\" \"C:/Users/kbeny/Documents/Repos/GanMatch/public/hmo/leumit.png\")",
+      "Bash(cp \"c:/Users/kbeny/OneDrive/Desktop/MeuhedetLogo.svg.png\" \"C:/Users/kbeny/Documents/Repos/GanMatch/public/hmo/meuhedet.png\")",
+      "PowerShell(Copy-Item *)"
+    ]
+  }
+}
