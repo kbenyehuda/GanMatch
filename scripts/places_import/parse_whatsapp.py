@@ -192,11 +192,11 @@ def find_place_by_name(supabase, name: str) -> str | None:
     return rows[0]["id"] if rows else None
 
 
-def insert_staging(supabase, rec: dict, source_file: str) -> bool:
+def upsert_staging(supabase, rec: dict, source_file: str) -> str:
     """
-    Insert a recommendation into whatsapp_import_staging.
-    Returns False if an exact duplicate already exists (DB unique constraint).
-    lat/lon are intentionally left null — geocoding happens at approval time or in a separate pass.
+    Insert a new staging row, or if (place_name, reviewer_name) already exists,
+    update source_messages only — leaving category/status/admin edits untouched.
+    Returns "inserted" or "updated".
     """
     existing_place_id = find_place_by_name(supabase, rec["place_name"])
     source_msgs = rec.get("source_messages") or []
@@ -213,11 +213,15 @@ def insert_staging(supabase, rec: dict, source_file: str) -> bool:
             "source_messages":     source_msgs if source_msgs else None,
             "existing_place_id":   existing_place_id,
         }).execute()
-        return True
+        return "inserted"
     except Exception as e:
-        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
-            return False
-        raise
+        if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
+            raise
+        # Row exists — update only source_messages, preserving category and all admin edits
+        supabase.table("whatsapp_import_staging").update({
+            "source_messages": source_msgs if source_msgs else None,
+        }).eq("place_name", rec["place_name"]).eq("reviewer_name", rec["reviewer_name"]).execute()
+        return "updated"
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +266,7 @@ def main(
     seen: set[tuple[str, str]] = set()
 
     step = max(1, CHUNK_SIZE - overlap)
-    staged = skipped_dup = errors = 0
+    staged = updated = errors = 0
 
     for chat_path_str in chat_files:
         chat_path = Path(chat_path_str)
@@ -308,18 +312,20 @@ def main(
                 icon = {"high": "⭐⭐⭐⭐⭐", "medium": "⭐⭐⭐⭐", "negative": "⭐⭐"}.get(rec["enthusiasm"], "?")
 
                 if dry_run:
+                    src = f" ← {rec['source_messages'][0][:60]}…" if rec.get("source_messages") else ""
                     print(f"    {icon} [{rec['category']:12}] {rec['place_name']} — {rec['reviewer_name']}")
-                    print(f"       {rec['recommendation_text'][:120]}")
+                    print(f"       {rec['recommendation_text'][:120]}{src}")
                 else:
                     try:
-                        ok = insert_staging(supabase, rec, chat_path.name)
-                        if ok:
+                        result = upsert_staging(supabase, rec, chat_path.name)
+                        if result == "inserted":
                             staged += 1
-                            print(f"    {icon} staged: {rec['place_name']} ({rec['category']}) by {rec['reviewer_name']}")
+                            print(f"    {icon} new:     {rec['place_name']} ({rec['category']}) by {rec['reviewer_name']}")
                         else:
-                            skipped_dup += 1
+                            updated += 1
+                            print(f"    {icon} updated: {rec['place_name']} — source_messages refreshed")
                     except Exception as e:
-                        print(f"    ERROR staging {rec['place_name']}: {e}", file=sys.stderr)
+                        print(f"    ERROR upserting {rec['place_name']}: {e}", file=sys.stderr)
                         errors += 1
 
             time.sleep(0.5)  # rate limit
@@ -327,7 +333,7 @@ def main(
     if dry_run:
         print(f"\nDry run complete — {len(seen)} unique recommendations found")
     else:
-        print(f"\nDone: {staged} staged, {skipped_dup} duplicates skipped, {errors} errors")
+        print(f"\nDone: {staged} new, {updated} updated (source_messages), {errors} errors")
         print("→ Run merge_staging.py, then review at /admin/whatsapp")
 
     return 0
