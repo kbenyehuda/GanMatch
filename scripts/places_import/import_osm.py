@@ -57,8 +57,8 @@ AMENITY_CATEGORY: dict[str, str] = {
     "restaurant": "food", "fast_food": "food", "food_court": "food",
     "ice_cream": "food", "bar": "food", "pub": "food",
     "bakery": "food", "pastry": "food",
-    "doctors": "doctor", "clinic": "doctor", "pharmacy": "doctor",
-    "dentist": "doctor", "physiotherapist": "doctor", "hospital": "doctor",
+    "doctors": "clinic", "clinic": "clinic", "pharmacy": "clinic",
+    "dentist": "clinic", "physiotherapist": "clinic", "hospital": "clinic",
     "gym": "wellness", "spa": "wellness",
 }
 
@@ -89,7 +89,7 @@ def map_category(tags: dict) -> str | None:
         if key in mapping:
             return mapping[key]
     if tags.get("healthcare"):
-        return "doctor"
+        return "clinic"
     return None
 
 

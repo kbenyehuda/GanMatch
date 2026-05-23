@@ -42,7 +42,7 @@ const SORT_OPTIONS: { id: SortOption; label: string; sub: string; icon: React.Re
 const ALL_CATEGORIES = VISIBLE_CATEGORIES;
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "🩺", cafe: "☕", kids: "🧸", sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",
+  doctor: "🩺", clinic: "🏥", cafe: "☕", kids: "🧸", sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",
 };
 
 const HMO_LIST = [

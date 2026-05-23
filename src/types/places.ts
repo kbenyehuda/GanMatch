@@ -6,6 +6,7 @@
 
 export type PlaceCategory =
   | "doctor"
+  | "clinic"
   | "cafe"
   | "kids"
   | "sport"
@@ -121,6 +122,7 @@ export const VISIBLE_CATEGORIES: PlaceCategory[] = ["kids", "doctor", "cosmetics
 
 export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   doctor: "רופאים",
+  clinic: "מרפאות",
   cafe: "קפה",
   kids: "גני ילדים",
   sport: "ספורט",
@@ -156,6 +158,7 @@ export const PRICE_RANGE_LABELS: Record<1 | 2 | 3, string> = {
 // Category color for map pins and UI chips — matches give-my-time mockup exactly
 export const PLACE_CATEGORY_COLORS: Record<PlaceCategory, string> = {
   doctor:     "#1F5BB5", // civic blue
+  clinic:     "#5B8DD9", // lighter blue
   cafe:       "#D86B7D", // rose-pink
   kids:       "#2EA86B", // green
   sport:      "#2196F3", // blue

@@ -17,6 +17,7 @@ import { publicEnv } from "@/lib/env/public";
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
   doctor: "🩺",
+  clinic: "🏥",
   cafe: "☕",
   kids: "🧸",
   sport: "⚽",

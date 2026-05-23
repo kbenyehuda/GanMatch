@@ -9,7 +9,7 @@ import { useSession } from "@/lib/useSession";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "🩺", cafe: "☕", kids: "🧸",
+  doctor: "🩺", clinic: "🏥", cafe: "☕", kids: "🧸",
   sport: "⚽", attraction: "🎭", food: "🍴",
   cosmetics: "💄",
 };

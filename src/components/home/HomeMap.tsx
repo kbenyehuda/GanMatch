@@ -32,7 +32,7 @@ import {
 const ALL_CATEGORIES = VISIBLE_CATEGORIES;
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "🩺", cafe: "☕", kids: "🧸",
+  doctor: "🩺", clinic: "🏥", cafe: "☕", kids: "🧸",
   sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",
 };
 

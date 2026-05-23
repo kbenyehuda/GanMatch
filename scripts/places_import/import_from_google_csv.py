@@ -66,14 +66,14 @@ TYPE_MAPPING: dict[str, str | None] = {
     "pub":                      "food",
     "wine_bar":                 "food",
     "night_club":               None,   # skip for now
-    # Medical
-    "doctor":                   "doctor",
-    "dentist":                  "doctor",
-    "physiotherapist":          "doctor",
-    "hospital":                 "doctor",
-    "optician":                 "doctor",
-    "nutritionist":             "doctor",
-    "mental_health_practitioner": "doctor",
+    # Medical facilities → clinic (not individual doctors)
+    "doctor":                   "clinic",
+    "dentist":                  "clinic",
+    "physiotherapist":          "clinic",
+    "hospital":                 "clinic",
+    "optician":                 "clinic",
+    "nutritionist":             "clinic",
+    "mental_health_practitioner": "clinic",
     # Pharmacy — skip for now
     "pharmacy":                 None,
     # Wellness
