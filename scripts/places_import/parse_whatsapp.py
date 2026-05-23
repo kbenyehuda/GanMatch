@@ -118,6 +118,8 @@ EXTRACT_TOOL = {
                         "reviewer_name":       {"type": "string",  "description": "שם השולח (מהשדה name) — כולל מספרי טלפון"},
                         "enthusiasm":          {"type": "string",  "enum": ["high", "medium", "negative"],
                                                 "description": "high=ממליץ בחום, medium=ממליץ, negative=לא ממליץ"},
+                        "source_messages":     {"type": "array", "items": {"type": "string"},
+                                                "description": "העתק מילולי של הודעות השאלה שגרמו להמלצה הזו (אם יש). ריק אם ההמלצה עצמאית."},
                     },
                     "required": ["place_name", "category", "recommendation_text", "reviewer_name", "enthusiasm"],
                 },
@@ -197,6 +199,7 @@ def insert_staging(supabase, rec: dict, source_file: str) -> bool:
     lat/lon are intentionally left null — geocoding happens at approval time or in a separate pass.
     """
     existing_place_id = find_place_by_name(supabase, rec["place_name"])
+    source_msgs = rec.get("source_messages") or []
 
     try:
         supabase.table("whatsapp_import_staging").insert({
@@ -207,6 +210,7 @@ def insert_staging(supabase, rec: dict, source_file: str) -> bool:
             "reviewer_name":       rec["reviewer_name"],
             "enthusiasm":          rec["enthusiasm"],
             "source_file":         source_file,
+            "source_messages":     source_msgs if source_msgs else None,
             "existing_place_id":   existing_place_id,
         }).execute()
         return True
