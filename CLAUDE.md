@@ -6,6 +6,16 @@ Israeli kindergarten/daycare discovery platform. Parents find and compare ganim 
 
 ---
 
+## Active Categories (as of 2026-05-23)
+
+Only **3 categories** are shown in the UI right now: `kids`, `doctor`, `cosmetics`.
+
+The other 4 — `cafe`, `sport`, `attraction`, `food` — are **fully supported** in the DB, API, types, filters, and map pins. They are hidden only in the UI (`VISIBLE_CATEGORIES` in `src/types/places.ts`). Do **not** delete or remove code for these categories. When data is ready for a category, add it back to `VISIBLE_CATEGORIES`.
+
+To re-enable a category: add it to the `VISIBLE_CATEGORIES` array in `src/types/places.ts`. That's the single change needed.
+
+---
+
 ## Tech Stack
 
 - **Next.js App Router** (TypeScript) — `src/app/` for routes and API handlers

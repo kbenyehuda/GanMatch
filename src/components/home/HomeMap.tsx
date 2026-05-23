@@ -16,6 +16,7 @@ import {
   PLACE_CATEGORY_COLORS,
   PLACE_CATEGORY_LABELS,
   NEIGHBORHOOD_LABELS,
+  VISIBLE_CATEGORIES,
 } from "@/types/places";
 import { DEFAULT_PLACE_FILTERS, type PlaceFilters } from "@/types/place-filters";
 import { useSession } from "@/lib/useSession";
@@ -28,9 +29,7 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ALL_CATEGORIES: PlaceCategory[] = [
-  "doctor", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
-];
+const ALL_CATEGORIES = VISIBLE_CATEGORIES;
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
   doctor: "🩺", cafe: "☕", kids: "🧸",

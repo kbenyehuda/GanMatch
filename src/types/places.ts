@@ -115,6 +115,10 @@ export interface PlaceReview {
 // Display helpers
 // =============================================================================
 
+// Categories shown in the UI. cafe / sport / attraction / food are hidden until data is ready.
+// To re-enable a category, add it back here. All categories remain fully supported in DB/API/filters.
+export const VISIBLE_CATEGORIES: PlaceCategory[] = ["kids", "doctor", "cosmetics"];
+
 export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   doctor: "רופאים",
   cafe: "קפה",

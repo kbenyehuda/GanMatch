@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X, SlidersHorizontal, ChevronDown, Loader2 } from "lucide-react";
 import type { Place, PlaceCategory, NeighborhoodGivatayim, KosherStatus } from "@/types/places";
 import {
-  PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS,
+  PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS, VISIBLE_CATEGORIES,
 } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
 import { DEFAULT_PLACE_FILTERS } from "@/types/place-filters";
@@ -39,7 +39,7 @@ const SORT_OPTIONS: { id: SortOption; label: string; sub: string; icon: React.Re
   )},
 ];
 
-const ALL_CATEGORIES: PlaceCategory[] = ["doctor", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
+const ALL_CATEGORIES = VISIBLE_CATEGORIES;
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
   doctor: "🩺", cafe: "☕", kids: "🧸", sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",

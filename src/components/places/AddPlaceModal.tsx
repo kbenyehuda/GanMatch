@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, MapPin, Phone, Globe, Clock, Star, Send, Loader2, Search, ChevronDown } from "lucide-react";
 import type { Place, PlaceCategory } from "@/types/places";
-import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS } from "@/types/places";
+import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS, VISIBLE_CATEGORIES } from "@/types/places";
 import { useSession } from "@/lib/useSession";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -14,9 +14,7 @@ const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
   cosmetics: "💄",
 };
 
-const ALL_CATEGORIES: PlaceCategory[] = [
-  "doctor", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
-];
+const ALL_CATEGORIES = VISIBLE_CATEGORIES;
 
 interface GeoSuggestion {
   id: string;
