@@ -60,8 +60,6 @@ export async function GET(req: Request) {
   return NextResponse.json({ items });
 }
 
-const VALID_CATEGORIES = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
-
 export async function PATCH(req: Request) {
   const { NEXT_PUBLIC_SUPABASE_URL: url, NEXT_PUBLIC_SUPABASE_ANON_KEY: anon, SUPABASE_SERVICE_ROLE_KEY: svc } = serverEnv;
   if (!url || !anon || !svc) return NextResponse.json({ error: "Supabase env missing" }, { status: 500 });
@@ -84,7 +82,7 @@ export async function PATCH(req: Request) {
   const id = typeof body?.id === "string" ? body.id : "";
   const category = typeof body?.category === "string" ? body.category : "";
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  if (!VALID_CATEGORIES.includes(category)) return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+  if (!category || category.length > 50) return NextResponse.json({ error: "Invalid category" }, { status: 400 });
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
   const { error } = await admin.from("whatsapp_import_staging").update({ category }).eq("id", id);

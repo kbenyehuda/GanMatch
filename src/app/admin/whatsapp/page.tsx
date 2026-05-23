@@ -6,7 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS } from "@/types/places";
 import type { PlaceCategory } from "@/types/places";
 
-const ALL_CATEGORIES: PlaceCategory[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
+const BUILTIN_CATEGORIES: PlaceCategory[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
+const CUSTOM_CATS_KEY = "whatsapp_triage_custom_categories";
 
 type StagingStatus = "pending" | "approved" | "rejected";
 
@@ -71,6 +72,21 @@ export default function WhatsAppStagingPage() {
   const [categoryById, setCategoryById] = useState<Record<string, string>>({});
   const [expandedContext, setExpandedContext] = useState<Record<string, boolean>>({});
   const [includeTextById, setIncludeTextById] = useState<Record<string, boolean>>({});
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(CUSTOM_CATS_KEY) ?? "[]"); } catch { return []; }
+  });
+  const [newCatInput, setNewCatInput] = useState("");
+
+  const allCategories = [...BUILTIN_CATEGORIES, ...customCategories];
+
+  const addCustomCategory = useCallback(() => {
+    const name = newCatInput.trim();
+    if (!name || allCategories.includes(name as PlaceCategory)) return;
+    const updated = [...customCategories, name];
+    setCustomCategories(updated);
+    localStorage.setItem(CUSTOM_CATS_KEY, JSON.stringify(updated));
+    setNewCatInput("");
+  }, [newCatInput, customCategories, allCategories]);
 
   const loadItems = useCallback(async () => {
     if (!supabase || !user) return;
@@ -193,6 +209,19 @@ export default function WhatsAppStagingPage() {
           <h1 className="text-2xl font-bold">ייבוא המלצות WhatsApp</h1>
           <p className="text-sm text-gray-500 mt-0.5">סקור המלצות שחולצו אוטומטית לפני שיופיעו באפליקציה</p>
         </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={newCatInput}
+            onChange={e => setNewCatInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addCustomCategory()}
+            placeholder="קטגוריה חדשה..."
+            className="px-2 py-1.5 rounded border text-sm w-36"
+          />
+          <button onClick={addCustomCategory} disabled={!newCatInput.trim()}
+            className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50 disabled:opacity-40">
+            + הוסף
+          </button>
+        </div>
         <a href="/" className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50">← חזרה לאפליקציה</a>
       </div>
 
@@ -258,9 +287,9 @@ export default function WhatsAppStagingPage() {
                           className="text-xs font-semibold px-2 py-0.5 rounded-full text-white border-0 cursor-pointer"
                           style={{ background: catColor }}
                         >
-                          {ALL_CATEGORIES.map(c => (
+                          {allCategories.map(c => (
                             <option key={c} value={c} style={{ background: "#fff", color: "#111" }}>
-                              {PLACE_CATEGORY_LABELS[c]}
+                              {PLACE_CATEGORY_LABELS[c as PlaceCategory] ?? c}
                             </option>
                           ))}
                         </select>
