@@ -15,6 +15,7 @@ Review and approve them at /admin/whatsapp.
 Credentials loaded from root .env.local.
 """
 
+import json
 import os
 import re
 import sys
@@ -23,13 +24,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from supabase import create_client
-import anthropic
+import openai
 
 load_dotenv(Path(__file__).parent.parent.parent / ".env.local")
 
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL") or os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
-ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+
+OPENAI_MODEL = "gpt-4o-mini"  # cheap and capable; switch to "gpt-4o" for higher accuracy
 
 CHUNK_SIZE = 60    # messages per Claude call
 DEFAULT_OVERLAP = 30  # overlap between chunks to avoid splitting threads
@@ -146,22 +149,32 @@ SYSTEM_PROMPT = """אתה מנתח שיחות WhatsApp בעברית ומחפש �
 - kids: פעילויות ילדים, גנים, חוגים"""
 
 
-def extract_recommendations(client: anthropic.Anthropic, messages: list[dict]) -> list[dict]:
-    """Send a chunk of messages to Claude and return extracted recommendations."""
+def extract_recommendations(client: openai.OpenAI, messages: list[dict]) -> list[dict]:
+    """Send a chunk of messages to OpenAI and return extracted recommendations."""
     batch_text = "\n".join(f"[{m['name']}]: {m['text']}" for m in messages)
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"הודעות לניתוח:\n\n{batch_text}"}],
-        tools=[EXTRACT_TOOL],
-        tool_choice={"type": "any"},
+    tool = {
+        "type": "function",
+        "function": {
+            "name": EXTRACT_TOOL["name"],
+            "description": EXTRACT_TOOL["description"],
+            "parameters": EXTRACT_TOOL["input_schema"],
+        },
+    }
+
+    response = client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"הודעות לניתוח:\n\n{batch_text}"},
+        ],
+        tools=[tool],
+        tool_choice={"type": "function", "function": {"name": "extract_recommendations"}},
     )
 
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "extract_recommendations":
-            return block.input.get("recommendations", [])
+    tool_calls = response.choices[0].message.tool_calls
+    if tool_calls:
+        return json.loads(tool_calls[0].function.arguments).get("recommendations", [])
 
     return []
 
@@ -233,12 +246,12 @@ def main(
         print("ERROR: Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local")
         return 1
 
-    if not ANTHROPIC_KEY:
-        print("ERROR: Set ANTHROPIC_API_KEY in .env.local")
+    if not OPENAI_KEY:
+        print("ERROR: Set OPENAI_API_KEY in .env.local")
         return 1
 
     supabase = None if dry_run else create_client(SUPABASE_URL, SUPABASE_KEY)
-    claude = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    claude = openai.OpenAI(api_key=OPENAI_KEY)
 
     # In-memory dedup — skips exact (place_name, reviewer_name) pairs seen this run
     # (catches duplicates from chunk overlap before hitting the DB unique constraint)
