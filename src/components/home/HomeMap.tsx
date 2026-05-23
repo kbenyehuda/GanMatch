@@ -603,13 +603,13 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               className="absolute top-4 w-[360px] z-20 overflow-hidden"
               style={{
                 right: 16,
-                maxHeight: "calc(100dvh - 2rem)",
+                height: "calc(100dvh - 2rem)",
                 borderRadius: 20,
                 boxShadow: "0 16px 40px rgba(10,43,107,.22)",
               }}
             >
               {detailPlace ? (
-                <div className="h-full" style={{ maxHeight: "calc(100dvh - 2rem)" }}>
+                <div className="h-full">
                   <PlaceDetail
                     place={detailPlace}
                     onClose={() => { setDetailPlace(null); setSelectedPlace(null); }}

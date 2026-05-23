@@ -37,8 +37,8 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
         <button key={n} type="button"
           onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover(0)}
           onClick={() => onChange(n)} className="transition-transform active:scale-[.85]">
-          <svg viewBox="0 0 24 24" style={{ width: 36, height: 36, color: (hover || value) >= n ? "#C8A24B" : "#E5E9F0", fill: (hover || value) >= n ? "#C8A24B" : "none", transition: "color .15s" }}>
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
+          <svg viewBox="0 0 24 24" style={{ width: 36, height: 36, fill: (hover || value) >= n ? "#C8A24B" : "none", transition: "fill .15s, color .15s" }}>
+            <polygon stroke={(hover || value) >= n ? "#C8A24B" : "#9AA5B4"} strokeWidth="1.5" points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
           </svg>
         </button>
       ))}
@@ -178,9 +178,11 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [hoverSend, setHoverSend] = useState(false);
 
   const submitReview = useCallback(async () => {
-    if (formRating === 0 || !user || !session) return;
+    if (formRating === 0) { setSubmitError("יש לבחור דירוג כוכבים תחילה"); return; }
+    if (!user || !session) return;
     setSubmitting(true); setSubmitError(null);
     try {
       const res = await fetch("/api/place-reviews", {
@@ -424,7 +426,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             {showForm && (
               <div className="mt-3 p-4 rounded-2xl" style={{ background: "#F6F9FE", border: "1px solid #E5E9F0" }}>
                 <h5 className="font-hebrew font-bold text-sm mb-3" style={{ color: "#0A2B6B" }}>ההמלצה שלך</h5>
-                <StarInput value={formRating} onChange={setFormRating} />
+                <StarInput value={formRating} onChange={(v) => { setFormRating(v); setSubmitError(null); }} />
                 <textarea value={formText} onChange={e => setFormText(e.target.value)}
                   placeholder="שתף/י את הניסיון שלך..." rows={3} className="w-full font-hebrew text-sm resize-none"
                   style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 12, padding: "10px 12px", outline: "none", color: "#0F1A2E", lineHeight: 1.6, width: "100%", boxSizing: "border-box" }} />
@@ -437,19 +439,28 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                     placeholder="שם לתצוגה (אופציונלי)" className="w-full font-hebrew text-sm mt-2"
                     style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 12, padding: "9px 12px", outline: "none", color: "#0F1A2E", width: "100%", boxSizing: "border-box" }} />
                 )}
-                {submitError && <p className="font-hebrew text-xs mt-1.5" style={{ color: "#C53030" }}>{submitError}</p>}
                 <div className="flex gap-2 mt-3">
-                  <button type="button" onClick={submitReview} disabled={formRating === 0 || submitting}
-                    className="flex-1 flex items-center justify-center gap-1.5 font-hebrew font-bold text-sm"
-                    style={{ padding: "10px 0", borderRadius: 12, background: formRating === 0 ? "#C5CDD8" : "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", border: "none", cursor: formRating === 0 ? "not-allowed" : "pointer" }}>
-                    {submitting ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : <><Send style={{ width: 13, height: 13 }} />שלח</>}
-                  </button>
+                  <span className="flex-1"
+                    onMouseEnter={() => setHoverSend(true)}
+                    onMouseLeave={() => setHoverSend(false)}
+                    style={{ cursor: formRating === 0 ? "not-allowed" : undefined }}>
+                    <button type="button" onClick={submitReview} disabled={submitting}
+                      className="w-full flex items-center justify-center gap-1.5 font-hebrew font-bold text-sm"
+                      style={{ padding: "10px 0", borderRadius: 12, background: formRating === 0 ? "#C5CDD8" : "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", border: "none", cursor: formRating === 0 ? "not-allowed" : "pointer" }}>
+                      {submitting ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : <><Send style={{ width: 13, height: 13 }} />שלח</>}
+                    </button>
+                  </span>
                   <button type="button" onClick={() => { setShowForm(false); setFormRating(0); setFormText(""); setSubmitError(null); }}
                     className="font-hebrew font-semibold text-sm px-4"
                     style={{ borderRadius: 12, background: "#fff", border: "1px solid #E5E9F0", color: "#4A5568", cursor: "pointer" }}>
                     ביטול
                   </button>
                 </div>
+                {(submitError || (hoverSend && formRating === 0)) && (
+                  <p className="font-hebrew text-xs mt-2 text-center" style={{ color: "#C53030" }}>
+                    יש לבחור דירוג כוכבים תחילה
+                  </p>
+                )}
               </div>
             )}
           </div>
