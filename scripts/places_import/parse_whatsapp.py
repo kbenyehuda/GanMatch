@@ -305,7 +305,6 @@ def main(
             for rec in recs:
                 key = (rec["place_name"].strip().lower(), rec["reviewer_name"].strip().lower())
                 if key in seen:
-                    skipped_dup += 1
                     continue
                 seen.add(key)
 
