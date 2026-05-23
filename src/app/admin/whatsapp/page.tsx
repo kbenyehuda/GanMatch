@@ -70,6 +70,7 @@ export default function WhatsAppStagingPage() {
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
   const [categoryById, setCategoryById] = useState<Record<string, string>>({});
   const [expandedContext, setExpandedContext] = useState<Record<string, boolean>>({});
+  const [includeTextById, setIncludeTextById] = useState<Record<string, boolean>>({});
 
   const loadItems = useCallback(async () => {
     if (!supabase || !user) return;
@@ -104,7 +105,12 @@ export default function WhatsAppStagingPage() {
       const res = await fetch("/api/admin/whatsapp-staging/decision", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, action, moderation_reason: (reasonById[id] ?? "").trim() || null }),
+        body: JSON.stringify({
+          id,
+          action,
+          moderation_reason: (reasonById[id] ?? "").trim() || null,
+          include_text: includeTextById[id] !== false,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Decision failed");
@@ -313,6 +319,15 @@ export default function WhatsAppStagingPage() {
                         className="w-full rounded border p-2 text-sm resize-none"
                         rows={2}
                       />
+                      <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={includeTextById[item.id] !== false}
+                          onChange={e => setIncludeTextById(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                          className="w-4 h-4"
+                        />
+                        כלול טקסט המלצה
+                      </label>
                       <div className="flex gap-2">
                         <button
                           disabled={busyId === item.id}

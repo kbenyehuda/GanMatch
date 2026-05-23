@@ -66,6 +66,7 @@ export async function POST(req: Request) {
   const id = typeof body?.id === "string" ? body.id : "";
   const action = typeof body?.action === "string" ? body.action : "";
   const reason = typeof body?.moderation_reason === "string" ? body.moderation_reason.trim() : null;
+  const includeText: boolean = body?.include_text !== false;
 
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   if (action !== "approve" && action !== "reject") return NextResponse.json({ error: "action must be approve or reject" }, { status: 400 });
@@ -126,7 +127,7 @@ export async function POST(req: Request) {
     user_id:               reviewerUserId,
     place_id:              placeId,
     rating:                ratingMap[row.enthusiasm] ?? 4,
-    text:                  row.recommendation_text,
+    text:                  includeText ? row.recommendation_text : null,
     reviewer_public_name:  "חבר/ה מהשכונה",
     whatsapp_reviewer_name: row.reviewer_name,
     is_anonymous:          true,
