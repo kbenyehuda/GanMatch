@@ -312,7 +312,7 @@ export function FilterSheet({
             className="flex-1 flex items-center justify-center gap-2 font-hebrew font-bold"
             style={{ background: count === 0 ? "#C5CDD8" : "#0A2B6B", color: "#fff", borderRadius: 16, padding: 14, fontSize: 14, border: "none", cursor: count === 0 ? "not-allowed" : "pointer" }}>
             {count === 0 ? "אין תוצאות" : `הצג ${count} מקומות`}
-            {count > 0 && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 14, height: 14 }}><path d="M5 12h14M13 5l7 7-7 7"/></svg>}
+            {count > 0 && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 14, height: 14, transform: "scaleX(-1)" }}><path d="M5 12h14M13 5l7 7-7 7"/></svg>}
           </button>
         </div>
       </div>

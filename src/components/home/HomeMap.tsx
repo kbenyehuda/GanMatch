@@ -181,7 +181,7 @@ function MapPeekSheet({
           style={{ width: 38, height: 38, borderRadius: 12, background: "#0A2B6B", color: "#fff", border: 0, cursor: "pointer" }}
           aria-label="פרטים"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16, transform: "scaleX(-1)" }}>
             <path d="M5 12h14M13 5l7 7-7 7"/>
           </svg>
         </button>

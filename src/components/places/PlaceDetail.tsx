@@ -232,7 +232,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         <button type="button" onClick={onClose}
           className="absolute flex items-center justify-center"
           style={{ top: "calc(var(--safe-top, 0px) + 14px)", insetInlineStart: 14, width: 38, height: 38, borderRadius: 14, background: "rgba(255,255,255,.95)", border: 0, cursor: "pointer", boxShadow: "0 2px 8px rgba(10,43,107,.06)", zIndex: 5 }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="#0A2B6B" strokeWidth="2.5" style={{ width: 16, height: 16 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0A2B6B" strokeWidth="2.5" style={{ width: 16, height: 16, transform: "scaleX(-1)" }}>
             <path d="M19 12H5M12 19l-7-7 7-7"/>
           </svg>
         </button>
