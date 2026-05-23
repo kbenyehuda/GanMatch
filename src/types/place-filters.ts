@@ -1,14 +1,29 @@
 import type { KosherStatus, NeighborhoodGivatayim, PlaceCategory } from "./places";
 
 export interface PlaceFilters {
-  categories: PlaceCategory[] | null;       // null = all categories
-  neighborhoods: NeighborhoodGivatayim[] | null; // null = all neighborhoods
-  kosher: KosherStatus[] | null;            // null = no filter
-  price_range: (1 | 2 | 3)[] | null;       // null = all price ranges
-  hmo: string[] | null;                     // 'maccabi'|'clalit'|'meuhedet'|'leumit'; null = all
+  categories: PlaceCategory[] | null;
+  neighborhoods: NeighborhoodGivatayim[] | null;
+  kosher: KosherStatus[] | null;
+  price_range: (1 | 2 | 3)[] | null;
+  hmo: string[] | null;
   rated_only: boolean;
   min_rating: number | null;
-  search_query: string | null;              // text search (name / address); future: LLM semantic
+  search_query: string | null;
+  // Kids-specific (place.attributes.*)
+  kids_gan_category: string[] | null;
+  kids_age_track: ("0-3" | "3+") | null;
+  kids_max_price_nis: number | null;
+  kids_meal_type: string[] | null;
+  kids_friday: string[] | null;
+  kids_outdoor: boolean | null;
+  kids_vacancy: string[] | null;
+  kids_languages: string[] | null;
+  kids_has_mamad: boolean | null;
+  kids_first_aid: boolean | null;
+  // Sport-specific
+  sport_gender: string | null;
+  // Attraction-specific
+  attraction_venue: string[] | null;
 }
 
 export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
@@ -20,6 +35,18 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   rated_only: false,
   min_rating: null,
   search_query: null,
+  kids_gan_category: null,
+  kids_age_track: null,
+  kids_max_price_nis: null,
+  kids_meal_type: null,
+  kids_friday: null,
+  kids_outdoor: null,
+  kids_vacancy: null,
+  kids_languages: null,
+  kids_has_mamad: null,
+  kids_first_aid: null,
+  sport_gender: null,
+  attraction_venue: null,
 };
 
 export function countActivePlaceFilters(f: PlaceFilters): number {
@@ -32,5 +59,17 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.rated_only) n++;
   if (f.min_rating != null) n++;
   if (f.search_query != null && f.search_query.trim() !== "") n++;
+  if (f.kids_gan_category != null && f.kids_gan_category.length > 0) n++;
+  if (f.kids_age_track != null) n++;
+  if (f.kids_max_price_nis != null) n++;
+  if (f.kids_meal_type != null && f.kids_meal_type.length > 0) n++;
+  if (f.kids_friday != null && f.kids_friday.length > 0) n++;
+  if (f.kids_outdoor != null) n++;
+  if (f.kids_vacancy != null && f.kids_vacancy.length > 0) n++;
+  if (f.kids_languages != null && f.kids_languages.length > 0) n++;
+  if (f.kids_has_mamad != null) n++;
+  if (f.kids_first_aid != null) n++;
+  if (f.sport_gender != null) n++;
+  if (f.attraction_venue != null && f.attraction_venue.length > 0) n++;
   return n;
 }

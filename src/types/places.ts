@@ -118,7 +118,7 @@ export interface PlaceReview {
 export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   doctor: "רופאים",
   cafe: "קפה",
-  kids: "ילדים",
+  kids: "גני ילדים",
   sport: "ספורט",
   attraction: "אטרקציות",
   food: "אוכל",

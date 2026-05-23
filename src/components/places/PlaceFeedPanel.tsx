@@ -107,24 +107,24 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
       onClick={onClose}
     >
       <div
-        className="absolute left-0 right-0 bottom-0"
+        className="absolute left-0 right-0 bottom-0 flex flex-col overflow-hidden"
         style={{ background: "#F6F9FE", borderRadius: "28px 28px 0 0", boxShadow: "0 -10px 30px rgba(10,43,107,.2)", maxHeight: "55%" }}
         onClick={e => e.stopPropagation()}
         dir="rtl"
       >
         {/* Handle */}
-        <div className="flex justify-center pt-2.5 pb-2">
+        <div className="flex justify-center pt-2.5 pb-2 shrink-0">
           <div style={{ width: 42, height: 5, borderRadius: 99, background: "#E5E9F0" }} />
         </div>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pb-3">
+        <div className="flex items-center justify-between px-5 pb-3 shrink-0">
           <h3 className="font-hebrew" style={{ fontSize: 20, fontWeight: 800 }}>מיין לפי</h3>
           <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%", background: "#E8F0FB", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
           </button>
         </div>
         {/* Options */}
-        <div style={{ padding: "0 20px 32px", overflowY: "auto" }}>
+        <div className="flex-1 overflow-y-auto" style={{ padding: "0 20px 32px" }}>
           {SORT_OPTIONS.map((opt, i) => (
             <button key={opt.id} type="button" onClick={() => { onSelect(opt.id); onClose(); }}
               className="w-full text-start flex items-center gap-3.5"
@@ -151,6 +151,36 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
   );
 }
 
+// ─── Filter sheet helpers ─────────────────────────────────────────────────────
+
+function Section({ label, first, children }: { label: string; first?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ paddingTop: 16, paddingBottom: 16, borderTop: first ? undefined : "1px solid #E5E9F0" }}>
+      <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function Chips({ items, active, onToggle }: { items: { id: string; label: string }[]; active: string[]; onToggle: (id: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map(({ id, label }) => {
+        const isActive = active.includes(id);
+        return (
+          <button key={id} type="button" onClick={() => onToggle(id)} className="font-hebrew"
+            style={{ padding: "9px 14px", borderRadius: 12, background: isActive ? "#0A2B6B" : "#fff", color: isActive ? "#fff" : "#4A5568", border: "1px solid", borderColor: isActive ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Set to false to hide unconfirmed kids filters until data is uploaded.
+const KIDS_DETAIL_FILTERS = true;
+
 // ─── Filter bottom sheet ──────────────────────────────────────────────────────
 
 export function FilterSheet({
@@ -163,31 +193,22 @@ export function FilterSheet({
 }) {
   const [pending, setPending] = useState<PlaceFilters>({ ...filters });
 
-  const toggleCat = (cat: PlaceCategory) => {
-    const cur = pending.categories ?? [];
-    const next = cur.includes(cat) ? cur.filter(c => c !== cat) : [...cur, cat];
-    setPending({ ...pending, categories: next.length ? next : null });
+  // Category helpers
+  const cats = pending.categories ?? [];
+  const onlyCat = (c: PlaceCategory) => cats.length === 1 && cats[0] === c;
+  const showAll = cats.length === 0;
+  const foodRelated = ["cafe", "food", "kids"] as PlaceCategory[];
+
+  const toggle = <T extends string | number>(key: keyof PlaceFilters, val: T) => {
+    const cur = (pending[key] as T[] | null) ?? [];
+    const next = cur.includes(val) ? cur.filter(x => x !== val) : [...cur, val];
+    setPending(prev => ({ ...prev, [key]: next.length ? next : null }));
   };
-  const toggleHmo = (id: string) => {
-    const cur = pending.hmo ?? [];
-    const next = cur.includes(id) ? cur.filter(h => h !== id) : [...cur, id];
-    setPending({ ...pending, hmo: next.length ? next : null });
-  };
-  const toggleNeighborhood = (n: NeighborhoodGivatayim) => {
-    const cur = pending.neighborhoods ?? [];
-    const next = cur.includes(n) ? cur.filter(x => x !== n) : [...cur, n];
-    setPending({ ...pending, neighborhoods: next.length ? next : null });
-  };
-  const toggleKosher = (k: KosherStatus) => {
-    const cur = pending.kosher ?? [];
-    const next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
-    setPending({ ...pending, kosher: next.length ? next : null });
-  };
-  const togglePrice = (p: 1 | 2 | 3) => {
-    const cur = pending.price_range ?? [];
-    const next = cur.includes(p) ? cur.filter(x => x !== p) : [...cur, p];
-    setPending({ ...pending, price_range: next.length ? next : null });
-  };
+  const toggleCat = (cat: PlaceCategory) => toggle<PlaceCategory>("categories", cat);
+  const toggleHmo = (id: string) => toggle<string>("hmo", id);
+  const toggleNeighborhood = (n: NeighborhoodGivatayim) => toggle<NeighborhoodGivatayim>("neighborhoods", n);
+  const toggleKosher = (k: KosherStatus) => toggle<KosherStatus>("kosher", k);
+  const togglePrice = (p: 1 | 2 | 3) => toggle<1|2|3>("price_range", p);
 
   const count = useMemo(() => {
     return places.filter(p => {
@@ -201,7 +222,7 @@ export function FilterSheet({
   }, [places, pending]);
 
   return (
-    <div className="fixed inset-0 z-50" style={{ background: "rgba(15,26,46,.4)", backdropFilter: "blur(2px)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[500]" style={{ background: "rgba(15,26,46,.4)", backdropFilter: "blur(2px)" }} onClick={onClose}>
       <div className="absolute left-0 right-0 bottom-0 flex flex-col"
         style={{ background: "#F6F9FE", borderRadius: "28px 28px 0 0", boxShadow: "0 -10px 30px rgba(10,43,107,.2)", maxHeight: "88%", overflow: "hidden" }}
         onClick={e => e.stopPropagation()} dir="rtl">
@@ -218,88 +239,186 @@ export function FilterSheet({
         </div>
         {/* Body */}
         <div className="flex-1 overflow-y-auto" style={{ padding: "0 20px" }}>
-          {/* Category */}
-          <div style={{ paddingTop: 16, paddingBottom: 16 }}>
-            <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>קטגוריה</div>
-            <div className="flex flex-wrap gap-1.5">
-              {ALL_CATEGORIES.map(cat => {
-                const active = pending.categories?.includes(cat) ?? false;
+
+          {/* ── Neighborhood (always) ───────────────────────────────────────── */}
+          <Section label="שכונה" first>
+            <Chips items={ALL_NEIGHBORHOODS.map(n => ({ id: n, label: NEIGHBORHOOD_LABELS[n] }))}
+              active={pending.neighborhoods ?? []} onToggle={n => toggleNeighborhood(n as NeighborhoodGivatayim)} />
+          </Section>
+
+          {/* ── Price — hide when kids is the only category (has its own NIS price filter) */}
+          {!onlyCat("kids") && (
+            <Section label="מחיר">
+              <Chips items={([1,2,3] as (1|2|3)[]).map(p => ({ id: String(p), label: "₪".repeat(p) }))}
+                active={(pending.price_range ?? []).map(String)} onToggle={p => togglePrice(Number(p) as 1|2|3)} />
+            </Section>
+          )}
+
+          {/* ── Rating (always) ────────────────────────────────────────────── */}
+          <Section label="דירוג">
+            <label className="flex items-center gap-2 font-hebrew text-sm cursor-pointer mb-2">
+              <input type="checkbox" checked={pending.rated_only}
+                onChange={e => setPending(prev => ({ ...prev, rated_only: e.target.checked }))}
+                style={{ accentColor: "#0A2B6B" }} />
+              רק מדורגים
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="font-hebrew text-xs" style={{ color: "#8A95A8" }}>דירוג מינימום</span>
+              {([3,3.5,4,4.5] as number[]).map(v => {
+                const active = pending.min_rating === v;
                 return (
-                  <button key={cat} type="button" onClick={() => toggleCat(cat)}
-                    className="flex items-center gap-1.5 font-hebrew"
-                    style={{ padding: "9px 14px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}>
-                    <span style={{ fontSize: 14 }}>{CATEGORY_EMOJI[cat]}</span>
-                    {PLACE_CATEGORY_LABELS[cat]}
+                  <button key={v} type="button"
+                    onClick={() => setPending(prev => ({ ...prev, min_rating: active ? null : v }))}
+                    className="font-hebrew text-xs font-bold"
+                    style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", cursor: "pointer" }}>
+                    {v}+
                   </button>
                 );
               })}
             </div>
-          </div>
-          {/* HMO */}
-          <div style={{ paddingTop: 16, paddingBottom: 16, borderTop: "1px solid #E5E9F0" }}>
-            <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>קופת חולים</div>
-            <div className="grid grid-cols-2 gap-2">
-              {HMO_LIST.map(hmo => {
-                const active = pending.hmo?.includes(hmo.id) ?? false;
-                return (
-                  <button key={hmo.id} type="button" onClick={() => toggleHmo(hmo.id)}
-                    className="flex flex-col items-center font-hebrew"
-                    style={{ border: `1.5px solid ${active ? "#0A2B6B" : "#E5E9F0"}`, borderRadius: 14, padding: "10px 8px", background: active ? "#E8F0FB" : "#fff", cursor: "pointer", transition: "all .15s" }}>
-                    <img src={hmo.logo} alt={hmo.label} style={{ width: "100%", height: 36, objectFit: "contain" }} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* Neighborhood */}
-          <div style={{ paddingTop: 16, paddingBottom: 16, borderTop: "1px solid #E5E9F0" }}>
-            <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>שכונה</div>
-            <div className="flex flex-wrap gap-1.5">
-              {ALL_NEIGHBORHOODS.map(n => {
-                const active = pending.neighborhoods?.includes(n) ?? false;
-                return (
-                  <button key={n} type="button" onClick={() => toggleNeighborhood(n)}
-                    className="font-hebrew"
-                    style={{ padding: "9px 14px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}>
-                    {NEIGHBORHOOD_LABELS[n]}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* Kosher */}
-          <div style={{ paddingTop: 16, paddingBottom: 16, borderTop: "1px solid #E5E9F0" }}>
-            <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>כשרות</div>
-            <div className="flex flex-wrap gap-1.5">
-              {([["CERTIFIED", "כשר"], ["NOT_CERTIFIED", "לא כשר"]] as [KosherStatus, string][]).map(([k, label]) => {
-                const active = pending.kosher?.includes(k) ?? false;
-                return (
-                  <button key={k} type="button" onClick={() => toggleKosher(k)}
-                    className="font-hebrew"
-                    style={{ padding: "9px 14px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}>
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* Price range */}
-          <div style={{ paddingTop: 16, paddingBottom: 24, borderTop: "1px solid #E5E9F0" }}>
-            <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>מחיר</div>
-            <div className="flex flex-wrap gap-1.5">
-              {([1, 2, 3] as (1|2|3)[]).map(p => {
-                const label = "₪".repeat(p);
-                const active = pending.price_range?.includes(p) ?? false;
-                return (
-                  <button key={p} type="button" onClick={() => togglePrice(p)}
-                    className="font-hebrew"
-                    style={{ padding: "9px 18px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all .15s", letterSpacing: ".05em" }}>
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          </Section>
+
+          {/* ── Kosher — food-related categories or no filter ──────────────── */}
+          {(showAll || cats.some(c => foodRelated.includes(c))) && (
+            <Section label="כשרות">
+              <Chips items={[{ id: "CERTIFIED", label: "כשר" }, { id: "NOT_CERTIFIED", label: "לא כשר" }]}
+                active={pending.kosher ?? []} onToggle={k => toggleKosher(k as KosherStatus)} />
+            </Section>
+          )}
+
+          {/* ── HMO — doctors only ─────────────────────────────────────────── */}
+          {(showAll || cats.includes("doctor")) && (
+            <Section label="קופת חולים">
+              <div className="grid grid-cols-2 gap-2">
+                {HMO_LIST.map(hmo => {
+                  const active = pending.hmo?.includes(hmo.id) ?? false;
+                  return (
+                    <button key={hmo.id} type="button" onClick={() => toggleHmo(hmo.id)}
+                      className="flex flex-col items-center"
+                      style={{ border: `1.5px solid ${active ? "#0A2B6B" : "#E5E9F0"}`, borderRadius: 14, padding: "10px 8px", background: active ? "#E8F0FB" : "#fff", cursor: "pointer", transition: "all .15s" }}>
+                      <img src={hmo.logo} alt={hmo.label} style={{ width: "100%", height: 36, objectFit: "contain" }} />
+                    </button>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+
+          {/* ── Kids: סוג גן (always — data confirmed) ───────────────────── */}
+          {onlyCat("kids") && (
+            <Section label="סוג גן">
+              <Chips items={[
+                { id: "MAON_SYMBOL",                    label: "מעון סמל" },
+                { id: "MISHPACHTON",                    label: "משפחתון" },
+                { id: "PRIVATE_GAN",                    label: "גן פרטי" },
+                { id: "MUNICIPAL_GAN",                  label: "גן עירוני" },
+                { id: "TZAHARON_MUNICIPAL",             label: "צהרון עירוני" },
+                { id: "TZAHARON_PRIVATE_SUPERVISED",    label: "צהרון פרטי מפוקח" },
+                { id: "TZAHARON_PRIVATE_UNSUPERVISED",  label: "צהרון פרטי ללא פיקוח" },
+              ]} active={pending.kids_gan_category ?? []}
+                onToggle={v => toggle<string>("kids_gan_category", v)} />
+            </Section>
+          )}
+
+          {/* ── Kids: remaining filters (KIDS_DETAIL_FILTERS flag) ────────── */}
+          {onlyCat("kids") && KIDS_DETAIL_FILTERS && (<>
+            <Section label="גיל הילד">
+              <Chips items={[{ id: "0-3", label: "עד גיל 3" }, { id: "3+", label: "מגיל 3" }]}
+                active={pending.kids_age_track ? [pending.kids_age_track] : []}
+                onToggle={v => setPending(prev => ({ ...prev, kids_age_track: prev.kids_age_track === v ? null : v as "0-3" | "3+" }))} />
+            </Section>
+            <Section label="מחיר חודשי מקסימלי">
+              <div className="flex flex-wrap gap-1.5">
+                {[1500, 2500, 4000, 6000, 8000].map(p => {
+                  const active = pending.kids_max_price_nis === p;
+                  return (
+                    <button key={p} type="button"
+                      onClick={() => setPending(prev => ({ ...prev, kids_max_price_nis: active ? null : p }))}
+                      className="font-hebrew"
+                      style={{ padding: "9px 14px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                      עד ₪{p.toLocaleString("he-IL")}
+                    </button>
+                  );
+                })}
+              </div>
+            </Section>
+            <Section label="סוג אוכל">
+              <Chips items={[
+                { id: "IN_HOUSE_COOK", label: "בישול במקום" },
+                { id: "EXTERNAL_CATERING", label: "קייטרינג" },
+                { id: "PARENTS_BRING", label: "הורים מביאים" },
+                { id: "MIXED", label: "מעורב" },
+              ]} active={pending.kids_meal_type ?? []}
+                onToggle={v => toggle<string>("kids_meal_type", v)} />
+            </Section>
+            <Section label="ימי שישי">
+              <Chips items={[
+                { id: "NONE", label: "ללא שישי" },
+                { id: "EVERY_FRIDAY", label: "כל שישי" },
+                { id: "EVERY_OTHER_FRIDAY", label: "שישי לסירוגין" },
+              ]} active={pending.kids_friday ?? []}
+                onToggle={v => toggle<string>("kids_friday", v)} />
+            </Section>
+            <Section label="שפות">
+              <Chips items={[
+                { id: "HEBREW", label: "עברית" },
+                { id: "ENGLISH", label: "אנגלית" },
+                { id: "RUSSIAN", label: "רוסית" },
+                { id: "ARABIC", label: "ערבית" },
+              ]} active={pending.kids_languages ?? []}
+                onToggle={v => toggle<string>("kids_languages", v)} />
+            </Section>
+            <Section label="תשתיות ובטיחות">
+              <Chips items={[
+                { id: "outdoor", label: "חצר חיצונית" },
+                { id: "mamad", label: 'ממ"ד' },
+                { id: "firstaid", label: "עזרה ראשונה" },
+              ]}
+                active={[
+                  ...(pending.kids_outdoor === true ? ["outdoor"] : []),
+                  ...(pending.kids_has_mamad === true ? ["mamad"] : []),
+                  ...(pending.kids_first_aid === true ? ["firstaid"] : []),
+                ]}
+                onToggle={v => {
+                  if (v === "outdoor") setPending(prev => ({ ...prev, kids_outdoor: prev.kids_outdoor ? null : true }));
+                  else if (v === "mamad") setPending(prev => ({ ...prev, kids_has_mamad: prev.kids_has_mamad ? null : true }));
+                  else if (v === "firstaid") setPending(prev => ({ ...prev, kids_first_aid: prev.kids_first_aid ? null : true }));
+                }} />
+            </Section>
+            <Section label="מקום פנוי">
+              <Chips items={[
+                { id: "Available", label: "יש מקום" },
+                { id: "Limited", label: "מוגבל" },
+                { id: "Full", label: "מלא" },
+              ]} active={pending.kids_vacancy ?? []}
+                onToggle={v => toggle<string>("kids_vacancy", v)} />
+            </Section>
+          </>)}
+
+          {/* ── Sport-specific ────────────────────────────────────────────── */}
+          {onlyCat("sport") && (
+            <Section label="קהל יעד">
+              <Chips items={[
+                { id: "women_only", label: "נשים בלבד" },
+                { id: "men_only", label: "גברים בלבד" },
+              ]} active={pending.sport_gender ? [pending.sport_gender] : []}
+                onToggle={v => setPending(prev => ({ ...prev, sport_gender: prev.sport_gender === v ? null : v }))} />
+            </Section>
+          )}
+
+          {/* ── Attraction-specific ────────────────────────────────────────── */}
+          {onlyCat("attraction") && (
+            <Section label="מיקום">
+              <Chips items={[
+                { id: "indoor", label: "פנים" },
+                { id: "outdoor", label: "חוץ" },
+                { id: "both", label: "פנים וחוץ" },
+              ]} active={pending.attraction_venue ?? []}
+                onToggle={v => toggle<string>("attraction_venue", v)} />
+            </Section>
+          )}
+
+          <div style={{ height: 8 }} />
         </div>
         {/* Footer */}
         <div className="shrink-0 flex gap-2.5" style={{ padding: "14px 18px calc(86px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)" }}>
