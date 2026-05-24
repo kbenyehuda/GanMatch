@@ -47,7 +47,7 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Fetch names for existing_place_id references
-  const existingIds = [...new Set((data ?? []).map((r: any) => r.existing_place_id).filter(Boolean))] as string[];
+  const existingIds = Array.from(new Set((data ?? []).map((r: any) => r.existing_place_id).filter(Boolean))) as string[];
   const placeNameById: Record<string, string> = {};
   if (existingIds.length > 0) {
     const { data: places } = await admin.from("places").select("id,name").in("id", existingIds);
@@ -82,12 +82,34 @@ export async function PATCH(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const id = typeof body?.id === "string" ? body.id : "";
-  const category = typeof body?.category === "string" ? body.category : "";
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  if (!category || category.length > 50) return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+
+  const update: Record<string, unknown> = {};
+
+  if (body?.category !== undefined) {
+    const cat = typeof body.category === "string" ? body.category.trim() : "";
+    if (!cat || cat.length > 50) return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+    update.category = cat;
+  }
+  if (body?.specialty !== undefined) {
+    update.specialty = typeof body.specialty === "string" && body.specialty ? body.specialty : null;
+  }
+  if (body?.hmo !== undefined) {
+    if (!Array.isArray(body.hmo)) return NextResponse.json({ error: "hmo must be array" }, { status: 400 });
+    update.hmo = (body.hmo as unknown[]).filter((h): h is string => typeof h === "string");
+  }
+  if (body?.for_children !== undefined) {
+    update.for_children = typeof body.for_children === "boolean" ? body.for_children : null;
+  }
+  if (body?.source_messages !== undefined) {
+    if (!Array.isArray(body.source_messages)) return NextResponse.json({ error: "source_messages must be array" }, { status: 400 });
+    update.source_messages = (body.source_messages as unknown[]).filter((m): m is string => typeof m === "string");
+  }
+
+  if (Object.keys(update).length === 0) return NextResponse.json({ error: "No fields to update" }, { status: 400 });
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-  const { error } = await admin.from("whatsapp_import_staging").update({ category }).eq("id", id);
+  const { error } = await admin.from("whatsapp_import_staging").update(update).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ success: true });

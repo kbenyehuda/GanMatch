@@ -108,9 +108,34 @@ export async function POST(req: Request) {
     });
     if (placeErr) return NextResponse.json({ error: placeErr.message }, { status: 500 });
 
-    // Mark as whatsapp-sourced
-    await admin.from("places").update({ source: "whatsapp", is_verified: false }).eq("id", newPlaceId);
     placeId = newPlaceId as string;
+
+    // Mark as whatsapp-sourced and carry enrichment fields for new places
+    const newPlaceUpdate: Record<string, unknown> = { source: "whatsapp", is_verified: false };
+    const newAttrs: Record<string, unknown> = {};
+    if (row.specialty) newAttrs.specialty = row.specialty;
+    if (row.for_children != null) newAttrs.for_children = row.for_children;
+    if (Object.keys(newAttrs).length > 0) newPlaceUpdate.attributes = newAttrs;
+    if (Array.isArray(row.hmo) && row.hmo.length > 0) newPlaceUpdate.hmo = row.hmo;
+    await admin.from("places").update(newPlaceUpdate).eq("id", placeId);
+  } else {
+    // Existing place: merge enrichment fields if any are set
+    const hasEnrichment = row.specialty || row.for_children != null || (Array.isArray(row.hmo) && row.hmo.length > 0);
+    if (hasEnrichment) {
+      const { data: existing } = await admin.from("places").select("attributes, hmo").eq("id", placeId).single();
+      const attrs = { ...((existing?.attributes as Record<string, unknown>) ?? {}) };
+      const placeUpdate: Record<string, unknown> = {};
+      if (row.specialty) attrs.specialty = row.specialty;
+      if (row.for_children != null) attrs.for_children = row.for_children;
+      if (row.specialty || row.for_children != null) placeUpdate.attributes = attrs;
+      if (Array.isArray(row.hmo) && row.hmo.length > 0) {
+        const existingHmo = Array.isArray(existing?.hmo) ? (existing.hmo as string[]) : [];
+        placeUpdate.hmo = Array.from(new Set([...existingHmo, ...row.hmo]));
+      }
+      if (Object.keys(placeUpdate).length > 0) {
+        await admin.from("places").update(placeUpdate).eq("id", placeId);
+      }
+    }
   }
 
   // 2. Create synthetic auth user for reviewer (deterministic per reviewer_name)

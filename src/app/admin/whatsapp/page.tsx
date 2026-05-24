@@ -8,6 +8,8 @@ import type { PlaceCategory } from "@/types/places";
 
 const BUILTIN_CATEGORIES: PlaceCategory[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
 const CUSTOM_CATS_KEY = "whatsapp_triage_custom_categories";
+const HMO_OPTIONS = ["מכבי", "כללית", "מאוחדת", "לאומית"];
+const HMO_CATEGORIES = new Set(["doctor", "clinic"]);
 
 type StagingStatus = "pending" | "approved" | "rejected";
 
@@ -30,6 +32,9 @@ type StagingItem = {
   moderation_reason: string | null;
   status: StagingStatus;
   created_at: string;
+  specialty: string | null;
+  hmo: string[] | null;
+  for_children: boolean | null;
 };
 
 const ENTHUSIASM_STARS: Record<string, string> = {
@@ -75,6 +80,21 @@ export default function WhatsAppStagingPage() {
   const [includeTextById, setIncludeTextById] = useState<Record<string, boolean>>({});
   const [onlyWithContext, setOnlyWithContext] = useState(false);
 
+  // Enrichment fields — local overrides on top of DB values
+  const [specialtyById, setSpecialtyById] = useState<Record<string, string>>({});
+  const [hmoById, setHmoById] = useState<Record<string, string[]>>({});
+  const [forChildrenById, setForChildrenById] = useState<Record<string, boolean | null>>({});
+
+  // Source messages editing
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [editSourceText, setEditSourceText] = useState("");
+  const [editedSourceById, setEditedSourceById] = useState<Record<string, string[]>>({});
+
+  // Specialty taxonomy
+  const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>({});
+  const [showAddSpecialtyId, setShowAddSpecialtyId] = useState<string | null>(null);
+  const [addSpecialtyText, setAddSpecialtyText] = useState<Record<string, string>>({});
+
   const [customCategories, setCustomCategories] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(CUSTOM_CATS_KEY) ?? "[]"); } catch { return []; }
   });
@@ -91,12 +111,29 @@ export default function WhatsAppStagingPage() {
     setNewCatInput("");
   }, [newCatInput, customCategories, allCategories]);
 
+  const getToken = useCallback(async () => {
+    if (!supabase) return null;
+    return supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
+  }, []);
+
+  const loadTaxonomy = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/admin/whatsapp-staging/taxonomy", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setTaxonomy(data?.taxonomy ?? {});
+    } catch { /* non-critical */ }
+  }, [getToken]);
+
   const loadItems = useCallback(async () => {
     if (!supabase || !user) return;
     setReloading(true);
     setError(null);
     try {
-      const token = await supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
+      const token = await getToken();
       if (!token) throw new Error("Missing token");
       const catParam = categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : "";
       const res = await fetch(`/api/admin/whatsapp-staging?status=${status}&limit=50000${catParam}`, {
@@ -111,16 +148,81 @@ export default function WhatsAppStagingPage() {
     } finally {
       setReloading(false);
     }
-  }, [status, user, categoryFilter]);
+  }, [status, user, categoryFilter, getToken]);
 
-  useEffect(() => { if (user) loadItems(); }, [user, loadItems, categoryFilter]);
+  useEffect(() => { if (user) { loadItems(); loadTaxonomy(); } }, [user, loadItems, loadTaxonomy]);
+
+  const patchField = useCallback(async (id: string, fields: Record<string, unknown>) => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      await fetch("/api/admin/whatsapp-staging", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id, ...fields }),
+      });
+    } catch { /* non-critical */ }
+  }, [getToken]);
+
+  const patchCategory = useCallback(async (id: string, category: string) => {
+    setCategoryById(prev => ({ ...prev, [id]: category }));
+    patchField(id, { category });
+  }, [patchField]);
+
+  const patchSpecialty = useCallback(async (id: string, specialty: string) => {
+    setSpecialtyById(prev => ({ ...prev, [id]: specialty }));
+    patchField(id, { specialty: specialty || null });
+  }, [patchField]);
+
+  const toggleHmo = useCallback(async (id: string, hmo: string, currentHmo: string[]) => {
+    const next = currentHmo.includes(hmo)
+      ? currentHmo.filter(h => h !== hmo)
+      : [...currentHmo, hmo];
+    setHmoById(prev => ({ ...prev, [id]: next }));
+    patchField(id, { hmo: next });
+  }, [patchField]);
+
+  const patchForChildren = useCallback(async (id: string, value: boolean | null) => {
+    setForChildrenById(prev => ({ ...prev, [id]: value }));
+    patchField(id, { for_children: value });
+  }, [patchField]);
+
+  const addSpecialty = useCallback(async (id: string, category: string) => {
+    const name = (addSpecialtyText[id] ?? "").trim();
+    if (!name) return;
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/admin/whatsapp-staging/taxonomy", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ category, name }),
+      });
+      if (!res.ok) return;
+      setTaxonomy(prev => ({
+        ...prev,
+        [category]: Array.from(new Set([...(prev[category] ?? []), name])).sort((a, b) => a.localeCompare(b, "he")),
+      }));
+      setSpecialtyById(prev => ({ ...prev, [id]: name }));
+      patchField(id, { specialty: name });
+      setShowAddSpecialtyId(null);
+      setAddSpecialtyText(prev => ({ ...prev, [id]: "" }));
+    } catch { /* non-critical */ }
+  }, [addSpecialtyText, getToken, patchField]);
+
+  const saveSourceMessages = useCallback((id: string) => {
+    const messages = editSourceText.split("\n").map(s => s.trim()).filter(Boolean);
+    setEditedSourceById(prev => ({ ...prev, [id]: messages }));
+    setEditingSourceId(null);
+    patchField(id, { source_messages: messages });
+  }, [editSourceText, patchField]);
 
   const decide = useCallback(async (id: string, action: "approve" | "reject") => {
     if (!supabase || !user) return;
     setBusyId(id);
     setError(null);
     try {
-      const token = await supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
+      const token = await getToken();
       if (!token) throw new Error("Missing token");
       const res = await fetch("/api/admin/whatsapp-staging/decision", {
         method: "POST",
@@ -140,21 +242,7 @@ export default function WhatsAppStagingPage() {
     } finally {
       setBusyId(null);
     }
-  }, [reasonById, user]);
-
-  const patchCategory = useCallback(async (id: string, category: string) => {
-    if (!supabase || !user) return;
-    setCategoryById(prev => ({ ...prev, [id]: category }));
-    try {
-      const token = await supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
-      if (!token) throw new Error("Missing token");
-      await fetch("/api/admin/whatsapp-staging", {
-        method: "PATCH",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, category }),
-      });
-    } catch { /* non-critical — local state already updated */ }
-  }, [user]);
+  }, [reasonById, user, getToken, includeTextById]);
 
   const runMerge = useCallback(async () => {
     if (!supabase || !user) return;
@@ -162,7 +250,7 @@ export default function WhatsAppStagingPage() {
     setMergeResult(null);
     setError(null);
     try {
-      const token = await supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
+      const token = await getToken();
       if (!token) throw new Error("Missing token");
       const res = await fetch("/api/admin/whatsapp-staging/merge", {
         method: "POST",
@@ -178,7 +266,7 @@ export default function WhatsAppStagingPage() {
     } finally {
       setMerging(false);
     }
-  }, [user, loadItems]);
+  }, [user, loadItems, getToken]);
 
   if (loading) return <div className="p-6 font-hebrew">טוען...</div>;
   if (!user) return <div className="p-6 font-hebrew">נדרשת כניסה לחשבון מנהל.</div>;
@@ -306,7 +394,16 @@ export default function WhatsAppStagingPage() {
               const effectiveCat = (categoryById[item.id] ?? item.category) as PlaceCategory;
               const catColor = PLACE_CATEGORY_COLORS[effectiveCat] ?? "#6B7280";
               const contextOpen = !!expandedContext[item.id];
-              const hasContext = (item.source_messages ?? []).length > 0;
+              const displayMessages = editedSourceById[item.id] ?? item.source_messages ?? [];
+              const hasContext = displayMessages.length > 0;
+              const isEditingSource = editingSourceId === item.id;
+
+              const effectiveSpecialty = specialtyById[item.id] ?? item.specialty ?? "";
+              const effectiveHmo = hmoById[item.id] ?? item.hmo ?? [];
+              const effectiveForChildren = item.id in forChildrenById ? forChildrenById[item.id] : item.for_children;
+              const showHmoSection = HMO_CATEGORIES.has(effectiveCat);
+              const catTaxonomy = taxonomy[effectiveCat] ?? [];
+              const isPending = status === "pending";
 
               return (
                 <section key={item.id} className="rounded-xl border bg-white p-4 space-y-3 shadow-sm">
@@ -318,7 +415,8 @@ export default function WhatsAppStagingPage() {
                         <select
                           value={effectiveCat}
                           onChange={e => patchCategory(item.id, e.target.value)}
-                          className="text-xs font-semibold px-2 py-0.5 rounded-full text-white border-0 cursor-pointer"
+                          disabled={!isPending}
+                          className="text-xs font-semibold px-2 py-0.5 rounded-full text-white border-0 cursor-pointer disabled:opacity-70"
                           style={{ background: catColor }}
                         >
                           {allCategories.map(c => (
@@ -343,18 +441,159 @@ export default function WhatsAppStagingPage() {
                     </div>
                   )}
 
+                  {/* Enrichment fields */}
+                  <div className="space-y-2">
+                    {/* Specialty */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-500 w-14 shrink-0">התמחות:</span>
+                      {isPending ? (
+                        <>
+                          <select
+                            value={effectiveSpecialty}
+                            onChange={e => {
+                              if (e.target.value === "__NEW__") {
+                                setShowAddSpecialtyId(item.id);
+                              } else {
+                                setShowAddSpecialtyId(null);
+                                patchSpecialty(item.id, e.target.value);
+                              }
+                            }}
+                            className="text-xs rounded border px-2 py-1 bg-white max-w-[180px]"
+                          >
+                            <option value="">— בחר —</option>
+                            {catTaxonomy.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                            <option value="__NEW__">+ הוסף חדש...</option>
+                          </select>
+                          {showAddSpecialtyId === item.id && (
+                            <div className="flex gap-1 items-center">
+                              <input
+                                value={addSpecialtyText[item.id] ?? ""}
+                                onChange={e => setAddSpecialtyText(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                onKeyDown={e => e.key === "Enter" && addSpecialty(item.id, effectiveCat)}
+                                placeholder="שם התמחות..."
+                                autoFocus
+                                className="text-xs rounded border px-2 py-1 w-32"
+                              />
+                              <button
+                                onClick={() => addSpecialty(item.id, effectiveCat)}
+                                className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">
+                                שמור
+                              </button>
+                              <button
+                                onClick={() => setShowAddSpecialtyId(null)}
+                                className="text-xs px-2 py-1 rounded border text-gray-600">
+                                ביטול
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-700">{effectiveSpecialty || "—"}</span>
+                      )}
+                    </div>
+
+                    {/* HMO checkboxes */}
+                    {showHmoSection && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-gray-500 w-14 shrink-0">קופת חולים:</span>
+                        {HMO_OPTIONS.map(hmo => (
+                          <label key={hmo} className="flex items-center gap-1 text-xs cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={effectiveHmo.includes(hmo)}
+                              disabled={!isPending}
+                              onChange={() => toggleHmo(item.id, hmo, effectiveHmo)}
+                              className="w-3.5 h-3.5"
+                            />
+                            {hmo}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* For children */}
+                    {showHmoSection && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 w-14 shrink-0">לילדים:</span>
+                        {isPending ? (
+                          <div className="flex gap-2 text-xs">
+                            {([true, false, null] as const).map(val => (
+                              <label key={String(val)} className="flex items-center gap-1 cursor-pointer select-none">
+                                <input
+                                  type="radio"
+                                  name={`for_children_${item.id}`}
+                                  checked={effectiveForChildren === val}
+                                  onChange={() => patchForChildren(item.id, val)}
+                                  className="w-3.5 h-3.5"
+                                />
+                                {val === true ? "כן" : val === false ? "לא" : "לא ידוע"}
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-700">
+                            {effectiveForChildren === true ? "כן" : effectiveForChildren === false ? "לא" : "—"}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Source context (questions that triggered this recommendation) */}
-                  {hasContext && (
+                  {(hasContext || isEditingSource) && (
                     <div>
-                      <button
-                        onClick={() => setExpandedContext(prev => ({ ...prev, [item.id]: !contextOpen }))}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        {contextOpen ? "▲ הסתר הקשר" : "▼ הצג שאלה מקורית"}
-                      </button>
-                      {contextOpen && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            if (isEditingSource) { setEditingSourceId(null); return; }
+                            setExpandedContext(prev => ({ ...prev, [item.id]: !contextOpen }));
+                          }}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          {isEditingSource ? "▲ ביטול עריכה" : contextOpen ? "▲ הסתר הקשר" : "▼ הצג שאלה מקורית"}
+                        </button>
+                        {!isEditingSource && contextOpen && isPending && (
+                          <button
+                            onClick={() => {
+                              setEditingSourceId(item.id);
+                              setEditSourceText(displayMessages.join("\n"));
+                            }}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                            title="ערוך הקשר"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                      </div>
+
+                      {isEditingSource ? (
+                        <div className="mt-2 space-y-1">
+                          <textarea
+                            value={editSourceText}
+                            onChange={e => setEditSourceText(e.target.value)}
+                            className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
+                            rows={4}
+                            dir="rtl"
+                            placeholder="הודעה אחת לכל שורה..."
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveSourceMessages(item.id)}
+                              className="text-xs px-3 py-1 rounded bg-emerald-600 text-white">
+                              שמור
+                            </button>
+                            <button
+                              onClick={() => setEditingSourceId(null)}
+                              className="text-xs px-3 py-1 rounded border text-gray-600">
+                              ביטול
+                            </button>
+                          </div>
+                        </div>
+                      ) : contextOpen && (
                         <div className="mt-2 space-y-1 rounded bg-blue-50 border border-blue-100 px-3 py-2">
-                          {item.source_messages!.map((msg, i) => (
+                          {displayMessages.map((msg, i) => (
                             <p key={i} className="text-xs text-blue-800 leading-relaxed">{msg}</p>
                           ))}
                         </div>
@@ -373,7 +612,7 @@ export default function WhatsAppStagingPage() {
                   </div>
 
                   {/* Actions (pending only) */}
-                  {status === "pending" && (
+                  {isPending && (
                     <div className="flex flex-col gap-2 pt-1">
                       <textarea
                         placeholder="סיבה (אופציונלי)"
@@ -409,7 +648,7 @@ export default function WhatsAppStagingPage() {
                   )}
 
                   {/* Review result (approved/rejected) */}
-                  {status !== "pending" && (
+                  {!isPending && (
                     <div className="text-xs text-gray-500">
                       {status === "approved" ? "אושר" : "נדחה"} ע"י {item.reviewed_by ?? "—"} · {formatDate(item.reviewed_at)}
                       {item.moderation_reason && <span> · {item.moderation_reason}</span>}
