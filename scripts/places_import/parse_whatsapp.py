@@ -233,21 +233,21 @@ def main(
     dry_run: bool = False,
     overlap: int = DEFAULT_OVERLAP,
     max_chunks: int | None = None,
+    start_chunk: int = 1,
 ) -> int:
     """
     Parse WhatsApp .txt files and stage recommendations for human review.
 
     Args:
-        chat_files: paths to WhatsApp .txt export files
-        dry_run:    print extracted recommendations without writing to DB
-        overlap:    messages repeated between consecutive chunks (default 30)
-                    keeps question→answer threads from being split at boundaries
-        max_chunks: stop after this many chunks per file (None = all).
-                    *** SET TO None (or remove) TO PROCESS THE FULL FILE. ***
-                    Use a small number (e.g. 3) for test runs to limit API cost.
+        chat_files:  paths to WhatsApp .txt export files
+        dry_run:     print extracted recommendations without writing to DB
+        overlap:     messages repeated between consecutive chunks (default 30)
+        max_chunks:  stop after this many chunks from start_chunk (None = all)
+        start_chunk: resume from this chunk number (1-based, default 1 = beginning)
+                     use --start-chunk=N on the CLI to resume after a crash
     """
     if not chat_files:
-        print("Usage: python parse_whatsapp.py chat1.txt [chat2.txt ...] [--dry-run] [--max-chunks=N]")
+        print("Usage: python parse_whatsapp.py chat1.txt [chat2.txt ...] [--dry-run] [--start-chunk=N] [--max-chunks=N]")
         return 1
 
     if not dry_run and (not SUPABASE_URL or not SUPABASE_KEY):
@@ -280,18 +280,20 @@ def main(
         capped = max_chunks is not None and max_chunks < total_chunks
         run_chunks = min(max_chunks, total_chunks) if max_chunks is not None else total_chunks
         print(f"  {len(messages)} messages → {total_chunks} total chunks (size={CHUNK_SIZE}, overlap={overlap})")
+        if start_chunk > 1:
+            print(f"  ⏭  Resuming from chunk {start_chunk} (skipping {start_chunk - 1} chunks).")
         if capped:
-            print(f"  ⚠️  Running only first {run_chunks} chunks (max_chunks={max_chunks}).")
-            print(f"     To process the full file: set max_chunks=None in the VSCode debug block")
-            print(f"     or remove --max-chunks from the command line.")
+            print(f"  ⚠️  Stopping after {run_chunks} chunks from chunk {start_chunk}.")
 
         chunk_num = 0
         for i in range(0, len(messages), step):
-            if max_chunks is not None and chunk_num >= max_chunks:
-                break
             chunk_num += 1
+            if chunk_num < start_chunk:
+                continue
+            if max_chunks is not None and chunk_num >= start_chunk + max_chunks:
+                break
             chunk = messages[i : i + CHUNK_SIZE]
-            print(f"  Chunk {chunk_num}/{run_chunks} (msgs {i+1}–{i+len(chunk)})...", end=" ", flush=True)
+            print(f"  Chunk {chunk_num}/{total_chunks} (msgs {i+1}–{i+len(chunk)})...", end=" ", flush=True)
 
             try:
                 recs = extract_recommendations(claude, chunk)
@@ -342,13 +344,15 @@ if __name__ == "__main__":
     files = [a for a in sys.argv[1:] if not a.startswith("--")]
     dry = "--dry-run" in sys.argv
     max_c = None
+    start_c = 1
     for arg in sys.argv[1:]:
         if arg.startswith("--max-chunks="):
-            try:
-                max_c = int(arg.split("=", 1)[1])
-            except ValueError:
-                pass
-    sys.exit(main(files, dry_run=dry, max_chunks=max_c))
+            try: max_c = int(arg.split("=", 1)[1])
+            except ValueError: pass
+        elif arg.startswith("--start-chunk="):
+            try: start_c = int(arg.split("=", 1)[1])
+            except ValueError: pass
+    sys.exit(main(files, dry_run=dry, max_chunks=max_c, start_chunk=start_c))
 
 
 # ---------------------------------------------------------------------------
@@ -360,5 +364,6 @@ if __name__ == "__main__":
 # main(
 #     chat_files=["C:/path/to/your/chat.txt"],
 #     dry_run=True,
-#     max_chunks=3,   # ← remove or set to None for a full run
+#     start_chunk=1,    # ← set to chunk number to resume after a crash
+#     max_chunks=3,     # ← remove or set to None for a full run
 # )
