@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 
-function parseLimit(raw: string | null, fallback = 5000): number {
+function parseLimit(raw: string | null, fallback = 50000): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return fallback;
   return Math.floor(n);
