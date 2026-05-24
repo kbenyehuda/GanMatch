@@ -413,6 +413,7 @@ export default function WhatsAppStagingPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-lg font-bold">{item.place_name}</span>
                         <select
+                          dir="rtl"
                           value={effectiveCat}
                           onChange={e => patchCategory(item.id, e.target.value)}
                           disabled={!isPending}
@@ -449,6 +450,7 @@ export default function WhatsAppStagingPage() {
                       {isPending ? (
                         <>
                           <select
+                            dir="rtl"
                             value={effectiveSpecialty}
                             onChange={e => {
                               if (e.target.value === "__NEW__") {
