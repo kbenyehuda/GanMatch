@@ -6,12 +6,28 @@ import { supabase } from "@/lib/supabase";
 import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS } from "@/types/places";
 import type { PlaceCategory } from "@/types/places";
 
+const PAGE_SIZE = 100;
 const BUILTIN_CATEGORIES: PlaceCategory[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
 const CUSTOM_CATS_KEY = "whatsapp_triage_custom_categories";
 const HMO_OPTIONS = ["מכבי", "כללית", "מאוחדת", "לאומית"];
 const HMO_CATEGORIES = new Set(["doctor", "clinic"]);
 
 type StagingStatus = "pending" | "approved" | "rejected";
+
+// URL helpers — read/write filter state from the address bar
+function readUrlParam(key: string): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(key) ?? "";
+}
+
+function syncUrl(status: string, category: string, page: number) {
+  const p = new URLSearchParams();
+  if (status && status !== "pending") p.set("status", status);
+  if (category) p.set("category", category);
+  if (page > 1) p.set("page", String(page));
+  const qs = p.toString();
+  window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+}
 
 type StagingItem = {
   id: string;
@@ -66,8 +82,16 @@ function formatAge(iso: string) {
 
 export default function WhatsAppStagingPage() {
   const { user, loading } = useSession();
-  const [status, setStatus] = useState<StagingStatus>("pending");
-  const [categoryFilter, setCategoryFilter] = useState<string>("");
+
+  // Initialise filter state from URL so reloads preserve the view
+  const [status, setStatus] = useState<StagingStatus>(() => {
+    const s = readUrlParam("status");
+    return (s === "approved" || s === "rejected") ? s : "pending";
+  });
+  const [categoryFilter, setCategoryFilter] = useState<string>(() => readUrlParam("category"));
+  const [page, setPage] = useState<number>(() => Math.max(1, parseInt(readUrlParam("page") || "1", 10)));
+  const [total, setTotal] = useState(0);
+
   const [items, setItems] = useState<StagingItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -116,6 +140,24 @@ export default function WhatsAppStagingPage() {
     return supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
   }, []);
 
+  // Coordinated filter setters — always reset to page 1 and sync URL
+  const changeStatus = useCallback((s: StagingStatus) => {
+    setStatus(s); setPage(1); syncUrl(s, categoryFilter, 1);
+  }, [categoryFilter]);
+
+  const changeCategoryFilter = useCallback((c: string) => {
+    setCategoryFilter(c); setPage(1); syncUrl(status, c, 1);
+  }, [status]);
+
+  const changePage = useCallback((p: number) => {
+    setPage(p); syncUrl(status, categoryFilter, p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [status, categoryFilter]);
+
+  const changeOnlyWithContext = useCallback((v: boolean) => {
+    setOnlyWithContext(v); setPage(1); syncUrl(status, categoryFilter, 1);
+  }, [status, categoryFilter]);
+
   const loadTaxonomy = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
@@ -135,20 +177,24 @@ export default function WhatsAppStagingPage() {
     try {
       const token = await getToken();
       if (!token) throw new Error("Missing token");
+      const offset = (page - 1) * PAGE_SIZE;
       const catParam = categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : "";
-      const res = await fetch(`/api/admin/whatsapp-staging?status=${status}&limit=50000${catParam}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
+      const ctxParam = onlyWithContext ? "&has_context=true" : "";
+      const res = await fetch(
+        `/api/admin/whatsapp-staging?status=${status}&limit=${PAGE_SIZE}&offset=${offset}${catParam}${ctxParam}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Failed to load");
       setItems(Array.isArray(data?.items) ? data.items : []);
+      setTotal(typeof data?.total === "number" ? data.total : 0);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load");
       setItems([]);
     } finally {
       setReloading(false);
     }
-  }, [status, user, categoryFilter, getToken]);
+  }, [status, user, categoryFilter, page, onlyWithContext, getToken]);
 
   useEffect(() => { if (user) { loadItems(); loadTaxonomy(); } }, [user, loadItems, loadTaxonomy]);
 
@@ -237,6 +283,7 @@ export default function WhatsAppStagingPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Decision failed");
       setItems(prev => prev.filter(i => i.id !== id));
+      setTotal(prev => Math.max(0, prev - 1));
     } catch (e: any) {
       setError(e?.message ?? "Decision failed");
     } finally {
@@ -271,27 +318,25 @@ export default function WhatsAppStagingPage() {
   if (loading) return <div className="p-6 font-hebrew">טוען...</div>;
   if (!user) return <div className="p-6 font-hebrew">נדרשת כניסה לחשבון מנהל.</div>;
 
-  const filteredItems = onlyWithContext ? items.filter(i => (i.source_messages ?? []).length > 0) : items;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const groupedFiltered: { groupId: string | null; items: StagingItem[] }[] = [];
-  const ungroupedFiltered: StagingItem[] = [];
-  const seenGroupsFiltered = new Map<string, StagingItem[]>();
-  for (const item of filteredItems) {
+  // Group items by merge_group_id for display
+  const sections: { groupId: string | null; items: StagingItem[] }[] = [];
+  const groupedItems: StagingItem[] = [];
+  const ungroupedItems: StagingItem[] = [];
+  const seenGroups = new Map<string, StagingItem[]>();
+  for (const item of items) {
     if (item.merge_group_id) {
-      if (!seenGroupsFiltered.has(item.merge_group_id)) {
-        seenGroupsFiltered.set(item.merge_group_id, []);
-        groupedFiltered.push({ groupId: item.merge_group_id, items: seenGroupsFiltered.get(item.merge_group_id)! });
+      if (!seenGroups.has(item.merge_group_id)) {
+        seenGroups.set(item.merge_group_id, []);
+        sections.push({ groupId: item.merge_group_id, items: seenGroups.get(item.merge_group_id)! });
       }
-      seenGroupsFiltered.get(item.merge_group_id)!.push(item);
+      seenGroups.get(item.merge_group_id)!.push(item);
     } else {
-      ungroupedFiltered.push(item);
+      sections.push({ groupId: null, items: [item] });
     }
   }
-
-  const sections = [
-    ...groupedFiltered.map(g => ({ groupId: g.groupId, items: g.items })),
-    ...ungroupedFiltered.map(item => ({ groupId: null, items: [item] })),
-  ];
+  void groupedItems; void ungroupedItems; // unused, grouping done inline above
 
   return (
     <main className="mx-auto max-w-4xl p-4 md:p-6 space-y-4 font-hebrew" dir="rtl">
@@ -320,7 +365,7 @@ export default function WhatsAppStagingPage() {
       {/* Tabs + actions */}
       <div className="flex flex-wrap items-center gap-2">
         {(["pending", "approved", "rejected"] as StagingStatus[]).map(s => (
-          <button key={s} onClick={() => setStatus(s)}
+          <button key={s} onClick={() => changeStatus(s)}
             className={`px-3 py-1.5 rounded border text-sm ${status === s ? "bg-[#0A2B6B] text-white border-[#0A2B6B]" : "bg-white"}`}>
             {STATUS_LABELS[s]}
           </button>
@@ -328,7 +373,10 @@ export default function WhatsAppStagingPage() {
         <button onClick={loadItems} disabled={reloading} className="px-3 py-1.5 rounded border text-sm bg-white disabled:opacity-50">
           {reloading ? "טוען..." : "רענן"}
         </button>
-        <span className="text-sm text-gray-500">{items.length} רשומות</span>
+        <span className="text-sm text-gray-500">
+          {total} רשומות
+          {totalPages > 1 && ` · עמוד ${page} מתוך ${totalPages}`}
+        </span>
 
         {status === "pending" && (
           <button onClick={runMerge} disabled={merging}
@@ -341,12 +389,12 @@ export default function WhatsAppStagingPage() {
       {/* Category filter chips */}
       <div className="flex flex-wrap gap-2 items-center">
         <span className="text-xs text-gray-500 ml-1">קטגוריה:</span>
-        <button onClick={() => setCategoryFilter("")}
+        <button onClick={() => changeCategoryFilter("")}
           className={`px-3 py-1 rounded-full text-xs border ${categoryFilter === "" ? "bg-[#0A2B6B] text-white border-[#0A2B6B]" : "bg-white"}`}>
           הכל
         </button>
         {allCategories.map(c => (
-          <button key={c} onClick={() => setCategoryFilter(c === categoryFilter ? "" : c)}
+          <button key={c} onClick={() => changeCategoryFilter(c === categoryFilter ? "" : c)}
             className={`px-3 py-1 rounded-full text-xs border ${categoryFilter === c ? "text-white border-transparent" : "bg-white"}`}
             style={categoryFilter === c ? { background: PLACE_CATEGORY_COLORS[c as PlaceCategory] ?? "#6B7280" } : {}}>
             {PLACE_CATEGORY_LABELS[c as PlaceCategory] ?? c}
@@ -354,7 +402,7 @@ export default function WhatsAppStagingPage() {
         ))}
         <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer mr-2">
           <input type="checkbox" checked={onlyWithContext}
-            onChange={e => setOnlyWithContext(e.target.checked)} className="w-3.5 h-3.5" />
+            onChange={e => changeOnlyWithContext(e.target.checked)} className="w-3.5 h-3.5" />
           יש שאלה מקורית בלבד
         </label>
       </div>
@@ -478,16 +526,10 @@ export default function WhatsAppStagingPage() {
                                 autoFocus
                                 className="text-xs rounded border px-2 py-1 w-32"
                               />
-                              <button
-                                onClick={() => addSpecialty(item.id, effectiveCat)}
-                                className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">
-                                שמור
-                              </button>
-                              <button
-                                onClick={() => setShowAddSpecialtyId(null)}
-                                className="text-xs px-2 py-1 rounded border text-gray-600">
-                                ביטול
-                              </button>
+                              <button onClick={() => addSpecialty(item.id, effectiveCat)}
+                                className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">שמור</button>
+                              <button onClick={() => setShowAddSpecialtyId(null)}
+                                className="text-xs px-2 py-1 rounded border text-gray-600">ביטול</button>
                             </div>
                           )}
                         </>
@@ -502,13 +544,8 @@ export default function WhatsAppStagingPage() {
                         <span className="text-xs text-gray-500 w-14 shrink-0">קופת חולים:</span>
                         {HMO_OPTIONS.map(hmo => (
                           <label key={hmo} className="flex items-center gap-1 text-xs cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={effectiveHmo.includes(hmo)}
-                              disabled={!isPending}
-                              onChange={() => toggleHmo(item.id, hmo, effectiveHmo)}
-                              className="w-3.5 h-3.5"
-                            />
+                            <input type="checkbox" checked={effectiveHmo.includes(hmo)} disabled={!isPending}
+                              onChange={() => toggleHmo(item.id, hmo, effectiveHmo)} className="w-3.5 h-3.5" />
                             {hmo}
                           </label>
                         ))}
@@ -523,13 +560,9 @@ export default function WhatsAppStagingPage() {
                           <div className="flex gap-2 text-xs">
                             {([true, false, null] as const).map(val => (
                               <label key={String(val)} className="flex items-center gap-1 cursor-pointer select-none">
-                                <input
-                                  type="radio"
-                                  name={`for_children_${item.id}`}
+                                <input type="radio" name={`for_children_${item.id}`}
                                   checked={effectiveForChildren === val}
-                                  onChange={() => patchForChildren(item.id, val)}
-                                  className="w-3.5 h-3.5"
-                                />
+                                  onChange={() => patchForChildren(item.id, val)} className="w-3.5 h-3.5" />
                                 {val === true ? "כן" : val === false ? "לא" : "לא ידוע"}
                               </label>
                             ))}
@@ -543,7 +576,7 @@ export default function WhatsAppStagingPage() {
                     )}
                   </div>
 
-                  {/* Source context (questions that triggered this recommendation) */}
+                  {/* Source context */}
                   {(hasContext || isEditingSource) && (
                     <div>
                       <div className="flex items-center gap-2">
@@ -558,39 +591,21 @@ export default function WhatsAppStagingPage() {
                         </button>
                         {!isEditingSource && contextOpen && isPending && (
                           <button
-                            onClick={() => {
-                              setEditingSourceId(item.id);
-                              setEditSourceText(displayMessages.join("\n"));
-                            }}
-                            className="text-xs text-gray-400 hover:text-gray-600"
-                            title="ערוך הקשר"
-                          >
-                            ✏️
-                          </button>
+                            onClick={() => { setEditingSourceId(item.id); setEditSourceText(displayMessages.join("\n")); }}
+                            className="text-xs text-gray-400 hover:text-gray-600" title="ערוך הקשר">✏️</button>
                         )}
                       </div>
 
                       {isEditingSource ? (
                         <div className="mt-2 space-y-1">
-                          <textarea
-                            value={editSourceText}
-                            onChange={e => setEditSourceText(e.target.value)}
+                          <textarea value={editSourceText} onChange={e => setEditSourceText(e.target.value)}
                             className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
-                            rows={4}
-                            dir="rtl"
-                            placeholder="הודעה אחת לכל שורה..."
-                          />
+                            rows={4} dir="rtl" placeholder="הודעה אחת לכל שורה..." />
                           <div className="flex gap-2">
-                            <button
-                              onClick={() => saveSourceMessages(item.id)}
-                              className="text-xs px-3 py-1 rounded bg-emerald-600 text-white">
-                              שמור
-                            </button>
-                            <button
-                              onClick={() => setEditingSourceId(null)}
-                              className="text-xs px-3 py-1 rounded border text-gray-600">
-                              ביטול
-                            </button>
+                            <button onClick={() => saveSourceMessages(item.id)}
+                              className="text-xs px-3 py-1 rounded bg-emerald-600 text-white">שמור</button>
+                            <button onClick={() => setEditingSourceId(null)}
+                              className="text-xs px-3 py-1 rounded border text-gray-600">ביטול</button>
                           </div>
                         </div>
                       ) : contextOpen && (
@@ -616,32 +631,21 @@ export default function WhatsAppStagingPage() {
                   {/* Actions (pending only) */}
                   {isPending && (
                     <div className="flex flex-col gap-2 pt-1">
-                      <textarea
-                        placeholder="סיבה (אופציונלי)"
-                        value={reasonById[item.id] ?? ""}
+                      <textarea placeholder="סיבה (אופציונלי)" value={reasonById[item.id] ?? ""}
                         onChange={e => setReasonById(prev => ({ ...prev, [item.id]: e.target.value }))}
-                        className="w-full rounded border p-2 text-sm resize-none"
-                        rows={2}
-                      />
+                        className="w-full rounded border p-2 text-sm resize-none" rows={2} />
                       <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={includeTextById[item.id] !== false}
+                        <input type="checkbox" checked={includeTextById[item.id] !== false}
                           onChange={e => setIncludeTextById(prev => ({ ...prev, [item.id]: e.target.checked }))}
-                          className="w-4 h-4"
-                        />
+                          className="w-4 h-4" />
                         כלול טקסט המלצה
                       </label>
                       <div className="flex gap-2">
-                        <button
-                          disabled={busyId === item.id}
-                          onClick={() => decide(item.id, "approve")}
+                        <button disabled={busyId === item.id} onClick={() => decide(item.id, "approve")}
                           className="px-4 py-1.5 rounded bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50">
                           ✓ אשר
                         </button>
-                        <button
-                          disabled={busyId === item.id}
-                          onClick={() => decide(item.id, "reject")}
+                        <button disabled={busyId === item.id} onClick={() => decide(item.id, "reject")}
                           className="px-4 py-1.5 rounded bg-rose-600 text-white text-sm font-semibold disabled:opacity-50">
                           ✕ דחה
                         </button>
@@ -662,6 +666,23 @@ export default function WhatsAppStagingPage() {
           </div>
         ))}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2 pb-4">
+          <button disabled={page <= 1 || reloading} onClick={() => changePage(page - 1)}
+            className="px-3 py-1.5 rounded border text-sm bg-white disabled:opacity-40">
+            הקודם ←
+          </button>
+          <span className="text-sm text-gray-600">
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} מתוך {total}
+          </span>
+          <button disabled={page >= totalPages || reloading} onClick={() => changePage(page + 1)}
+            className="px-3 py-1.5 rounded border text-sm bg-white disabled:opacity-40">
+            → הבא
+          </button>
+        </div>
+      )}
     </main>
   );
 }

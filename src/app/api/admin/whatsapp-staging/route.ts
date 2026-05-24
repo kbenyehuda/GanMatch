@@ -36,14 +36,21 @@ export async function GET(req: Request) {
   const status = searchParams.get("status") ?? "pending";
   const validStatus = status === "pending" || status === "approved" || status === "rejected";
   const category = searchParams.get("category") ?? "";
-  const limit = parseLimit(searchParams.get("limit"));
+  const limit = parseLimit(searchParams.get("limit"), 100);
+  const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
+  const hasContext = searchParams.get("has_context") === "true";
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
-  let q = admin.from("whatsapp_import_staging").select("*").order("merge_group_id", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }).limit(limit);
+  let q = admin.from("whatsapp_import_staging")
+    .select("*", { count: "exact" })
+    .order("merge_group_id", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
   if (validStatus) q = q.eq("status", status);
   if (category) q = q.eq("category", category);
-  const { data, error } = await q;
+  if (hasContext) q = q.not("source_messages", "is", null).not("source_messages", "eq", "[]");
+  const { data, count, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Fetch names for existing_place_id references
@@ -59,7 +66,7 @@ export async function GET(req: Request) {
     existing_place_name: r.existing_place_id ? (placeNameById[r.existing_place_id] ?? null) : null,
   }));
 
-  return NextResponse.json({ items });
+  return NextResponse.json({ items, total: count ?? 0 });
 }
 
 export async function PATCH(req: Request) {
