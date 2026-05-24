@@ -111,7 +111,7 @@ export default function WhatsAppStagingPage() {
     } finally {
       setReloading(false);
     }
-  }, [status, user]);
+  }, [status, user, categoryFilter]);
 
   useEffect(() => { if (user) loadItems(); }, [user, loadItems, categoryFilter]);
 
@@ -280,7 +280,16 @@ export default function WhatsAppStagingPage() {
 
       {/* Items */}
       <div className="space-y-3">
-        {sections.length === 0 && !reloading && (
+        {reloading && (
+          <div className="flex items-center justify-center gap-2 py-12 text-gray-500 text-sm">
+            <svg className="animate-spin h-5 w-5 text-[#0A2B6B]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            טוען...
+          </div>
+        )}
+        {!reloading && sections.length === 0 && (
           <div className="text-center text-gray-400 py-12 text-sm">אין רשומות בסטטוס זה</div>
         )}
 
