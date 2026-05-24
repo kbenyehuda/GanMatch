@@ -95,7 +95,7 @@ export default function WhatsAppStagingPage() {
     try {
       const token = await supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
       if (!token) throw new Error("Missing token");
-      const res = await fetch(`/api/admin/whatsapp-staging?status=${status}&limit=200`, {
+      const res = await fetch(`/api/admin/whatsapp-staging?status=${status}&limit=5000`, {
         headers: { authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));

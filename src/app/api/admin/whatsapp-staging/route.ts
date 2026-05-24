@@ -3,10 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 
-function parseLimit(raw: string | null, fallback = 100): number {
+function parseLimit(raw: string | null, fallback = 5000): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.min(Math.floor(n), 500);
+  return Math.floor(n);
 }
 
 function adminAuth(req: Request) {
