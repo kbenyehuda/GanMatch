@@ -305,28 +305,34 @@ def main(
                 continue
 
             for rec in recs:
-                key = (rec["place_name"].strip().lower(), rec["reviewer_name"].strip().lower())
+                # OpenAI occasionally omits required fields — skip malformed records
+                place = (rec.get("place_name") or "").strip()
+                reviewer = (rec.get("reviewer_name") or "").strip()
+                if not place or not reviewer:
+                    print(f"    ⚠ skipped malformed rec (missing place_name or reviewer_name): {rec}", file=sys.stderr)
+                    continue
+                key = (place.lower(), reviewer.lower())
                 if key in seen:
                     continue
                 seen.add(key)
 
-                icon = {"high": "⭐⭐⭐⭐⭐", "medium": "⭐⭐⭐⭐", "negative": "⭐⭐"}.get(rec["enthusiasm"], "?")
+                icon = {"high": "⭐⭐⭐⭐⭐", "medium": "⭐⭐⭐⭐", "negative": "⭐⭐"}.get(rec.get("enthusiasm"), "?")
 
                 if dry_run:
                     src = f" ← {rec['source_messages'][0][:60]}…" if rec.get("source_messages") else ""
-                    print(f"    {icon} [{rec['category']:12}] {rec['place_name']} — {rec['reviewer_name']}")
-                    print(f"       {rec['recommendation_text'][:120]}{src}")
+                    print(f"    {icon} [{rec.get('category','?'):12}] {place} — {reviewer}")
+                    print(f"       {str(rec.get('recommendation_text',''))[:120]}{src}")
                 else:
                     try:
                         result = upsert_staging(supabase, rec, chat_path.name)
                         if result == "inserted":
                             staged += 1
-                            print(f"    {icon} new:     {rec['place_name']} ({rec['category']}) by {rec['reviewer_name']}")
+                            print(f"    {icon} new:     {place} ({rec.get('category','?')}) by {reviewer}")
                         else:
                             updated += 1
-                            print(f"    {icon} updated: {rec['place_name']} — source_messages refreshed")
+                            print(f"    {icon} updated: {place} — source_messages refreshed")
                     except Exception as e:
-                        print(f"    ERROR upserting {rec['place_name']}: {e}", file=sys.stderr)
+                        print(f"    ERROR upserting {place}: {e}", file=sys.stderr)
                         errors += 1
 
             time.sleep(0.5)  # rate limit
