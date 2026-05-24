@@ -62,6 +62,7 @@ function formatAge(iso: string) {
 export default function WhatsAppStagingPage() {
   const { user, loading } = useSession();
   const [status, setStatus] = useState<StagingStatus>("pending");
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [items, setItems] = useState<StagingItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -72,6 +73,8 @@ export default function WhatsAppStagingPage() {
   const [categoryById, setCategoryById] = useState<Record<string, string>>({});
   const [expandedContext, setExpandedContext] = useState<Record<string, boolean>>({});
   const [includeTextById, setIncludeTextById] = useState<Record<string, boolean>>({});
+  const [onlyWithContext, setOnlyWithContext] = useState(false);
+
   const [customCategories, setCustomCategories] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(CUSTOM_CATS_KEY) ?? "[]"); } catch { return []; }
   });
@@ -95,7 +98,8 @@ export default function WhatsAppStagingPage() {
     try {
       const token = await supabase.auth.getSession().then(r => r.data.session?.access_token ?? null);
       if (!token) throw new Error("Missing token");
-      const res = await fetch(`/api/admin/whatsapp-staging?status=${status}&limit=50000`, {
+      const catParam = categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : "";
+      const res = await fetch(`/api/admin/whatsapp-staging?status=${status}&limit=50000${catParam}`, {
         headers: { authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
@@ -109,7 +113,7 @@ export default function WhatsAppStagingPage() {
     }
   }, [status, user]);
 
-  useEffect(() => { if (user) loadItems(); }, [user, loadItems]);
+  useEffect(() => { if (user) loadItems(); }, [user, loadItems, categoryFilter]);
 
   const decide = useCallback(async (id: string, action: "approve" | "reject") => {
     if (!supabase || !user) return;
@@ -179,26 +183,26 @@ export default function WhatsAppStagingPage() {
   if (loading) return <div className="p-6 font-hebrew">טוען...</div>;
   if (!user) return <div className="p-6 font-hebrew">נדרשת כניסה לחשבון מנהל.</div>;
 
-  // Group items by merge_group_id for display
-  const grouped: { groupId: string | null; items: StagingItem[] }[] = [];
-  const ungrouped: StagingItem[] = [];
-  const seenGroups = new Map<string, StagingItem[]>();
+  const filteredItems = onlyWithContext ? items.filter(i => (i.source_messages ?? []).length > 0) : items;
 
-  for (const item of items) {
+  const groupedFiltered: { groupId: string | null; items: StagingItem[] }[] = [];
+  const ungroupedFiltered: StagingItem[] = [];
+  const seenGroupsFiltered = new Map<string, StagingItem[]>();
+  for (const item of filteredItems) {
     if (item.merge_group_id) {
-      if (!seenGroups.has(item.merge_group_id)) {
-        seenGroups.set(item.merge_group_id, []);
-        grouped.push({ groupId: item.merge_group_id, items: seenGroups.get(item.merge_group_id)! });
+      if (!seenGroupsFiltered.has(item.merge_group_id)) {
+        seenGroupsFiltered.set(item.merge_group_id, []);
+        groupedFiltered.push({ groupId: item.merge_group_id, items: seenGroupsFiltered.get(item.merge_group_id)! });
       }
-      seenGroups.get(item.merge_group_id)!.push(item);
+      seenGroupsFiltered.get(item.merge_group_id)!.push(item);
     } else {
-      ungrouped.push(item);
+      ungroupedFiltered.push(item);
     }
   }
 
   const sections = [
-    ...grouped.map(g => ({ groupId: g.groupId, items: g.items })),
-    ...ungrouped.map(item => ({ groupId: null, items: [item] })),
+    ...groupedFiltered.map(g => ({ groupId: g.groupId, items: g.items })),
+    ...ungroupedFiltered.map(item => ({ groupId: null, items: [item] })),
   ];
 
   return (
@@ -244,6 +248,27 @@ export default function WhatsAppStagingPage() {
             {merging ? "מנתח..." : "🔍 נתח כפילויות"}
           </button>
         )}
+      </div>
+
+      {/* Category filter chips */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-xs text-gray-500 ml-1">קטגוריה:</span>
+        <button onClick={() => setCategoryFilter("")}
+          className={`px-3 py-1 rounded-full text-xs border ${categoryFilter === "" ? "bg-[#0A2B6B] text-white border-[#0A2B6B]" : "bg-white"}`}>
+          הכל
+        </button>
+        {allCategories.map(c => (
+          <button key={c} onClick={() => setCategoryFilter(c === categoryFilter ? "" : c)}
+            className={`px-3 py-1 rounded-full text-xs border ${categoryFilter === c ? "text-white border-transparent" : "bg-white"}`}
+            style={categoryFilter === c ? { background: PLACE_CATEGORY_COLORS[c as PlaceCategory] ?? "#6B7280" } : {}}>
+            {PLACE_CATEGORY_LABELS[c as PlaceCategory] ?? c}
+          </button>
+        ))}
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer mr-2">
+          <input type="checkbox" checked={onlyWithContext}
+            onChange={e => setOnlyWithContext(e.target.checked)} className="w-3.5 h-3.5" />
+          יש שאלה מקורית בלבד
+        </label>
       </div>
 
       {mergeResult && (

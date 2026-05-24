@@ -35,12 +35,14 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") ?? "pending";
   const validStatus = status === "pending" || status === "approved" || status === "rejected";
+  const category = searchParams.get("category") ?? "";
   const limit = parseLimit(searchParams.get("limit"));
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
   let q = admin.from("whatsapp_import_staging").select("*").order("merge_group_id", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }).limit(limit);
   if (validStatus) q = q.eq("status", status);
+  if (category) q = q.eq("category", category);
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
