@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS } from "@/types/places";
@@ -78,6 +79,71 @@ function formatAge(iso: string) {
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `לפני ${hours} שע׳`;
   return `לפני ${Math.floor(hours / 24)} ימים`;
+}
+
+// Custom dropdown — native <select> ignores dir="rtl" in Windows popup, so
+// we render our own list of <button> elements inside a dir="rtl" div.
+function HebrewSelect({
+  value,
+  options,
+  onChange,
+  placeholder = "— בחר —",
+  disabled = false,
+  triggerClassName = "text-xs rounded border px-2 py-1 bg-white min-w-[8rem]",
+  triggerStyle,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  triggerClassName?: string;
+  triggerStyle?: CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const current = options.find(o => o.value === value);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(o => !o)}
+        className={`flex items-center justify-between gap-1 ${triggerClassName} ${disabled ? "opacity-70 cursor-default" : "cursor-pointer"}`}
+        style={triggerStyle}
+      >
+        <span className={current ? "" : "opacity-50"}>{current?.label ?? placeholder}</span>
+        {!disabled && <span className="opacity-50 text-[10px] shrink-0">▾</span>}
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-0.5 end-0 min-w-full rounded border border-gray-200 bg-white shadow-lg max-h-56 overflow-y-auto">
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`block w-full px-3 py-1.5 text-xs hover:bg-gray-50 text-start ${
+                value === opt.value ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function WhatsAppStagingPage() {
@@ -460,20 +526,14 @@ export default function WhatsAppStagingPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-lg font-bold">{item.place_name}</span>
-                        <select
-                          dir="rtl"
+                        <HebrewSelect
                           value={effectiveCat}
-                          onChange={e => patchCategory(item.id, e.target.value)}
+                          options={allCategories.map(c => ({ value: c, label: PLACE_CATEGORY_LABELS[c as PlaceCategory] ?? c }))}
+                          onChange={cat => patchCategory(item.id, cat)}
                           disabled={!isPending}
-                          className="text-xs font-semibold px-2 py-0.5 rounded-full text-white border-0 cursor-pointer disabled:opacity-70"
-                          style={{ background: catColor }}
-                        >
-                          {allCategories.map(c => (
-                            <option key={c} value={c} style={{ background: "#fff", color: "#111" }}>
-                              {PLACE_CATEGORY_LABELS[c as PlaceCategory] ?? c}
-                            </option>
-                          ))}
-                        </select>
+                          triggerClassName="text-xs font-semibold px-2 py-0.5 rounded-full text-white border-0"
+                          triggerStyle={{ background: catColor }}
+                        />
                         <span className="text-base">{ENTHUSIASM_STARS[item.enthusiasm]}</span>
                       </div>
                       <div className="text-xs text-gray-400">
@@ -497,25 +557,21 @@ export default function WhatsAppStagingPage() {
                       <span className="text-xs text-gray-500 w-14 shrink-0">התמחות:</span>
                       {isPending ? (
                         <>
-                          <select
-                            dir="rtl"
+                          <HebrewSelect
                             value={effectiveSpecialty}
-                            onChange={e => {
-                              if (e.target.value === "__NEW__") {
+                            options={[
+                              ...catTaxonomy.map(s => ({ value: s, label: s })),
+                              { value: "__NEW__", label: "+ הוסף חדש..." },
+                            ]}
+                            onChange={v => {
+                              if (v === "__NEW__") {
                                 setShowAddSpecialtyId(item.id);
                               } else {
                                 setShowAddSpecialtyId(null);
-                                patchSpecialty(item.id, e.target.value);
+                                patchSpecialty(item.id, v);
                               }
                             }}
-                            className="text-xs rounded border px-2 py-1 bg-white max-w-[180px]"
-                          >
-                            <option value="">— בחר —</option>
-                            {catTaxonomy.map(s => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                            <option value="__NEW__">+ הוסף חדש...</option>
-                          </select>
+                          />
                           {showAddSpecialtyId === item.id && (
                             <div className="flex gap-1 items-center">
                               <input
@@ -524,6 +580,7 @@ export default function WhatsAppStagingPage() {
                                 onKeyDown={e => e.key === "Enter" && addSpecialty(item.id, effectiveCat)}
                                 placeholder="שם התמחות..."
                                 autoFocus
+                                dir="rtl"
                                 className="text-xs rounded border px-2 py-1 w-32"
                               />
                               <button onClick={() => addSpecialty(item.id, effectiveCat)}
@@ -656,7 +713,7 @@ export default function WhatsAppStagingPage() {
                   {/* Review result (approved/rejected) */}
                   {!isPending && (
                     <div className="text-xs text-gray-500">
-                      {status === "approved" ? "אושר" : "נדחה"} ע"י {item.reviewed_by ?? "—"} · {formatDate(item.reviewed_at)}
+                      {status === "approved" ? "אושר" : "נדחה"} ע&quot;י {item.reviewed_by ?? "—"} · {formatDate(item.reviewed_at)}
                       {item.moderation_reason && <span> · {item.moderation_reason}</span>}
                     </div>
                   )}
