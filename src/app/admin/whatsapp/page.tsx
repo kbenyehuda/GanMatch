@@ -9,6 +9,8 @@ import type { PlaceCategory } from "@/types/places";
 
 const PAGE_SIZE = 100;
 const BUILTIN_CATEGORIES: (PlaceCategory | "other")[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics", "other"];
+// Triage-only label overrides — the live app's PLACE_CATEGORY_LABELS stay untouched.
+const TRIAGE_CATEGORY_LABELS: Record<string, string> = { ...PLACE_CATEGORY_LABELS, kids: "ילדים" };
 const CUSTOM_CATS_KEY = "whatsapp_triage_custom_categories";
 const HMO_OPTIONS = ["מכבי", "כללית", "מאוחדת", "לאומית"];
 const HMO_CATEGORIES = new Set(["doctor", "clinic"]);
@@ -301,6 +303,16 @@ export default function WhatsAppStagingPage() {
     patchField(id, { for_children: value });
   }, [patchField]);
 
+  // Park a row as category=other/specialty=unknown without approving or rejecting it —
+  // stays pending so it can be revisited later, just out of the way for now.
+  const ignoreItem = useCallback(async (id: string) => {
+    setCategoryById(prev => ({ ...prev, [id]: "other" }));
+    setSpecialtyById(prev => ({ ...prev, [id]: "unknown" }));
+    await patchField(id, { category: "other", specialty: "unknown" });
+    setItems(prev => prev.filter(i => i.id !== id));
+    setTotal(prev => Math.max(0, prev - 1));
+  }, [patchField]);
+
   const addSpecialty = useCallback(async (id: string, category: string) => {
     const name = (addSpecialtyText[id] ?? "").trim();
     if (!name) return;
@@ -465,7 +477,7 @@ export default function WhatsAppStagingPage() {
           <button key={c} onClick={() => changeCategoryFilter(c === categoryFilter ? "" : c)}
             className={`px-3 py-1 rounded-full text-xs border ${categoryFilter === c ? "text-white border-transparent" : "bg-white"}`}
             style={categoryFilter === c ? { background: PLACE_CATEGORY_COLORS[c as PlaceCategory] ?? "#6B7280" } : {}}>
-            {PLACE_CATEGORY_LABELS[c as PlaceCategory] ?? c}
+            {TRIAGE_CATEGORY_LABELS[c] ?? c}
           </button>
         ))}
         <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer mr-2">
@@ -530,7 +542,7 @@ export default function WhatsAppStagingPage() {
                         <span className="text-lg font-bold">{item.place_name}</span>
                         <HebrewSelect
                           value={effectiveCat}
-                          options={allCategories.map(c => ({ value: c, label: PLACE_CATEGORY_LABELS[c as PlaceCategory] ?? c }))}
+                          options={allCategories.map(c => ({ value: c, label: TRIAGE_CATEGORY_LABELS[c] ?? c }))}
                           onChange={cat => patchCategory(item.id, cat)}
                           disabled={!isPending}
                           triggerClassName="text-xs font-semibold px-2 py-0.5 rounded-full text-white border-0"
@@ -707,6 +719,10 @@ export default function WhatsAppStagingPage() {
                         <button disabled={busyId === item.id} onClick={() => decide(item.id, "reject")}
                           className="px-4 py-1.5 rounded bg-rose-600 text-white text-sm font-semibold disabled:opacity-50">
                           ✕ דחה
+                        </button>
+                        <button disabled={busyId === item.id} onClick={() => ignoreItem(item.id)}
+                          className="px-4 py-1.5 rounded bg-gray-200 text-gray-700 text-sm font-semibold disabled:opacity-50">
+                          🙈 התעלם
                         </button>
                       </div>
                     </div>
