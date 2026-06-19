@@ -8,7 +8,7 @@ import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS } from "@/types/places";
 import type { PlaceCategory } from "@/types/places";
 
 const PAGE_SIZE = 100;
-const BUILTIN_CATEGORIES: PlaceCategory[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics"];
+const BUILTIN_CATEGORIES: (PlaceCategory | "other")[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics", "other"];
 const CUSTOM_CATS_KEY = "whatsapp_triage_custom_categories";
 const HMO_OPTIONS = ["מכבי", "כללית", "מאוחדת", "לאומית"];
 const HMO_CATEGORIES = new Set(["doctor", "clinic"]);
@@ -115,24 +115,26 @@ function HebrewSelect({
   const current = options.find(o => o.value === value);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" dir="rtl">
       <button
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setOpen(o => !o)}
         className={`flex items-center justify-between gap-1 ${triggerClassName} ${disabled ? "opacity-70 cursor-default" : "cursor-pointer"}`}
         style={triggerStyle}
+        dir="rtl"
       >
         <span className={current ? "" : "opacity-50"}>{current?.label ?? placeholder}</span>
         {!disabled && <span className="opacity-50 text-[10px] shrink-0">▾</span>}
       </button>
       {open && (
-        <div className="absolute z-50 top-full mt-0.5 end-0 min-w-full rounded border border-gray-200 bg-white shadow-lg max-h-56 overflow-y-auto">
+        <div className="absolute z-50 top-full mt-0.5 end-0 min-w-full rounded border border-gray-200 bg-white shadow-lg max-h-56 overflow-y-auto" dir="rtl">
           {options.map(opt => (
             <button
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false); }}
+              dir="rtl"
               className={`block w-full px-3 py-1.5 text-xs hover:bg-gray-50 text-start ${
                 value === opt.value ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800"
               }`}
