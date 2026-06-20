@@ -38,6 +38,10 @@ type StagingItem = {
   category: string;
   address_hint: string | null;
   recommendation_text: string;
+  summary_text: string | null;
+  is_summarized: boolean;
+  rating: number | null;
+  tags: string[] | null;
   reviewer_name: string;
   enthusiasm: "high" | "medium" | "negative";
   source_file: string | null;
@@ -60,6 +64,14 @@ const ENTHUSIASM_STARS: Record<string, string> = {
   high: "⭐⭐⭐⭐⭐",
   medium: "⭐⭐⭐⭐",
   negative: "⭐⭐",
+};
+
+const RATING_OPTIONS = [5, 4, 2, 1] as const;
+const RATING_LABELS: Record<number, string> = {
+  5: "5 — יוצא דופן",
+  4: "4 — חיובי",
+  2: "2 — שלילי",
+  1: "1 — חריף",
 };
 
 const STATUS_LABELS: Record<StagingStatus, string> = {
@@ -173,19 +185,22 @@ export default function WhatsAppStagingPage() {
   const [expandedContext, setExpandedContext] = useState<Record<string, boolean>>({});
   const [includeTextById, setIncludeTextById] = useState<Record<string, boolean>>({});
   const [onlyWithContext, setOnlyWithContext] = useState(false);
+  const [missingSummaryOnly, setMissingSummaryOnly] = useState(false);
+  const [summaryById, setSummaryById] = useState<Record<string, string>>({});
+  const [summarizingById, setSummarizingById] = useState<Record<string, boolean>>({});
+  const [batchSummarizing, setBatchSummarizing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [ratingById, setRatingById] = useState<Record<string, number>>({});
+  const [tagsById, setTagsById] = useState<Record<string, string>>({});
 
   // Enrichment fields — local overrides on top of DB values
   const [specialtyById, setSpecialtyById] = useState<Record<string, string>>({});
   const [hmoById, setHmoById] = useState<Record<string, string[]>>({});
   const [forChildrenById, setForChildrenById] = useState<Record<string, boolean | null>>({});
 
-  // Source messages editing
-  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
-  const [editSourceText, setEditSourceText] = useState("");
-  const [editedSourceById, setEditedSourceById] = useState<Record<string, string[]>>({});
-
   // Specialty taxonomy
   const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>({});
+  const [tagTaxonomy, setTagTaxonomy] = useState<Record<string, string[]>>({});
   const [showAddSpecialtyId, setShowAddSpecialtyId] = useState<string | null>(null);
   const [addSpecialtyText, setAddSpecialtyText] = useState<Record<string, string>>({});
 
@@ -228,15 +243,22 @@ export default function WhatsAppStagingPage() {
     setOnlyWithContext(v); setPage(1); syncUrl(status, categoryFilter, 1);
   }, [status, categoryFilter]);
 
+  const changeMissingSummaryOnly = useCallback((v: boolean) => {
+    setMissingSummaryOnly(v); setPage(1); syncUrl(status, categoryFilter, 1);
+  }, [status, categoryFilter]);
+
   const loadTaxonomy = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
     try {
-      const res = await fetch("/api/admin/whatsapp-staging/taxonomy", {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) setTaxonomy(data?.taxonomy ?? {});
+      const [specialtyRes, tagRes] = await Promise.all([
+        fetch("/api/admin/whatsapp-staging/taxonomy", { headers: { authorization: `Bearer ${token}` } }),
+        fetch("/api/admin/whatsapp-staging/taxonomy?type=tag", { headers: { authorization: `Bearer ${token}` } }),
+      ]);
+      const specialtyData = await specialtyRes.json().catch(() => ({}));
+      if (specialtyRes.ok) setTaxonomy(specialtyData?.taxonomy ?? {});
+      const tagData = await tagRes.json().catch(() => ({}));
+      if (tagRes.ok) setTagTaxonomy(tagData?.taxonomy ?? {});
     } catch { /* non-critical */ }
   }, [getToken]);
 
@@ -250,8 +272,9 @@ export default function WhatsAppStagingPage() {
       const offset = (page - 1) * PAGE_SIZE;
       const catParam = categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : "";
       const ctxParam = onlyWithContext ? "&has_context=true" : "";
+      const summaryParam = missingSummaryOnly ? "&missing_summary=true" : "";
       const res = await fetch(
-        `/api/admin/whatsapp-staging?status=${status}&limit=${PAGE_SIZE}&offset=${offset}${catParam}${ctxParam}`,
+        `/api/admin/whatsapp-staging?status=${status}&limit=${PAGE_SIZE}&offset=${offset}${catParam}${ctxParam}${summaryParam}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       const data = await res.json().catch(() => ({}));
@@ -264,7 +287,7 @@ export default function WhatsAppStagingPage() {
     } finally {
       setReloading(false);
     }
-  }, [status, user, categoryFilter, page, onlyWithContext, getToken]);
+  }, [status, user, categoryFilter, page, onlyWithContext, missingSummaryOnly, getToken]);
 
   useEffect(() => { if (user) { loadItems(); loadTaxonomy(); } }, [user, loadItems, loadTaxonomy]);
 
@@ -289,6 +312,72 @@ export default function WhatsAppStagingPage() {
     setSpecialtyById(prev => ({ ...prev, [id]: specialty }));
     patchField(id, { specialty: specialty || null });
   }, [patchField]);
+
+  const saveSummary = useCallback((id: string, text: string) => {
+    patchField(id, { summary_text: text });
+  }, [patchField]);
+
+  const saveRating = useCallback((id: string, rating: number) => {
+    setRatingById(prev => ({ ...prev, [id]: rating }));
+    patchField(id, { rating });
+  }, [patchField]);
+
+  const saveTags = useCallback((id: string, tagsText: string) => {
+    const tags = tagsText.split(",").map(t => t.trim()).filter(Boolean);
+    patchField(id, { tags });
+  }, [patchField]);
+
+  const generateSummary = useCallback(async (id: string) => {
+    const token = await getToken();
+    if (!token) return;
+    setSummarizingById(prev => ({ ...prev, [id]: true }));
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/whatsapp-staging/summarize", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Summarize failed");
+      setSummaryById(prev => ({ ...prev, [id]: String(data?.summary ?? "") }));
+      if (typeof data?.rating === "number") setRatingById(prev => ({ ...prev, [id]: data.rating }));
+      if (Array.isArray(data?.tags)) setTagsById(prev => ({ ...prev, [id]: data.tags.join(", ") }));
+    } catch (e: any) {
+      setError(e?.message ?? "Summarize failed");
+    } finally {
+      setSummarizingById(prev => ({ ...prev, [id]: false }));
+    }
+  }, [getToken]);
+
+  const summarizeAllMissing = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    setBatchSummarizing(true);
+    setBatchProgress(0);
+    setError(null);
+    try {
+      let total = 0;
+      while (true) {
+        const res = await fetch("/api/admin/whatsapp-staging/summarize-batch", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ category: categoryFilter || undefined }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error ?? "Batch summarize failed");
+        total += data.processed ?? 0;
+        setBatchProgress(total);
+        if (!data.processed || data.done) break;
+      }
+      await loadItems();
+      await loadTaxonomy();
+    } catch (e: any) {
+      setError(e?.message ?? "Batch summarize failed");
+    } finally {
+      setBatchSummarizing(false);
+    }
+  }, [categoryFilter, getToken, loadItems, loadTaxonomy]);
 
   const toggleHmo = useCallback(async (id: string, hmo: string, currentHmo: string[]) => {
     const next = currentHmo.includes(hmo)
@@ -335,13 +424,6 @@ export default function WhatsAppStagingPage() {
       setAddSpecialtyText(prev => ({ ...prev, [id]: "" }));
     } catch { /* non-critical */ }
   }, [addSpecialtyText, getToken, patchField]);
-
-  const saveSourceMessages = useCallback((id: string) => {
-    const messages = editSourceText.split("\n").map(s => s.trim()).filter(Boolean);
-    setEditedSourceById(prev => ({ ...prev, [id]: messages }));
-    setEditingSourceId(null);
-    patchField(id, { source_messages: messages });
-  }, [editSourceText, patchField]);
 
   const decide = useCallback(async (id: string, action: "approve" | "reject") => {
     if (!supabase || !user) return;
@@ -464,6 +546,13 @@ export default function WhatsAppStagingPage() {
             {merging ? "מנתח..." : "🔍 נתח כפילויות"}
           </button>
         )}
+        {status === "approved" && (
+          <button onClick={summarizeAllMissing} disabled={batchSummarizing}
+            className="px-3 py-1.5 rounded border text-sm bg-indigo-50 border-indigo-300 text-indigo-800 disabled:opacity-50 mr-auto"
+            title="מסכם רק רשומות שאושרו ועוד אין להן סיכום — לא נוגע ברשומות שמחכות לאישור">
+            {batchSummarizing ? `✨ מסכם... (${batchProgress})` : "✨ סכם הכל (מאושרות ללא סיכום)"}
+          </button>
+        )}
       </div>
 
       {/* Category filter chips */}
@@ -484,6 +573,11 @@ export default function WhatsAppStagingPage() {
           <input type="checkbox" checked={onlyWithContext}
             onChange={e => changeOnlyWithContext(e.target.checked)} className="w-3.5 h-3.5" />
           יש שאלה מקורית בלבד
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+          <input type="checkbox" checked={missingSummaryOnly}
+            onChange={e => changeMissingSummaryOnly(e.target.checked)} className="w-3.5 h-3.5" />
+          רק ללא סיכום
         </label>
       </div>
 
@@ -522,10 +616,12 @@ export default function WhatsAppStagingPage() {
               const effectiveCat = (categoryById[item.id] ?? item.category) as PlaceCategory;
               const catColor = PLACE_CATEGORY_COLORS[effectiveCat] ?? "#6B7280";
               const contextOpen = !!expandedContext[item.id];
-              const displayMessages = editedSourceById[item.id] ?? item.source_messages ?? [];
+              const displayMessages = item.source_messages ?? [];
               const hasContext = displayMessages.length > 0;
-              const isEditingSource = editingSourceId === item.id;
 
+              const effectiveSummary = item.id in summaryById ? summaryById[item.id] : (item.summary_text ?? "");
+              const effectiveRating = ratingById[item.id] ?? item.rating ?? 4;
+              const effectiveTags = item.id in tagsById ? tagsById[item.id] : (item.tags ?? []).join(", ");
               const effectiveSpecialty = specialtyById[item.id] ?? item.specialty ?? "";
               const effectiveHmo = hmoById[item.id] ?? item.hmo ?? [];
               const effectiveForChildren = item.id in forChildrenById ? forChildrenById[item.id] : item.for_children;
@@ -648,51 +744,109 @@ export default function WhatsAppStagingPage() {
                   </div>
 
                   {/* Source context */}
-                  {(hasContext || isEditingSource) && (
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            if (isEditingSource) { setEditingSourceId(null); return; }
-                            setExpandedContext(prev => ({ ...prev, [item.id]: !contextOpen }));
-                          }}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          {isEditingSource ? "▲ ביטול עריכה" : contextOpen ? "▲ הסתר הקשר" : "▼ הצג שאלה מקורית"}
-                        </button>
-                        {!isEditingSource && contextOpen && isPending && (
-                          <button
-                            onClick={() => { setEditingSourceId(item.id); setEditSourceText(displayMessages.join("\n")); }}
-                            className="text-xs text-gray-400 hover:text-gray-600" title="ערוך הקשר">✏️</button>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => setExpandedContext(prev => ({ ...prev, [item.id]: !contextOpen }))}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        {contextOpen ? "▲ הסתר הקשר" : "▼ הצג שאלה מקורית"}
+                      </button>
+                      <button
+                        onClick={() => window.open(`/admin/whatsapp/context/${item.id}`, "_blank")}
+                        className="text-xs text-gray-500 hover:underline"
+                      >
+                        🗨️ פתח שיחה מקורית
+                      </button>
+                    </div>
+
+                    {contextOpen && (
+                      <div className="mt-2 space-y-1 rounded bg-blue-50 border border-blue-100 px-3 py-2">
+                        {hasContext ? (
+                          displayMessages.map((msg, i) => (
+                            <p key={i} className="text-xs text-blue-800 leading-relaxed">{msg}</p>
+                          ))
+                        ) : (
+                          <p className="text-xs text-gray-500">אין שאלת מקור עדיין</p>
                         )}
                       </div>
+                    )}
+                  </div>
 
-                      {isEditingSource ? (
-                        <div className="mt-2 space-y-1">
-                          <textarea value={editSourceText} onChange={e => setEditSourceText(e.target.value)}
-                            className="w-full rounded border px-2 py-1.5 text-xs font-mono resize-y"
-                            rows={4} dir="rtl" placeholder="הודעה אחת לכל שורה..." />
-                          <div className="flex gap-2">
-                            <button onClick={() => saveSourceMessages(item.id)}
-                              className="text-xs px-3 py-1 rounded bg-emerald-600 text-white">שמור</button>
-                            <button onClick={() => setEditingSourceId(null)}
-                              className="text-xs px-3 py-1 rounded border text-gray-600">ביטול</button>
-                          </div>
-                        </div>
-                      ) : contextOpen && (
-                        <div className="mt-2 space-y-1 rounded bg-blue-50 border border-blue-100 px-3 py-2">
-                          {displayMessages.map((msg, i) => (
-                            <p key={i} className="text-xs text-blue-800 leading-relaxed">{msg}</p>
-                          ))}
-                        </div>
-                      )}
+                  {/* Verbatim original — admin-only context, never published */}
+                  <div>
+                    <div className="text-xs text-gray-400 mb-1">טקסט מקורי (לעיניי מנהל בלבד, לא מתפרסם):</div>
+                    <blockquote className="rounded bg-gray-50 border-r-4 border-gray-300 px-3 py-2 text-sm text-gray-800 leading-relaxed">
+                      {item.recommendation_text}
+                    </blockquote>
+                  </div>
+
+                  {/* Anonymized summary — this is what gets published */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-gray-500">
+                        סיכום לפרסום (אנונימי){!isPending && item.is_summarized && " — מפורסם"}:
+                      </span>
+                      <button type="button" onClick={() => generateSummary(item.id)} disabled={!!summarizingById[item.id]}
+                        className="text-xs px-2 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50 shrink-0">
+                        {summarizingById[item.id] ? "מסכם..." : "✨ הצע סיכום"}
+                      </button>
                     </div>
-                  )}
+                    <textarea
+                      value={effectiveSummary}
+                      onChange={e => setSummaryById(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      onBlur={e => saveSummary(item.id, e.target.value)}
+                      placeholder="לחץ/י על 'הצע סיכום', או כתוב/י כאן סיכום ידני..."
+                      className="w-full rounded border p-2 text-sm resize-none bg-indigo-50/40 border-indigo-200" rows={2}
+                    />
+                    {effectiveSummary.trim() === "" && isPending && (
+                      <p className="text-xs text-amber-600">
+                        אין סיכום עדיין — אם אין מידע נוסף מעבר לשם המקום, אפשר לאשר ככוכבים בלבד (בטל/י את הסימון מטה). באישור, אם השדה ריק ייווצר סיכום אוטומטית.
+                      </p>
+                    )}
 
-                  {/* Review text */}
-                  <blockquote className="rounded bg-gray-50 border-r-4 border-gray-300 px-3 py-2 text-sm text-gray-800 leading-relaxed">
-                    {item.recommendation_text}
-                  </blockquote>
+                    <div className="flex items-center gap-2 flex-wrap pt-1">
+                      <span className="text-xs text-gray-500 shrink-0">דירוג:</span>
+                      {RATING_OPTIONS.map(r => (
+                        <button key={r} type="button" onClick={() => saveRating(item.id, r)}
+                          className={`text-xs px-2 py-1 rounded border ${effectiveRating === r ? "bg-[#0A2B6B] text-white border-[#0A2B6B]" : "bg-white"}`}>
+                          {RATING_LABELS[r]}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 shrink-0">תגיות:</span>
+                      <input
+                        value={effectiveTags}
+                        onChange={e => setTagsById(prev => ({ ...prev, [item.id]: e.target.value }))}
+                        onBlur={e => saveTags(item.id, e.target.value)}
+                        placeholder="מופרד בפסיקים, למשל: ידידותי לחיות מחמד, מחיר נוח"
+                        dir="rtl"
+                        className="flex-1 rounded border px-2 py-1 text-xs"
+                      />
+                    </div>
+                    {(tagTaxonomy[effectiveCat] ?? []).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {(tagTaxonomy[effectiveCat] ?? []).map(tag => {
+                          const current = effectiveTags.split(",").map(t => t.trim()).filter(Boolean);
+                          const active = current.includes(tag);
+                          return (
+                            <button key={tag} type="button"
+                              onClick={() => {
+                                const next = active ? current.filter(t => t !== tag) : [...current, tag];
+                                const text = next.join(", ");
+                                setTagsById(prev => ({ ...prev, [item.id]: text }));
+                                saveTags(item.id, text);
+                              }}
+                              className={`text-xs px-2 py-0.5 rounded-full border ${active ? "bg-indigo-100 border-indigo-300 text-indigo-800" : "bg-white text-gray-500"}`}>
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Reviewer */}
                   <div className="text-xs text-gray-500">

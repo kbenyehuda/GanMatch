@@ -28,13 +28,18 @@ async function verifyAdmin(req: Request) {
   return { admin };
 }
 
+function tableFor(req: Request): "specialty_taxonomy" | "tag_taxonomy" {
+  const type = new URL(req.url).searchParams.get("type");
+  return type === "tag" ? "tag_taxonomy" : "specialty_taxonomy";
+}
+
 export async function GET(req: Request) {
   const result = await verifyAdmin(req);
   if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });
   const { admin } = result;
 
   const { data, error } = await admin
-    .from("specialty_taxonomy")
+    .from(tableFor(req))
     .select("category, name")
     .order("category")
     .order("name");
@@ -62,7 +67,7 @@ export async function POST(req: Request) {
   if (!category || !name) return NextResponse.json({ error: "Missing category or name" }, { status: 400 });
 
   const { data, error } = await admin
-    .from("specialty_taxonomy")
+    .from(tableFor(req))
     .upsert({ category, name }, { onConflict: "category,name" })
     .select()
     .single();

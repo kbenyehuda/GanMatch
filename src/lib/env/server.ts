@@ -43,7 +43,11 @@ export const serverEnv = {
   SUPABASE_SERVICE_ROLE_KEY: getTrimmed("SUPABASE_SERVICE_ROLE_KEY"),
   RESEND_API_KEY: getTrimmed("RESEND_API_KEY"),
   RESEND_FROM_EMAIL: getTrimmed("RESEND_FROM_EMAIL"),
+  OPENAI_API_KEY: getTrimmed("OPENAI_API_KEY"),
   ADMIN_EMAILS: csvLowerSet(process.env.ADMIN_EMAILS),
+  // Local-dev-only: absolute path to the raw WhatsApp .txt export, used by the
+  // triage "open chat context" feature. Not set in production.
+  WHATSAPP_CHAT_FILE_PATH: getTrimmed("WHATSAPP_CHAT_FILE_PATH"),
   MODERATION_BLACKLIST_TERMS: csvLowerSet(process.env.MODERATION_BLACKLIST_TERMS),
   MODERATION_PRICE_CHANGE_THRESHOLD_PCT: numberOr(process.env.MODERATION_PRICE_CHANGE_THRESHOLD_PCT, 35),
   MODERATION_LOCATION_CHANGE_KM: numberOr(process.env.MODERATION_LOCATION_CHANGE_KM, 2),

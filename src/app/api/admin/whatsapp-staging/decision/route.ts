@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
+import { summarizeRecommendation, getCategoryTags, recordNewTags, PHONE_REGEX, type Rating } from "@/lib/whatsapp-summarize";
 import * as crypto from "crypto";
 
 const GIVATAYIM = { lat: 32.0702, lon: 34.8117 };
@@ -86,6 +87,47 @@ export async function POST(req: Request) {
 
   // ── Approve ──────────────────────────────────────────────────────────────
 
+  // Resolve the anonymized, legal-safe summary + rating + tags that will be
+  // published. Rating is always required (even stars-only reviews need a real
+  // rating, not a blind default) — classify now if this row hasn't been yet.
+  let summaryText = String(row.summary_text ?? "").trim();
+  let rating: Rating = (row.rating ?? 4) as Rating;
+  let tags: string[] = Array.isArray(row.tags) ? row.tags : [];
+  if (!row.is_summarized) {
+    const { OPENAI_API_KEY: openaiKey } = serverEnv;
+    if (!openaiKey) return NextResponse.json({ error: "OPENAI_API_KEY is not set — לא ניתן ליצור סיכום אוטומטית" }, { status: 500 });
+    try {
+      const existingTags = await getCategoryTags(admin, row.category);
+      const result = await summarizeRecommendation({
+        placeName: row.place_name,
+        recommendationText: row.recommendation_text,
+        sourceMessages: row.source_messages,
+        enthusiasm: row.enthusiasm,
+        existingTags,
+      }, openaiKey);
+      summaryText = result.summary;
+      rating = result.rating;
+      tags = result.tags;
+    } catch (e: any) {
+      return NextResponse.json({ error: e?.message ?? "Summarize failed" }, { status: 500 });
+    }
+    await admin.from("whatsapp_import_staging").update({
+      summary_text: summaryText || null,
+      rating,
+      tags,
+      is_summarized: true,
+    }).eq("id", id);
+    await recordNewTags(admin, row.category, tags);
+  }
+  if (includeText) {
+    if (!summaryText) {
+      return NextResponse.json({ error: "אין מידע נוסף לסיכום — יש לבטל את \"כלול טקסט המלצה\" ולאשר ככוכבים בלבד" }, { status: 400 });
+    }
+    if (PHONE_REGEX.test(summaryText)) {
+      return NextResponse.json({ error: "הסיכום מכיל מספר טלפון — יש להסיר לפני אישור" }, { status: 400 });
+    }
+  }
+
   // 1. Resolve place — use existing or create new
   let placeId: string = row.existing_place_id ?? null;
 
@@ -147,12 +189,12 @@ export async function POST(req: Request) {
   }
 
   // 3. Insert review
-  const ratingMap: Record<string, number> = { high: 5, medium: 4, negative: 2 };
   const { error: reviewErr } = await admin.from("place_reviews").insert({
     user_id:               reviewerUserId,
     place_id:              placeId,
-    rating:                ratingMap[row.enthusiasm] ?? 4,
-    text:                  includeText ? row.recommendation_text : null,
+    rating,
+    text:                  includeText ? summaryText : null,
+    tags,
     reviewer_public_name:  "חבר/ה מהשכונה",
     whatsapp_reviewer_name: row.reviewer_name,
     is_anonymous:          true,

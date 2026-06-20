@@ -39,6 +39,7 @@ export async function GET(req: Request) {
   const limit = parseLimit(searchParams.get("limit"), 100);
   const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
   const hasContext = searchParams.get("has_context") === "true";
+  const missingSummary = searchParams.get("missing_summary") === "true";
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
@@ -50,6 +51,7 @@ export async function GET(req: Request) {
   if (validStatus) q = q.eq("status", status);
   if (category) q = q.eq("category", category);
   if (hasContext) q = q.not("source_messages", "is", null).not("source_messages", "eq", "[]");
+  if (missingSummary) q = q.eq("is_summarized", false);
   const { data, count, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -92,6 +94,18 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const update: Record<string, unknown> = {};
+  // Tracks which "kind" of field (source dialogue vs. generated summary/rating/tags)
+  // was touched most recently, in the order keys actually appear in the request body —
+  // each save in the UI is its own single-field PATCH, so this is really just "which
+  // single save happened last." Kept order-based (not a hardcoded winner) so that if a
+  // future call ever sends both at once, whichever was listed later still wins.
+  const SOURCE_FIELDS = new Set(["recommendation_text", "source_messages"]);
+  const GENERATED_FIELDS = new Set(["summary_text", "rating", "tags"]);
+  let lastTouchedKind: "source" | "generated" | null = null;
+  for (const key of Object.keys(body ?? {})) {
+    if (SOURCE_FIELDS.has(key)) lastTouchedKind = "source";
+    else if (GENERATED_FIELDS.has(key)) lastTouchedKind = "generated";
+  }
 
   if (body?.category !== undefined) {
     const cat = typeof body.category === "string" ? body.category.trim() : "";
@@ -111,6 +125,33 @@ export async function PATCH(req: Request) {
   if (body?.source_messages !== undefined) {
     if (!Array.isArray(body.source_messages)) return NextResponse.json({ error: "source_messages must be array" }, { status: 400 });
     update.source_messages = (body.source_messages as unknown[]).filter((m): m is string => typeof m === "string");
+  }
+  if (body?.recommendation_text !== undefined) {
+    const text = typeof body.recommendation_text === "string" ? body.recommendation_text.trim() : "";
+    if (!text) return NextResponse.json({ error: "recommendation_text cannot be empty" }, { status: 400 });
+    update.recommendation_text = text;
+  }
+  if (body?.summary_text !== undefined) {
+    const text = typeof body.summary_text === "string" ? body.summary_text.trim() : "";
+    update.summary_text = text || null;
+  }
+  if (body?.rating !== undefined) {
+    const rating = Number(body.rating);
+    if (![1, 2, 4, 5].includes(rating)) return NextResponse.json({ error: "rating must be 1, 2, 4 or 5" }, { status: 400 });
+    update.rating = rating;
+  }
+  if (body?.tags !== undefined) {
+    if (!Array.isArray(body.tags)) return NextResponse.json({ error: "tags must be array" }, { status: 400 });
+    update.tags = (body.tags as unknown[]).filter((t): t is string => typeof t === "string" && t.trim().length > 0).map(t => t.trim());
+  }
+
+  // Whichever "kind" of field was touched most recently wins: editing the source
+  // dialogue invalidates any existing summary/rating/tags (stale input); editing
+  // the summary/rating/tags themselves finalizes them.
+  if (lastTouchedKind === "source") {
+    update.is_summarized = false;
+  } else if (lastTouchedKind === "generated") {
+    update.is_summarized = true;
   }
 
   if (Object.keys(update).length === 0) return NextResponse.json({ error: "No fields to update" }, { status: 400 });
