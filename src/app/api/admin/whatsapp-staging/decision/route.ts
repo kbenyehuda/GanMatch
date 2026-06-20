@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
-import { summarizeRecommendation, getCategoryTags, recordNewTags, PHONE_REGEX, type Rating } from "@/lib/whatsapp-summarize";
+import { summarizeRecommendation, getCategoryTags, recordNewTags, PHONE_REGEX, applyKidsFieldsToPlace, pickKidsStructuredFields, type Rating } from "@/lib/whatsapp-summarize";
 import * as crypto from "crypto";
 
 const GIVATAYIM = { lat: 32.0702, lon: 34.8117 };
@@ -93,6 +93,15 @@ export async function POST(req: Request) {
   let summaryText = String(row.summary_text ?? "").trim();
   let rating: Rating = (row.rating ?? 4) as Rating;
   let tags: string[] = Array.isArray(row.tags) ? row.tags : [];
+  // Manual edits already persisted on the row (from the triage UI) take priority
+  // over freshly-extracted LLM values for the same field.
+  let kidsFields = {
+    kosher: row.kosher ?? undefined,
+    hours: row.hours ?? undefined,
+    friday_schedule: row.friday_schedule ?? undefined,
+    has_mamad: row.has_mamad ?? undefined,
+    has_cctv: row.has_cctv ?? undefined,
+  };
   if (!row.is_summarized) {
     const { OPENAI_API_KEY: openaiKey } = serverEnv;
     if (!openaiKey) return NextResponse.json({ error: "OPENAI_API_KEY is not set — לא ניתן ליצור סיכום אוטומטית" }, { status: 500 });
@@ -104,10 +113,19 @@ export async function POST(req: Request) {
         sourceMessages: row.source_messages,
         enthusiasm: row.enthusiasm,
         existingTags,
+        category: row.category,
       }, openaiKey);
       summaryText = result.summary;
       rating = result.rating;
       tags = result.tags;
+      const llmKidsFields = pickKidsStructuredFields(result);
+      kidsFields = {
+        kosher: kidsFields.kosher ?? llmKidsFields.kosher,
+        hours: kidsFields.hours ?? llmKidsFields.hours,
+        friday_schedule: kidsFields.friday_schedule ?? llmKidsFields.friday_schedule,
+        has_mamad: kidsFields.has_mamad ?? llmKidsFields.has_mamad,
+        has_cctv: kidsFields.has_cctv ?? llmKidsFields.has_cctv,
+      };
     } catch (e: any) {
       return NextResponse.json({ error: e?.message ?? "Summarize failed" }, { status: 500 });
     }
@@ -116,6 +134,7 @@ export async function POST(req: Request) {
       rating,
       tags,
       is_summarized: true,
+      ...kidsFields,
     }).eq("id", id);
     await recordNewTags(admin, row.category, tags);
   }
@@ -180,6 +199,8 @@ export async function POST(req: Request) {
     }
   }
 
+  if (row.category === "kids") await applyKidsFieldsToPlace(admin, placeId, kidsFields);
+
   // 2. Create synthetic auth user for reviewer (deterministic per reviewer_name)
   let reviewerUserId: string;
   try {
@@ -188,7 +209,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 
-  // 3. Insert review
+  // 3. Insert review — dated to the WhatsApp message itself when known, not approval time
   const { error: reviewErr } = await admin.from("place_reviews").insert({
     user_id:               reviewerUserId,
     place_id:              placeId,
@@ -199,6 +220,7 @@ export async function POST(req: Request) {
     whatsapp_reviewer_name: row.reviewer_name,
     is_anonymous:          true,
     allow_contact:         false,
+    ...(row.message_date ? { created_at: row.message_date } : {}),
   });
   if (reviewErr && !reviewErr.message.includes("duplicate") && !reviewErr.message.includes("unique")) {
     return NextResponse.json({ error: reviewErr.message }, { status: 500 });

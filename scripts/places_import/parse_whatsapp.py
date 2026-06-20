@@ -64,8 +64,28 @@ SKIP_PATTERNS = (
 EDITED_SUFFIX = re.compile(r"\s*<This message was edited>\s*$", re.I)
 
 
+def parse_message_date(date_str: str) -> str | None:
+    """Normalize a WhatsApp export date to ISO YYYY-MM-DD.
+    Primary confirmed format is M/D/YY (no brackets); some exports use
+    DD/MM/YYYY or DD.MM.YYYY (bracketed). Disambiguate slash format by the
+    year component's length (2 digits = M/D/YY, 4 digits = DD/MM/YYYY)."""
+    date_str = date_str.strip()
+    try:
+        if "." in date_str:
+            d, mo, y = date_str.split(".")
+        else:
+            a, b, y = date_str.split("/")
+            d, mo = (a, b) if len(y) == 4 else (b, a)
+        day, month, year = int(d), int(mo), int(y)
+        if year < 100:
+            year += 2000
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    except (ValueError, IndexError):
+        return None
+
+
 def parse_chat(path: Path) -> list[dict]:
-    """Return list of {name, text} dicts. Phone numbers kept as-is (VCF mapping is a later step)."""
+    """Return list of {name, text, date} dicts. Phone numbers kept as-is (VCF mapping is a later step)."""
     messages = []
     current: dict | None = None
 
@@ -76,6 +96,7 @@ def parse_chat(path: Path) -> list[dict]:
             if m:
                 if current:
                     messages.append(current)
+                date_str = m.group(1)
                 name = m.group(2).strip()
                 text = EDITED_SUFFIX.sub("", m.group(3).strip())
 
@@ -86,7 +107,7 @@ def parse_chat(path: Path) -> list[dict]:
                     current = None
                     continue
 
-                current = {"name": name, "text": text}
+                current = {"name": name, "text": text, "date": parse_message_date(date_str)}
             elif current and line:
                 current["text"] += " " + line.strip()
 
@@ -94,6 +115,23 @@ def parse_chat(path: Path) -> list[dict]:
         messages.append(current)
 
     return messages
+
+
+def find_message_date(chunk: list[dict], reviewer_name: str, recommendation_text: str) -> str | None:
+    """Match an extracted recommendation back to its source message to recover
+    the date — the LLM is never asked to transcribe dates itself, since
+    recommendation_text/reviewer_name are already required to be verbatim
+    copies of the source message."""
+    rt = recommendation_text.strip()
+    name = reviewer_name.strip()
+    for msg in chunk:
+        if msg["name"].strip() == name and msg["text"].strip() == rt:
+            return msg.get("date")
+    for msg in chunk:
+        msg_text = msg["text"].strip()
+        if msg["name"].strip() == name and (msg_text in rt or rt in msg_text):
+            return msg.get("date")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +250,7 @@ def upsert_staging(supabase, rec: dict, source_file: str) -> str:
             "source_file":         source_file,
             "source_messages":     source_msgs if source_msgs else None,
             "existing_place_id":   existing_place_id,
+            "message_date":        rec.get("message_date"),
         }).execute()
         return "inserted"
     except Exception as e:
@@ -315,12 +354,14 @@ def main(
                 if key in seen:
                     continue
                 seen.add(key)
+                rec["message_date"] = find_message_date(chunk, reviewer, str(rec.get("recommendation_text", "")))
 
                 icon = {"high": "⭐⭐⭐⭐⭐", "medium": "⭐⭐⭐⭐", "negative": "⭐⭐"}.get(rec.get("enthusiasm"), "?")
 
                 if dry_run:
                     src = f" ← {rec['source_messages'][0][:60]}…" if rec.get("source_messages") else ""
-                    print(f"    {icon} [{rec.get('category','?'):12}] {place} — {reviewer}")
+                    date_label = rec.get("message_date") or "no date match"
+                    print(f"    {icon} [{rec.get('category','?'):12}] {place} — {reviewer} ({date_label})")
                     print(f"       {str(rec.get('recommendation_text',''))[:120]}{src}")
                 else:
                     try:

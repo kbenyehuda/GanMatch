@@ -19,6 +19,7 @@ export interface PlaceFilters {
   kids_vacancy: string[] | null;
   kids_languages: string[] | null;
   kids_has_mamad: boolean | null;
+  kids_has_cctv: boolean | null;
   kids_first_aid: boolean | null;
   // Sport-specific
   sport_gender: string | null;
@@ -44,6 +45,7 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   kids_vacancy: null,
   kids_languages: null,
   kids_has_mamad: null,
+  kids_has_cctv: null,
   kids_first_aid: null,
   sport_gender: null,
   attraction_venue: null,
@@ -68,6 +70,7 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.kids_vacancy != null && f.kids_vacancy.length > 0) n++;
   if (f.kids_languages != null && f.kids_languages.length > 0) n++;
   if (f.kids_has_mamad != null) n++;
+  if (f.kids_has_cctv != null) n++;
   if (f.kids_first_aid != null) n++;
   if (f.sport_gender != null) n++;
   if (f.attraction_venue != null && f.attraction_venue.length > 0) n++;

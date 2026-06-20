@@ -26,6 +26,8 @@ export type NeighborhoodGivatayim =
 
 export type KosherStatus = "CERTIFIED" | "NOT_CERTIFIED" | "UNKNOWN";
 
+export type SpokenLanguage = "HEBREW" | "ENGLISH" | "RUSSIAN" | "ARABIC";
+
 // =============================================================================
 // Attributes JSONB — per-category structured data
 // Only present when place_category matches; all keys optional.
@@ -42,6 +44,18 @@ export interface KidsAttributes {
   vacancy_status?: string;
   monthly_price_nis?: number;
   maon_symbol_code?: string;
+  has_mamad?: boolean;
+  has_cctv?: boolean;
+  cctv_streamed_online?: boolean;
+  kosher_certifier?: string;
+  staff_child_ratio?: number;
+  first_aid_trained?: boolean;
+  languages_spoken?: SpokenLanguage[];
+  vegan_friendly?: boolean;
+  vegetarian_friendly?: boolean;
+  meat_served?: boolean;
+  allergy_friendly?: boolean;
+  chugim_types?: string[];
 }
 
 export interface DoctorAttributes {

@@ -122,6 +122,21 @@ export async function PATCH(req: Request) {
   if (body?.for_children !== undefined) {
     update.for_children = typeof body.for_children === "boolean" ? body.for_children : null;
   }
+  if (body?.kosher !== undefined) {
+    update.kosher = body.kosher === "CERTIFIED" || body.kosher === "NOT_CERTIFIED" ? body.kosher : null;
+  }
+  if (body?.hours !== undefined) {
+    update.hours = typeof body.hours === "string" && body.hours.trim() ? body.hours.trim() : null;
+  }
+  if (body?.friday_schedule !== undefined) {
+    update.friday_schedule = ["NONE", "EVERY_FRIDAY", "EVERY_OTHER_FRIDAY"].includes(body.friday_schedule) ? body.friday_schedule : null;
+  }
+  if (body?.has_mamad !== undefined) {
+    update.has_mamad = typeof body.has_mamad === "boolean" ? body.has_mamad : null;
+  }
+  if (body?.has_cctv !== undefined) {
+    update.has_cctv = typeof body.has_cctv === "boolean" ? body.has_cctv : null;
+  }
   if (body?.source_messages !== undefined) {
     if (!Array.isArray(body.source_messages)) return NextResponse.json({ error: "source_messages must be array" }, { status: 400 });
     update.source_messages = (body.source_messages as unknown[]).filter((m): m is string => typeof m === "string");

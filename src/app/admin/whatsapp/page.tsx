@@ -55,10 +55,27 @@ type StagingItem = {
   moderation_reason: string | null;
   status: StagingStatus;
   created_at: string;
+  message_date: string | null;
   specialty: string | null;
   hmo: string[] | null;
   for_children: boolean | null;
+  // Kids-category structured fields (kosher/hours/friday_schedule/mamad/cctv)
+  kosher: string | null;
+  hours: string | null;
+  friday_schedule: string | null;
+  has_mamad: boolean | null;
+  has_cctv: boolean | null;
 };
+
+const KOSHER_OPTIONS = [
+  { value: "CERTIFIED", label: "כשר" },
+  { value: "NOT_CERTIFIED", label: "לא כשר" },
+];
+const FRIDAY_OPTIONS = [
+  { value: "NONE", label: "סגור בשישי" },
+  { value: "EVERY_FRIDAY", label: "פתוח כל שישי" },
+  { value: "EVERY_OTHER_FRIDAY", label: "שישי שני" },
+];
 
 const ENTHUSIASM_STARS: Record<string, string> = {
   high: "⭐⭐⭐⭐⭐",
@@ -83,6 +100,11 @@ const STATUS_LABELS: Record<StagingStatus, string> = {
 function formatDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("he-IL");
+}
+
+function formatMessageDate(date: string | null) {
+  if (!date) return null;
+  return new Date(date).toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function formatAge(iso: string) {
@@ -197,6 +219,13 @@ export default function WhatsAppStagingPage() {
   const [specialtyById, setSpecialtyById] = useState<Record<string, string>>({});
   const [hmoById, setHmoById] = useState<Record<string, string[]>>({});
   const [forChildrenById, setForChildrenById] = useState<Record<string, boolean | null>>({});
+
+  // Kids-category structured fields
+  const [kosherById, setKosherById] = useState<Record<string, string>>({});
+  const [hoursById, setHoursById] = useState<Record<string, string>>({});
+  const [fridayById, setFridayById] = useState<Record<string, string>>({});
+  const [mamadById, setMamadById] = useState<Record<string, boolean | null>>({});
+  const [cctvById, setCctvById] = useState<Record<string, boolean | null>>({});
 
   // Specialty taxonomy
   const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>({});
@@ -343,6 +372,11 @@ export default function WhatsAppStagingPage() {
       setSummaryById(prev => ({ ...prev, [id]: String(data?.summary ?? "") }));
       if (typeof data?.rating === "number") setRatingById(prev => ({ ...prev, [id]: data.rating }));
       if (Array.isArray(data?.tags)) setTagsById(prev => ({ ...prev, [id]: data.tags.join(", ") }));
+      if (data?.kosher) setKosherById(prev => ({ ...prev, [id]: data.kosher }));
+      if (data?.hours) setHoursById(prev => ({ ...prev, [id]: data.hours }));
+      if (data?.friday_schedule) setFridayById(prev => ({ ...prev, [id]: data.friday_schedule }));
+      if (typeof data?.has_mamad === "boolean") setMamadById(prev => ({ ...prev, [id]: data.has_mamad }));
+      if (typeof data?.has_cctv === "boolean") setCctvById(prev => ({ ...prev, [id]: data.has_cctv }));
     } catch (e: any) {
       setError(e?.message ?? "Summarize failed");
     } finally {
@@ -390,6 +424,30 @@ export default function WhatsAppStagingPage() {
   const patchForChildren = useCallback(async (id: string, value: boolean | null) => {
     setForChildrenById(prev => ({ ...prev, [id]: value }));
     patchField(id, { for_children: value });
+  }, [patchField]);
+
+  const patchKosher = useCallback((id: string, value: string) => {
+    setKosherById(prev => ({ ...prev, [id]: value }));
+    patchField(id, { kosher: value || null });
+  }, [patchField]);
+
+  const saveHours = useCallback((id: string, value: string) => {
+    patchField(id, { hours: value.trim() || null });
+  }, [patchField]);
+
+  const patchFriday = useCallback((id: string, value: string) => {
+    setFridayById(prev => ({ ...prev, [id]: value }));
+    patchField(id, { friday_schedule: value || null });
+  }, [patchField]);
+
+  const patchMamad = useCallback((id: string, value: boolean | null) => {
+    setMamadById(prev => ({ ...prev, [id]: value }));
+    patchField(id, { has_mamad: value });
+  }, [patchField]);
+
+  const patchCctv = useCallback((id: string, value: boolean | null) => {
+    setCctvById(prev => ({ ...prev, [id]: value }));
+    patchField(id, { has_cctv: value });
   }, [patchField]);
 
   // Park a row as category=other/specialty=unknown without approving or rejecting it —
@@ -625,7 +683,13 @@ export default function WhatsAppStagingPage() {
               const effectiveSpecialty = specialtyById[item.id] ?? item.specialty ?? "";
               const effectiveHmo = hmoById[item.id] ?? item.hmo ?? [];
               const effectiveForChildren = item.id in forChildrenById ? forChildrenById[item.id] : item.for_children;
+              const effectiveKosher = kosherById[item.id] ?? item.kosher ?? "";
+              const effectiveHours = item.id in hoursById ? hoursById[item.id] : (item.hours ?? "");
+              const effectiveFriday = fridayById[item.id] ?? item.friday_schedule ?? "";
+              const effectiveMamad = item.id in mamadById ? mamadById[item.id] : item.has_mamad;
+              const effectiveCctv = item.id in cctvById ? cctvById[item.id] : item.has_cctv;
               const showHmoSection = HMO_CATEGORIES.has(effectiveCat);
+              const showKidsSection = effectiveCat === "kids";
               const catTaxonomy = taxonomy[effectiveCat] ?? [];
               const isPending = status === "pending";
 
@@ -647,7 +711,7 @@ export default function WhatsAppStagingPage() {
                         <span className="text-base">{ENTHUSIASM_STARS[item.enthusiasm]}</span>
                       </div>
                       <div className="text-xs text-gray-400">
-                        {formatAge(item.created_at)} · {item.source_file ?? "—"}
+                        {formatMessageDate(item.message_date) ?? `יובא ${formatAge(item.created_at)}`} · {item.source_file ?? "—"}
                         {item.address_hint && <span> · {item.address_hint}</span>}
                       </div>
                     </div>
@@ -740,6 +804,80 @@ export default function WhatsAppStagingPage() {
                           </span>
                         )}
                       </div>
+                    )}
+
+                    {/* Kids structured fields */}
+                    {showKidsSection && (
+                      <>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-gray-500 w-14 shrink-0">כשרות:</span>
+                          {isPending ? (
+                            <HebrewSelect value={effectiveKosher} options={KOSHER_OPTIONS}
+                              onChange={v => patchKosher(item.id, v)} />
+                          ) : (
+                            <span className="text-xs text-gray-700">{KOSHER_OPTIONS.find(o => o.value === effectiveKosher)?.label ?? "—"}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-gray-500 w-14 shrink-0">שעות:</span>
+                          {isPending ? (
+                            <input value={effectiveHours}
+                              onChange={e => setHoursById(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              onBlur={e => saveHours(item.id, e.target.value)}
+                              placeholder="למשל: 7:30–16:30" dir="rtl"
+                              className="text-xs rounded border px-2 py-1 flex-1 min-w-[8rem]" />
+                          ) : (
+                            <span className="text-xs text-gray-700">{effectiveHours || "—"}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-gray-500 w-14 shrink-0">ימי שישי:</span>
+                          {isPending ? (
+                            <HebrewSelect value={effectiveFriday} options={FRIDAY_OPTIONS}
+                              onChange={v => patchFriday(item.id, v)} />
+                          ) : (
+                            <span className="text-xs text-gray-700">{FRIDAY_OPTIONS.find(o => o.value === effectiveFriday)?.label ?? "—"}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-14 shrink-0">ממ&quot;ד:</span>
+                          {isPending ? (
+                            <div className="flex gap-2 text-xs">
+                              {([true, false, null] as const).map(val => (
+                                <label key={String(val)} className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input type="radio" name={`mamad_${item.id}`}
+                                    checked={effectiveMamad === val}
+                                    onChange={() => patchMamad(item.id, val)} className="w-3.5 h-3.5" />
+                                  {val === true ? "כן" : val === false ? "לא" : "לא ידוע"}
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-700">
+                              {effectiveMamad === true ? "כן" : effectiveMamad === false ? "לא" : "—"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-14 shrink-0">מצלמות:</span>
+                          {isPending ? (
+                            <div className="flex gap-2 text-xs">
+                              {([true, false, null] as const).map(val => (
+                                <label key={String(val)} className="flex items-center gap-1 cursor-pointer select-none">
+                                  <input type="radio" name={`cctv_${item.id}`}
+                                    checked={effectiveCctv === val}
+                                    onChange={() => patchCctv(item.id, val)} className="w-3.5 h-3.5" />
+                                  {val === true ? "כן" : val === false ? "לא" : "לא ידוע"}
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-700">
+                              {effectiveCctv === true ? "כן" : effectiveCctv === false ? "לא" : "—"}
+                            </span>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
 

@@ -8,6 +8,7 @@ import {
 } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
 import { DEFAULT_PLACE_FILTERS } from "@/types/place-filters";
+import { applyPlaceFilters } from "@/lib/apply-place-filters";
 import { searchPlaces } from "@/lib/places-api";
 import { PlaceCard } from "./PlaceCard";
 import { useSession } from "@/lib/useSession";
@@ -210,16 +211,7 @@ export function FilterSheet({
   const toggleKosher = (k: KosherStatus) => toggle<KosherStatus>("kosher", k);
   const togglePrice = (p: 1 | 2 | 3) => toggle<1|2|3>("price_range", p);
 
-  const count = useMemo(() => {
-    return places.filter(p => {
-      if (pending.categories?.length && !pending.categories.includes(p.place_category)) return false;
-      if (pending.hmo?.length && !p.hmo?.some(h => pending.hmo!.includes(h))) return false;
-      if (pending.neighborhoods?.length && (!p.neighborhood || !pending.neighborhoods.includes(p.neighborhood))) return false;
-      if (pending.kosher?.length && (!p.kosher || !pending.kosher.includes(p.kosher))) return false;
-      if (pending.price_range?.length && (!p.price_range || !pending.price_range.includes(p.price_range as 1|2|3))) return false;
-      return true;
-    }).length;
-  }, [places, pending]);
+  const count = useMemo(() => applyPlaceFilters(places, pending).length, [places, pending]);
 
   return (
     <div className="fixed inset-0 z-[500]" style={{ background: "rgba(15,26,46,.4)", backdropFilter: "blur(2px)" }} onClick={onClose}>
@@ -372,16 +364,19 @@ export function FilterSheet({
               <Chips items={[
                 { id: "outdoor", label: "חצר חיצונית" },
                 { id: "mamad", label: 'ממ"ד' },
+                { id: "cctv", label: "מצלמות" },
                 { id: "firstaid", label: "עזרה ראשונה" },
               ]}
                 active={[
                   ...(pending.kids_outdoor === true ? ["outdoor"] : []),
                   ...(pending.kids_has_mamad === true ? ["mamad"] : []),
+                  ...(pending.kids_has_cctv === true ? ["cctv"] : []),
                   ...(pending.kids_first_aid === true ? ["firstaid"] : []),
                 ]}
                 onToggle={v => {
                   if (v === "outdoor") setPending(prev => ({ ...prev, kids_outdoor: prev.kids_outdoor ? null : true }));
                   else if (v === "mamad") setPending(prev => ({ ...prev, kids_has_mamad: prev.kids_has_mamad ? null : true }));
+                  else if (v === "cctv") setPending(prev => ({ ...prev, kids_has_cctv: prev.kids_has_cctv ? null : true }));
                   else if (v === "firstaid") setPending(prev => ({ ...prev, kids_first_aid: prev.kids_first_aid ? null : true }));
                 }} />
             </Section>

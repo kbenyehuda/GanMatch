@@ -23,7 +23,7 @@ import type { Gan, MealType, KosherStatus, VacancyStatus, SpokenLanguage } from 
 import { formatMealTypeHe, formatKosherStatusHe, formatSpokenLanguageHe, formatVacancyStatusHe } from "@/lib/gan-display";
 
 /** Peanut icon for allergy-friendly (allergen symbol). */
-function PeanutIcon({ className }: { className?: string }) {
+export function PeanutIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M14 6c1.5 0 3 1.5 3 3.5 0 1.5-1 2.5-2 3.5 1 1 2 2 2 3.5 0 2-1.5 3.5-3.5 3.5s-3.5-1.5-3.5-3.5c0-1.5 1-2.5 2-3.5-1-1-2-2-2-3.5 0-2 1.5-3.5 4-3.5Z" />
@@ -33,7 +33,7 @@ function PeanutIcon({ className }: { className?: string }) {
 }
 
 /** Soccer ball icon for sport chugim. */
-function SoccerBallIcon({ className }: { className?: string }) {
+export function SoccerBallIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <circle cx="12" cy="12" r="10" />
@@ -46,7 +46,7 @@ function SoccerBallIcon({ className }: { className?: string }) {
 }
 
 /** Chicken drumstick icon for meat served. */
-function DrumstickIcon({ className }: { className?: string }) {
+export function DrumstickIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M18 11c0 2.21-1.79 4-4 4s-4-1.79-4-4 1.79-4 4-4 4 1.79 4 4Z" />
@@ -56,7 +56,7 @@ function DrumstickIcon({ className }: { className?: string }) {
   );
 }
 
-function getLanguageChar(lang: SpokenLanguage): { char: string; label: string; lang: string; fontClass: string } {
+export function getLanguageChar(lang: SpokenLanguage): { char: string; label: string; lang: string; fontClass: string } {
   switch (lang) {
     case "HEBREW": return { char: "א", label: "עברית", lang: "he", fontClass: "font-serif" };
     case "ENGLISH": return { char: "A", label: "אנגלית", lang: "en", fontClass: "font-sans" };
@@ -85,7 +85,7 @@ const CHUGIM_ICON_MAP: Record<string, { icon: React.ReactNode; label: string }> 
   yoga: { icon: <Flower2 className="w-4 h-4" />, label: "יוגה" },
 };
 
-function getChugimIconForType(chug: string): { icon: React.ReactNode; label: string } | null {
+export function getChugimIconForType(chug: string): { icon: React.ReactNode; label: string } | null {
   const t = chug.trim();
   if (!t) return null;
   for (const [key, val] of Object.entries(CHUGIM_ICON_MAP)) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
-import { summarizeRecommendation, getCategoryTags, recordNewTags, syncSummaryToPlaceReview } from "@/lib/whatsapp-summarize";
+import { summarizeRecommendation, getCategoryTags, recordNewTags, syncSummaryToPlaceReview, applyKidsFieldsToPlace, pickKidsStructuredFields } from "@/lib/whatsapp-summarize";
 
 function adminAuth(req: Request) {
   const h = req.headers.get("authorization") ?? "";
@@ -74,13 +74,16 @@ export async function POST(req: Request) {
           sourceMessages: row.source_messages,
           enthusiasm: row.enthusiasm,
           existingTags: tagsByCategory.get(row.category) ?? [],
+          category: row.category,
         }, openaiKey);
 
+        const kidsFields = pickKidsStructuredFields(result);
         await admin.from("whatsapp_import_staging").update({
           summary_text: result.summary || null,
           rating: result.rating,
           tags: result.tags,
           is_summarized: true,
+          ...kidsFields,
         }).eq("id", row.id);
         await recordNewTags(admin, row.category, result.tags);
 
@@ -95,6 +98,7 @@ export async function POST(req: Request) {
             tags: result.tags,
           });
           if (ok) synced += 1;
+          if (row.category === "kids") await applyKidsFieldsToPlace(admin, row.created_place_id, kidsFields);
         }
       } catch {
         failed += 1;

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation } from "lucide-react";
-import type { Place, PlaceReview } from "@/types/places";
+import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera } from "lucide-react";
+import type { Place, PlaceReview, SpokenLanguage } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS, HMO_LABELS,
 } from "@/types/places";
+import { DrumstickIcon, PeanutIcon, getLanguageChar } from "@/components/gan/GanAttributeIcons";
 import { useSession } from "@/lib/useSession";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -102,20 +103,46 @@ function ReviewCard({ review, helpfulIds, onHelpful }: { review: PlaceReview; he
 // ─── Kids attribute chips ─────────────────────────────────────────────────────
 
 function KidsAttributeChips({ attrs }: { attrs: Record<string, unknown> }) {
-  const chips: string[] = [];
+  const chips: { key: string; icon?: React.ReactNode; text: string }[] = [];
   if (attrs.min_age_months != null && attrs.max_age_months != null) {
     const toLabel = (m: number) => m < 24 ? `${m} חודשים` : `${Math.floor(m / 12)} שנים`;
-    chips.push(`גיל: ${toLabel(Number(attrs.min_age_months))}–${toLabel(Number(attrs.max_age_months))}`);
+    chips.push({ key: "age", text: `גיל: ${toLabel(Number(attrs.min_age_months))}–${toLabel(Number(attrs.max_age_months))}` });
   }
-  if (attrs.meal_type) chips.push(`ארוחות: ${String(attrs.meal_type)}`);
-  if (attrs.has_outdoor_space) chips.push("חצר חיצונית");
-  if (attrs.monthly_price_nis) chips.push(`${Number(attrs.monthly_price_nis).toLocaleString("he-IL")} ₪ לחודש`);
+  if (attrs.meal_type) chips.push({ key: "meal", text: `ארוחות: ${String(attrs.meal_type)}` });
+  if (attrs.has_outdoor_space) chips.push({ key: "outdoor", text: "חצר חיצונית" });
+  if (attrs.monthly_price_nis) chips.push({ key: "price", text: `${Number(attrs.monthly_price_nis).toLocaleString("he-IL")} ₪ לחודש` });
+  if (attrs.has_mamad) chips.push({ key: "mamad", icon: <Shield className="w-3.5 h-3.5" />, text: 'ממ"ד / מיקלט' });
+  if (attrs.has_cctv) {
+    const online = attrs.cctv_streamed_online === true;
+    chips.push({ key: "cctv", icon: <Camera className="w-3.5 h-3.5" />, text: online ? "מצלמות (צפייה מרחוק)" : "מצלמות" });
+  }
+  if (attrs.first_aid_trained) chips.push({ key: "firstaid", icon: <Medal className="w-3.5 h-3.5" />, text: "עזרה ראשונה" });
+  if (attrs.kosher_certifier) chips.push({ key: "certifier", text: `בהכשר ${String(attrs.kosher_certifier)}` });
+  if (attrs.staff_child_ratio) chips.push({ key: "ratio", text: `יחס מטפלת:ילד 1:${Number(attrs.staff_child_ratio)}` });
+  if (attrs.vegan_friendly) chips.push({ key: "vegan", icon: <Leaf className="w-3.5 h-3.5" />, text: "טבעוני" });
+  if (attrs.vegetarian_friendly) chips.push({ key: "vegetarian", icon: <Fish className="w-3.5 h-3.5" />, text: "צמחוני" });
+  if (attrs.meat_served) chips.push({ key: "meat", icon: <DrumstickIcon className="w-3.5 h-3.5" />, text: "מגיש בשר" });
+  if (attrs.allergy_friendly) chips.push({ key: "allergy", icon: <PeanutIcon className="w-3.5 h-3.5" />, text: "ידידותי לאלרגיות" });
+  if (Array.isArray(attrs.languages_spoken)) {
+    for (const lang of attrs.languages_spoken as SpokenLanguage[]) {
+      const { char, label, lang: langAttr, fontClass } = getLanguageChar(lang);
+      chips.push({
+        key: `lang-${lang}`,
+        icon: <span lang={langAttr} className={`text-xs font-bold leading-none ${fontClass}`} aria-hidden>{char}</span>,
+        text: label,
+      });
+    }
+  }
+  if (Array.isArray(attrs.chugim_types) && attrs.chugim_types.length > 0) {
+    chips.push({ key: "chugim", text: `חוגים: ${(attrs.chugim_types as string[]).join(", ")}` });
+  }
   if (!chips.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">
       {chips.map(c => (
-        <span key={c} className="font-hebrew" style={{ fontSize: 11, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>
-          {c}
+        <span key={c.key} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>
+          {c.icon}
+          {c.text}
         </span>
       ))}
     </div>
