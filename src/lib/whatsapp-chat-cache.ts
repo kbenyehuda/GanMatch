@@ -111,13 +111,20 @@ export function findMessageIndex(
     return cn === reviewerLower || reviewerLower.includes(cn) || cn.includes(reviewerLower);
   };
 
+  // Normalize runs of whitespace to a single space — the LLM systematically
+  // collapses multiple spaces when copying recommendation_text, so exact substring
+  // checks would fail on messages that have double-spaces in the raw chat export.
+  const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
+  const recNorm = normalize(recLower);
+
   const scan = (candidates: ChatMessage[]): MatchResult => {
     let bestIdx: number | null = null;
     let bestScore = 0;
     let bestText: string | null = null;
     for (const msg of candidates) {
       const msgLower = msg.text.toLowerCase();
-      if (msgLower.includes(recLower)) return { index: msg.index, score: 1, matchedText: msg.text };
+      if (msgLower.includes(recLower) || normalize(msgLower).includes(recNorm))
+        return { index: msg.index, score: 1, matchedText: msg.text };
       const score = similarity(msg.text, recommendationText);
       if (score > bestScore) {
         bestScore = score;
@@ -129,6 +136,15 @@ export function findMessageIndex(
   };
 
   const byName = messages.filter(m => nameMatches(m.name));
-  if (byName.length > 0) return scan(byName);
+  if (byName.length > 0) {
+    const nameResult = scan(byName);
+    // Exact substring match — trust it.
+    if (nameResult.index !== null && nameResult.score === 1) return nameResult;
+    // Name found but no strong match — the LLM may have assigned the wrong reviewer.
+    // Try a full-text scan; take whichever result is better.
+    const fullResult = scan(messages);
+    if (fullResult.score > nameResult.score) return fullResult;
+    return nameResult;
+  }
   return scan(messages);
 }

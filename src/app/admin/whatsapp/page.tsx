@@ -202,14 +202,20 @@ export default function WhatsAppStagingPage() {
   const [merging, setMerging] = useState(false);
   const [mergeResult, setMergeResult] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
   const [categoryById, setCategoryById] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [expandedContext, setExpandedContext] = useState<Record<string, boolean>>({});
   const [includeTextById, setIncludeTextById] = useState<Record<string, boolean>>({});
   const [onlyWithContext, setOnlyWithContext] = useState(false);
   const [missingSummaryOnly, setMissingSummaryOnly] = useState(false);
   const [summaryById, setSummaryById] = useState<Record<string, string>>({});
   const [summarizingById, setSummarizingById] = useState<Record<string, boolean>>({});
+  const [summaryErrorById, setSummaryErrorById] = useState<Record<string, string>>({});
   const [batchSummarizing, setBatchSummarizing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const [ratingById, setRatingById] = useState<Record<string, number>>({});
@@ -276,6 +282,19 @@ export default function WhatsAppStagingPage() {
     setMissingSummaryOnly(v); setPage(1); syncUrl(status, categoryFilter, 1);
   }, [status, categoryFilter]);
 
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(searchQuery); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   const loadTaxonomy = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
@@ -302,8 +321,9 @@ export default function WhatsAppStagingPage() {
       const catParam = categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : "";
       const ctxParam = onlyWithContext ? "&has_context=true" : "";
       const summaryParam = missingSummaryOnly ? "&missing_summary=true" : "";
+      const searchParam = debouncedSearch ? `&search=${encodeURIComponent(debouncedSearch)}` : "";
       const res = await fetch(
-        `/api/admin/whatsapp-staging?status=${status}&limit=${PAGE_SIZE}&offset=${offset}${catParam}${ctxParam}${summaryParam}`,
+        `/api/admin/whatsapp-staging?status=${status}&limit=${PAGE_SIZE}&offset=${offset}${catParam}${ctxParam}${summaryParam}${searchParam}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       const data = await res.json().catch(() => ({}));
@@ -316,7 +336,7 @@ export default function WhatsAppStagingPage() {
     } finally {
       setReloading(false);
     }
-  }, [status, user, categoryFilter, page, onlyWithContext, missingSummaryOnly, getToken]);
+  }, [status, user, categoryFilter, page, onlyWithContext, missingSummaryOnly, debouncedSearch, getToken]);
 
   useEffect(() => { if (user) { loadItems(); loadTaxonomy(); } }, [user, loadItems, loadTaxonomy]);
 
@@ -360,7 +380,7 @@ export default function WhatsAppStagingPage() {
     const token = await getToken();
     if (!token) return;
     setSummarizingById(prev => ({ ...prev, [id]: true }));
-    setError(null);
+    setSummaryErrorById(prev => ({ ...prev, [id]: "" }));
     try {
       const res = await fetch("/api/admin/whatsapp-staging/summarize", {
         method: "POST",
@@ -378,7 +398,7 @@ export default function WhatsAppStagingPage() {
       if (typeof data?.has_mamad === "boolean") setMamadById(prev => ({ ...prev, [id]: data.has_mamad }));
       if (typeof data?.has_cctv === "boolean") setCctvById(prev => ({ ...prev, [id]: data.has_cctv }));
     } catch (e: any) {
-      setError(e?.message ?? "Summarize failed");
+      setSummaryErrorById(prev => ({ ...prev, [id]: e?.message ?? "Summarize failed" }));
     } finally {
       setSummarizingById(prev => ({ ...prev, [id]: false }));
     }
@@ -483,6 +503,12 @@ export default function WhatsAppStagingPage() {
     } catch { /* non-critical */ }
   }, [addSpecialtyText, getToken, patchField]);
 
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  }, []);
+
   const decide = useCallback(async (id: string, action: "approve" | "reject") => {
     if (!supabase || !user) return;
     setBusyId(id);
@@ -490,6 +516,8 @@ export default function WhatsAppStagingPage() {
     try {
       const token = await getToken();
       if (!token) throw new Error("Missing token");
+      const item = items.find(i => i.id === id);
+      const summary = (summaryById[id] ?? item?.summary_text ?? "").trim();
       const res = await fetch("/api/admin/whatsapp-staging/decision", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
@@ -501,15 +529,18 @@ export default function WhatsAppStagingPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? "Decision failed");
+      if (!res.ok && res.status !== 409) throw new Error(data?.error ?? "Decision failed");
       setItems(prev => prev.filter(i => i.id !== id));
       setTotal(prev => Math.max(0, prev - 1));
+      if (action === "approve") {
+        showToast(summary ? `✓ אושר — סיכום: "${summary}"` : "✓ אושר — כוכבים בלבד, ללא סיכום");
+      }
     } catch (e: any) {
       setError(e?.message ?? "Decision failed");
     } finally {
       setBusyId(null);
     }
-  }, [reasonById, user, getToken, includeTextById]);
+  }, [reasonById, user, getToken, includeTextById, items, summaryById, showToast]);
 
   const runMerge = useCallback(async () => {
     if (!supabase || !user) return;
@@ -639,6 +670,20 @@ export default function WhatsAppStagingPage() {
         </label>
       </div>
 
+      {/* Free text search */}
+      <div className="flex items-center gap-2">
+        <input
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="חיפוש לפי שם מקום..."
+          dir="rtl"
+          className="rounded border px-3 py-1.5 text-sm w-64 bg-white"
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery("")} className="text-xs text-gray-400 hover:text-gray-600">✕ נקה</button>
+        )}
+      </div>
+
       {mergeResult && (
         <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{mergeResult}</div>
       )}
@@ -693,10 +738,36 @@ export default function WhatsAppStagingPage() {
               const catTaxonomy = taxonomy[effectiveCat] ?? [];
               const isPending = status === "pending";
 
+              const isExpanded = expandedItems.has(item.id);
+
               return (
-                <section key={item.id} className="rounded-xl border bg-white p-4 space-y-3 shadow-sm">
-                  {/* Title row */}
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                <section key={item.id} className="rounded-xl border bg-white shadow-sm overflow-hidden">
+                  {/* Summary row — always visible, click to expand */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(item.id)}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 text-start"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="text-sm font-bold truncate">{item.place_name}</span>
+                      <span
+                        className="text-xs font-semibold px-2 py-0.5 rounded-full text-white shrink-0"
+                        style={{ background: catColor }}
+                      >
+                        {TRIAGE_CATEGORY_LABELS[effectiveCat] ?? effectiveCat}
+                      </span>
+                      <span className="text-sm shrink-0">{ENTHUSIASM_STARS[item.enthusiasm]}</span>
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {formatMessageDate(item.message_date) ?? `יובא ${formatAge(item.created_at)}`}
+                      </span>
+                    </div>
+                    <span className="text-gray-400 text-xs shrink-0">{isExpanded ? "▲ סגור" : "▼ פתח"}</span>
+                  </button>
+
+                  {isExpanded && (
+                  <div className="px-4 pb-4 space-y-3 border-t">
+                  {/* Title row (inside expanded) */}
+                  <div className="flex flex-wrap items-start justify-between gap-2 pt-3">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-lg font-bold">{item.place_name}</span>
@@ -930,6 +1001,11 @@ export default function WhatsAppStagingPage() {
                         {summarizingById[item.id] ? "מסכם..." : "✨ הצע סיכום"}
                       </button>
                     </div>
+                    {summaryErrorById[item.id] && (
+                      <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded px-2 py-1">
+                        {summaryErrorById[item.id]}
+                      </p>
+                    )}
                     <textarea
                       value={effectiveSummary}
                       onChange={e => setSummaryById(prev => ({ ...prev, [item.id]: e.target.value }))}
@@ -1027,12 +1103,23 @@ export default function WhatsAppStagingPage() {
                       {item.moderation_reason && <span> · {item.moderation_reason}</span>}
                     </div>
                   )}
+                  </div>
+                  )}
                 </section>
               );
             })}
           </div>
         ))}
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 inset-x-0 flex justify-center z-50 pointer-events-none">
+          <div className="bg-gray-900 text-white text-sm rounded-lg px-4 py-3 shadow-xl max-w-md text-center leading-snug pointer-events-auto">
+            {toast}
+          </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

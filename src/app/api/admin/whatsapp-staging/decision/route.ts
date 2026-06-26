@@ -138,10 +138,8 @@ export async function POST(req: Request) {
     }).eq("id", id);
     await recordNewTags(admin, row.category, tags);
   }
-  if (includeText) {
-    if (!summaryText) {
-      return NextResponse.json({ error: "אין מידע נוסף לסיכום — יש לבטל את \"כלול טקסט המלצה\" ולאשר ככוכבים בלבד" }, { status: 400 });
-    }
+  const effectiveIncludeText = includeText && !!summaryText;
+  if (effectiveIncludeText) {
     if (PHONE_REGEX.test(summaryText)) {
       return NextResponse.json({ error: "הסיכום מכיל מספר טלפון — יש להסיר לפני אישור" }, { status: 400 });
     }
@@ -214,7 +212,7 @@ export async function POST(req: Request) {
     user_id:               reviewerUserId,
     place_id:              placeId,
     rating,
-    text:                  includeText ? summaryText : null,
+    text:                  effectiveIncludeText ? summaryText : null,
     tags,
     reviewer_public_name:  "חבר/ה מהשכונה",
     whatsapp_reviewer_name: row.reviewer_name,

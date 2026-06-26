@@ -40,6 +40,7 @@ export async function GET(req: Request) {
   const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
   const hasContext = searchParams.get("has_context") === "true";
   const missingSummary = searchParams.get("missing_summary") === "true";
+  const search = (searchParams.get("search") ?? "").trim();
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
@@ -50,8 +51,14 @@ export async function GET(req: Request) {
     .range(offset, offset + limit - 1);
   if (validStatus) q = q.eq("status", status);
   if (category) q = q.eq("category", category);
+  // "Ignore" in the triage UI parks a row as category=other/specialty=unknown
+  // without changing its status, so it stays pending but should drop out of the
+  // default (no category filter) pending view until someone explicitly looks
+  // at the "other" category bucket.
+  else if (status === "pending") q = q.or("category.neq.other,specialty.neq.unknown,specialty.is.null");
   if (hasContext) q = q.not("source_messages", "is", null).not("source_messages", "eq", "[]");
   if (missingSummary) q = q.eq("is_summarized", false);
+  if (search) q = q.ilike("place_name", `%${search}%`);
   const { data, count, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
