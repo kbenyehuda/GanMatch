@@ -52,7 +52,7 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
 const AVA_COLORS = ["#1F5BB5","#E59A2C","#2EA86B","#D86B7D","#9C5BBD"];
 
 function ReviewCard({ review, helpfulIds, onHelpful }: { review: PlaceReview; helpfulIds: Set<string>; onHelpful: (id: string) => void }) {
-  const name = review.is_anonymous ? "אנונימי" : review.reviewer_public_name ?? "משתמש";
+  const name = review.reviewer_public_name ?? (review.is_anonymous ? "אנונימי" : "משתמש");
   const initials = name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
   const avaColor = AVA_COLORS[name.charCodeAt(0) % AVA_COLORS.length];
   const isHelpful = helpfulIds.has(review.id);
@@ -86,6 +86,14 @@ function ReviewCard({ review, helpfulIds, onHelpful }: { review: PlaceReview; he
       </div>
       {/* Text */}
       {review.text && <p className="font-hebrew" style={{ fontSize: 13, lineHeight: 1.5, color: "#4A5568" }}>&ldquo;{review.text}&rdquo;</p>}
+      {/* Tags */}
+      {review.tags && review.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {review.tags.map(tag => (
+            <span key={tag} className="font-hebrew" style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 5, background: "#F0F4FA", color: "#4A6A9E" }}>{tag}</span>
+          ))}
+        </div>
+      )}
       {/* Footer */}
       <div className="flex items-center gap-3.5 mt-2.5" style={{ fontSize: 11, color: "#8A95A8", fontWeight: 600 }}>
         <button type="button" onClick={() => onHelpful(review.id)}
@@ -111,6 +119,11 @@ function KidsAttributeChips({ attrs }: { attrs: Record<string, unknown> }) {
   if (attrs.meal_type) chips.push({ key: "meal", text: `ארוחות: ${String(attrs.meal_type)}` });
   if (attrs.has_outdoor_space) chips.push({ key: "outdoor", text: "חצר חיצונית" });
   if (attrs.monthly_price_nis) chips.push({ key: "price", text: `${Number(attrs.monthly_price_nis).toLocaleString("he-IL")} ₪ לחודש` });
+  if (attrs.friday_schedule) {
+    const fridayLabel: Record<string, string> = { NONE: "סגור בשישי", EVERY_FRIDAY: "פתוח כל שישי", EVERY_OTHER_FRIDAY: "פתוח שישי שני" };
+    const label = fridayLabel[String(attrs.friday_schedule)];
+    if (label) chips.push({ key: "friday", text: label });
+  }
   if (attrs.has_mamad) chips.push({ key: "mamad", icon: <Shield className="w-3.5 h-3.5" />, text: 'ממ"ד / מיקלט' });
   if (attrs.has_cctv) {
     const online = attrs.cctv_streamed_online === true;
@@ -186,6 +199,12 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   }, [place.id]);
 
   useEffect(() => { loadReviews(); }, [loadReviews]);
+
+  // Prefer live review data over potentially-stale place prop (feed loads before reviews are approved)
+  const liveAvgRating = reviews.length > 0
+    ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+    : place.avg_rating;
+  const liveRecCount = reviewsLoading ? place.rec_count : reviews.length > 0 ? reviews.length : place.rec_count;
 
   const handleHelpful = (id: string) => {
     setHelpfulIds(prev => {
@@ -332,14 +351,14 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           <div className="flex mb-4" style={{ background: "linear-gradient(135deg,#F4F8FE,#E8F0FB)", borderRadius: 18, padding: 14 }}>
             <div className="flex-1 text-center">
               <div style={{ fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
-                {place.avg_rating?.toFixed(1) ?? "—"}
+                {liveAvgRating != null ? liveAvgRating.toFixed(1) : "—"}
               </div>
               <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>דירוג</div>
             </div>
             <div style={{ width: 1, background: "rgba(31,91,181,.15)", margin: "4px 0" }} />
             <div className="flex-1 text-center">
               <div style={{ fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
-                {place.rec_count}
+                {liveRecCount}
               </div>
               <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>המלצות</div>
             </div>

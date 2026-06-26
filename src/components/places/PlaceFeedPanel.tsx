@@ -66,8 +66,14 @@ function sortPlaces(places: Place[], sort: SortOption, userLoc: { lon: number; l
       return arr.sort((a, b) => Math.hypot(a.lat - userLoc.lat, a.lon - userLoc.lon) - Math.hypot(b.lat - userLoc.lat, b.lon - userLoc.lon));
     case "newest": return arr; // rely on server order
     case "top":
-    default:
-      return arr.sort((a, b) => (b.avg_rating ?? 0) * Math.log1p(b.rec_count) - (a.avg_rating ?? 0) * Math.log1p(a.rec_count));
+    default: {
+      return arr.sort((a, b) => {
+        const ra = a.avg_rating ?? -1;
+        const rb = b.avg_rating ?? -1;
+        if (rb !== ra) return rb - ra;
+        return b.rec_count - a.rec_count;
+      });
+    }
   }
 }
 

@@ -117,6 +117,7 @@ export interface PlaceReview {
   place_id: string;
   rating: number;
   text: string | null;
+  tags?: string[];
   photos: string[];
   is_anonymous: boolean;
   allow_contact: boolean;

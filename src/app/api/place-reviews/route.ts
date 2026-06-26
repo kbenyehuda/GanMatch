@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await db
     .from("place_reviews")
-    .select("id, user_id, rating, text, is_anonymous, reviewer_public_name, created_at")
+    .select("id, user_id, rating, text, tags, is_anonymous, reviewer_public_name, created_at")
     .eq("place_id", placeId!)
     .order("created_at", { ascending: false });
 
