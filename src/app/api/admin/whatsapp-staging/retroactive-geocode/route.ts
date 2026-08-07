@@ -68,44 +68,60 @@ export async function POST(req: Request) {
     .not("created_place_id", "is", null)
     .or(unprocessedFilter);
 
-  const results: { id: string; place_name: string; action: "geocoded" | "nulled" | "skipped"; address?: string }[] = [];
+  const results: { id: string; place_name: string; action: "geocoded" | "nulled" | "skipped" | "error"; address?: string; error?: string }[] = [];
 
   for (const row of rows ?? []) {
     const placeId = row.created_place_id as string;
 
-    // 1. Try existing address_hint first
-    let hint: string | null = row.address_hint ?? null;
+    try {
+      // 1. Try existing address_hint first
+      let hint: string | null = row.address_hint ?? null;
 
-    // 2. If no hint, ask LLM to extract one from the recommendation text
-    if (!hint) {
-      const textToSearch = [
-        ...(Array.isArray(row.source_messages) ? row.source_messages : []),
-        row.recommendation_text ?? "",
-      ].join("\n").trim();
+      // 2. If no hint, ask LLM to extract one from the recommendation text.
+      // extractAddressFromText throws on a real API failure (e.g. rate limit)
+      // instead of returning null — a thrown error must NOT be treated as
+      // "no address found" (that bug previously nulled out real addresses
+      // during a rate-limited burst — see project_ui_polish_backlog memory).
+      if (!hint) {
+        const textToSearch = [
+          ...(Array.isArray(row.source_messages) ? row.source_messages : []),
+          row.recommendation_text ?? "",
+        ].join("\n").trim();
 
-      if (textToSearch) {
-        hint = await extractAddressFromText(textToSearch, row.place_name as string, openaiKey);
+        if (textToSearch) {
+          hint = await extractAddressFromText(textToSearch, row.place_name as string, openaiKey);
+        }
       }
+
+      if (hint) {
+        // 3. Geocode the hint
+        const coords = await geocodeHint(row.place_name as string, hint);
+        if (coords) {
+          await admin.rpc("update_place_location", { p_id: placeId, p_lat: coords.lat, p_lon: coords.lon });
+          // Mark staging row with real coords so it won't be re-fetched next run
+          await admin.from("whatsapp_import_staging").update({ address_hint: hint, lat: coords.lat, lon: coords.lon }).eq("id", row.id);
+          results.push({ id: row.id as string, place_name: row.place_name as string, action: "geocoded", address: hint });
+          continue;
+        }
+      }
+
+      // 4. Genuinely nothing found (LLM confirmed no address, or the hint
+      // didn't geocode to anything) — null out the location. Set staging
+      // lat/lon to -1 (sentinel: processed, no address) so this row is
+      // excluded from future runs (filter only matches null and 0).
+      await admin.from("places").update({ location: null, updated_at: new Date().toISOString() }).eq("id", placeId);
+      await admin.from("whatsapp_import_staging").update({ lat: -1, lon: -1 }).eq("id", row.id);
+      results.push({ id: row.id as string, place_name: row.place_name as string, action: "nulled" });
+    } catch (e: any) {
+      // A real failure (network/API error) — leave the staging row untouched
+      // (lat/lon stay null) so it's picked up and retried on the next run,
+      // instead of being permanently marked as "no address found".
+      results.push({ id: row.id as string, place_name: row.place_name as string, action: "error", error: e?.message ?? String(e) });
     }
 
-    if (hint) {
-      // 3. Geocode the hint
-      const coords = await geocodeHint(row.place_name as string, hint);
-      if (coords) {
-        await admin.rpc("update_place_location", { p_id: placeId, p_lat: coords.lat, p_lon: coords.lon });
-        // Mark staging row with real coords so it won't be re-fetched next run
-        await admin.from("whatsapp_import_staging").update({ address_hint: hint, lat: coords.lat, lon: coords.lon }).eq("id", row.id);
-        results.push({ id: row.id as string, place_name: row.place_name as string, action: "geocoded", address: hint });
-        continue;
-      }
-    }
-
-    // 4. Nothing found — null out the location.
-    // Set staging lat/lon to -1 (sentinel: processed, no address) so this row
-    // is excluded from future runs (filter only matches null and 0).
-    await admin.from("places").update({ location: null, updated_at: new Date().toISOString() }).eq("id", placeId);
-    await admin.from("whatsapp_import_staging").update({ lat: -1, lon: -1 }).eq("id", row.id);
-    results.push({ id: row.id as string, place_name: row.place_name as string, action: "nulled" });
+    // Small delay between rows so a batch of LLM calls doesn't burst past
+    // OpenAI's rate limit (the failure mode that caused this fix).
+    await new Promise((r) => setTimeout(r, 350));
   }
 
   return NextResponse.json({

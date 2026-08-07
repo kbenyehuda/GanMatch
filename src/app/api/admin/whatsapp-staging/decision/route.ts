@@ -151,11 +151,15 @@ export async function POST(req: Request) {
 
   if (!placeId) {
     let hint: string | null = row.address_hint ?? null;
+    let extractionFailed = false;
 
     // No stored coords and no address hint yet — ask the LLM to find one in the
     // WhatsApp text itself before falling back to "no location". This mirrors
     // the retroactive-geocode endpoint's logic so approvals never silently
     // create a placeless (invisible) pin when the text does mention an address.
+    // extractAddressFromText throws on a real API failure (rate limit, etc.) —
+    // that must NOT be treated the same as "no address mentioned", or the
+    // staging row gets wrongly marked as permanently unresolvable (2026-08-07 bug).
     if (!(row.lat && row.lon) && !hint) {
       const { OPENAI_API_KEY: openaiKeyForAddr } = serverEnv;
       if (openaiKeyForAddr) {
@@ -164,7 +168,11 @@ export async function POST(req: Request) {
           row.recommendation_text ?? "",
         ].join("\n").trim();
         if (textToSearch) {
-          hint = await extractAddressFromText(textToSearch, row.place_name, openaiKeyForAddr);
+          try {
+            hint = await extractAddressFromText(textToSearch, row.place_name, openaiKeyForAddr);
+          } catch {
+            extractionFailed = true;
+          }
         }
       }
     }
@@ -193,9 +201,11 @@ export async function POST(req: Request) {
 
     // Persist what we learned back onto the staging row: a real hint/coords so
     // future runs don't redo the LLM call, or the -1 sentinel (matching
-    // retroactive-geocode's convention) when nothing was found, so the
-    // retroactive tool doesn't waste another pass on this row either.
-    if (!(row.lat && row.lon)) {
+    // retroactive-geocode's convention) when nothing was found. If extraction
+    // failed (not "found nothing", but the call itself errored), leave lat/lon
+    // as-is (null) so the retroactive-geocode tool retries this row later
+    // instead of it being wrongly marked unresolvable forever.
+    if (!(row.lat && row.lon) && !extractionFailed) {
       await admin.from("whatsapp_import_staging").update(
         coords
           ? { address_hint: hint, lat: coords.lat, lon: coords.lon }

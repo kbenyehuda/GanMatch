@@ -453,6 +453,10 @@ export default function WhatsAppStagingPage() {
         if (!res.ok) throw new Error(data?.error ?? "Retroactive geocode failed");
         totalProcessed += data.processed ?? 0;
         setRetroProgress({ processed: totalProcessed, remaining: data.remaining ?? 0 });
+        const errors = Array.isArray(data.results) ? data.results.filter((r: any) => r.action === "error") : [];
+        if (errors.length > 0) {
+          throw new Error(`${errors.length} רשומות נכשלו (למשל: "${errors[0]?.error ?? "שגיאה לא ידועה"}") — הרשומות האלה לא סומנו וינסו שוב בהרצה הבאה`);
+        }
         if (data.done || !data.processed) break;
       }
       await loadItems();

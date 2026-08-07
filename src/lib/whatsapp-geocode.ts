@@ -49,7 +49,12 @@ export async function geocodeHint(
 }
 
 // Ask the LLM to extract a street/neighborhood/city from a WhatsApp message.
-// Returns the raw address string, or null if none is mentioned.
+// Returns the raw address string, or null if the LLM genuinely found none.
+// Throws (does NOT return null) on a request/API failure — callers must not
+// treat a failed call the same as "no address mentioned": doing so previously
+// caused an OpenAI rate-limit burst to silently mark real addresses as
+// "not found" and permanently skip them (discovered 2026-08-07 — see
+// project_ui_polish_backlog / retroactive-geocode debugging session).
 export async function extractAddressFromText(
   text: string,
   placeName: string,
@@ -62,23 +67,23 @@ ${text}
 אם אין שום ציון מיקום — החזר null.
 החזר רק את הכתובת או המילה null, ללא הסברים נוספים.`;
 
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${openaiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 80,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const data = await res.json();
-    const raw = String(data?.choices?.[0]?.message?.content ?? "").trim();
-    if (!raw || raw.toLowerCase() === "null" || raw === "—") return null;
-    return raw;
-  } catch {
-    return null;
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${openaiKey}` },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 80,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`OpenAI address extraction failed (${res.status}): ${body.slice(0, 300)}`);
   }
+  const data = await res.json();
+  const raw = String(data?.choices?.[0]?.message?.content ?? "").trim();
+  if (!raw || raw.toLowerCase() === "null" || raw === "—") return null;
+  return raw;
 }

@@ -25,7 +25,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
-  ChevronRight,
+  ChevronRight, Send, Shield,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -614,14 +614,24 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           {/* Auth */}
           <div className="absolute top-4 start-4 z-10 flex items-center gap-2">
             {isAdmin && (
-              <button
-                type="button"
-                onClick={() => (window.location.href = "/admin/triage")}
-                className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
-                style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
-              >
-                ניהול
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => (window.location.href = "/admin/whatsapp")}
+                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+                  style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
+                >
+                  טריאז&apos; WhatsApp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => (window.location.href = "/admin/triage")}
+                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+                  style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
+                >
+                  טריאז&apos; גנים
+                </button>
+              </>
             )}
             <AuthButton />
           </div>
@@ -677,6 +687,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           <ProfileScreen
             user={user}
             savedIds={savedIds}
+            isAdmin={isAdmin}
             onGoSaved={() => setActiveTab("saved")}
             onLogout={async () => {
               await supabase?.auth.signOut();
@@ -979,10 +990,11 @@ function SavedScreen({
 // ─── ProfileScreen ────────────────────────────────────────────────────────────
 
 function ProfileScreen({
-  user, savedIds, onGoSaved, onLogout,
+  user, savedIds, isAdmin = false, onGoSaved, onLogout,
 }: {
   user: { id?: string; email?: string | null } | null;
   savedIds: Set<string>;
+  isAdmin?: boolean;
   onGoSaved: () => void;
   onLogout: () => void;
 }) {
@@ -1041,6 +1053,16 @@ function ProfileScreen({
           הרשימות שלך
         </div>
         <ProfileListCard icon={<Heart style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#D86B7D,#E8A5B0)" title="מועדפים" sub={`${savedIds.size} מקומות שמורים`} onClick={onGoSaved} />
+
+        {isAdmin && (
+          <>
+            <div className="font-hebrew flex items-center justify-between" style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E", margin: "18px 0 10px" }}>
+              ניהול
+            </div>
+            <ProfileListCard icon={<Send style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' WhatsApp" sub="אישור המלצות שחולצו מוואטסאפ" onClick={() => (window.location.href = "/admin/whatsapp")} />
+            <ProfileListCard icon={<Shield style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' גנים" sub="עריכות והמלצות ממתינות" onClick={() => (window.location.href = "/admin/triage")} />
+          </>
+        )}
 
         <button
           type="button"
