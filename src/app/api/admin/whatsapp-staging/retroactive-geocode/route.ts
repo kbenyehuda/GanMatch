@@ -18,6 +18,12 @@ import { geocodeHint, extractAddressFromText } from "@/lib/whatsapp-geocode";
 //
 // Processes up to `limit` rows per call (default 20) so the client can
 // poll until `remaining` reaches 0.
+//
+// Every DB write's `.error` is checked explicitly — a write that silently
+// no-ops (e.g. wrong key, RLS) must surface as an "error" result, not get
+// reported as "geocoded"/"nulled" when nothing actually changed. This was a
+// real bug: previously the row stayed unprocessed forever with no
+// indication why (see project_launch_readiness memory, 2026-08-07 session).
 
 export async function POST(req: Request) {
   const { NEXT_PUBLIC_SUPABASE_URL: url, NEXT_PUBLIC_SUPABASE_ANON_KEY: anon, SUPABASE_SERVICE_ROLE_KEY: svc } = serverEnv;
@@ -44,6 +50,7 @@ export async function POST(req: Request) {
   if (!openaiKey) return NextResponse.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const log = (...args: unknown[]) => console.log("[retroactive-geocode]", ...args);
 
   // Find approved staging rows where the place has no explicit lat/lon in staging
   // (meaning the current place location came from geocoding or the old Givatayim fallback).
@@ -58,10 +65,15 @@ export async function POST(req: Request) {
     .or(unprocessedFilter)
     .limit(limit);
 
-  if (rowErr) return NextResponse.json({ error: rowErr.message }, { status: 500 });
+  if (rowErr) {
+    log("failed to fetch candidate rows:", rowErr.message);
+    return NextResponse.json({ error: rowErr.message }, { status: 500 });
+  }
+  log(`fetched ${rows?.length ?? 0} candidate row(s) (limit ${limit})`);
 
-  // Count how many are still pending (for progress reporting)
-  const { count: remaining } = await admin
+  // Count how many are still pending, BEFORE this batch's writes — used by the
+  // client to compute a stable "total" on its first call.
+  const { count: remainingBefore } = await admin
     .from("whatsapp_import_staging")
     .select("id", { count: "exact", head: true })
     .eq("status", "approved")
@@ -72,10 +84,12 @@ export async function POST(req: Request) {
 
   for (const row of rows ?? []) {
     const placeId = row.created_place_id as string;
+    log(`row ${row.id} (${row.place_name}): starting`);
 
     try {
       // 1. Try existing address_hint first
       let hint: string | null = row.address_hint ?? null;
+      if (hint) log(`row ${row.id}: using existing address_hint "${hint}"`);
 
       // 2. If no hint, ask LLM to extract one from the recommendation text.
       // extractAddressFromText throws on a real API failure (e.g. rate limit)
@@ -89,34 +103,61 @@ export async function POST(req: Request) {
         ].join("\n").trim();
 
         if (textToSearch) {
+          log(`row ${row.id}: calling LLM to extract address from text`);
           hint = await extractAddressFromText(textToSearch, row.place_name as string, openaiKey);
+          log(`row ${row.id}: LLM returned ${hint ? `"${hint}"` : "no address"}`);
+        } else {
+          log(`row ${row.id}: no text to search, skipping LLM`);
         }
       }
 
       if (hint) {
         // 3. Geocode the hint
+        log(`row ${row.id}: geocoding "${hint}"`);
         const coords = await geocodeHint(row.place_name as string, hint);
         if (coords) {
-          await admin.rpc("update_place_location", { p_id: placeId, p_lat: coords.lat, p_lon: coords.lon });
+          log(`row ${row.id}: geocoded to ${coords.lat},${coords.lon} — writing to places + staging`);
+          const { error: rpcErr } = await admin.rpc("update_place_location", { p_id: placeId, p_lat: coords.lat, p_lon: coords.lon });
+          if (rpcErr) throw new Error(`update_place_location RPC failed: ${rpcErr.message}`);
           // Mark staging row with real coords so it won't be re-fetched next run
-          await admin.from("whatsapp_import_staging").update({ address_hint: hint, lat: coords.lat, lon: coords.lon }).eq("id", row.id);
+          const { error: stagingErr } = await admin
+            .from("whatsapp_import_staging")
+            .update({ address_hint: hint, lat: coords.lat, lon: coords.lon })
+            .eq("id", row.id);
+          if (stagingErr) throw new Error(`staging row update failed: ${stagingErr.message}`);
+          log(`row ${row.id}: done — geocoded`);
           results.push({ id: row.id as string, place_name: row.place_name as string, action: "geocoded", address: hint });
           continue;
         }
+        log(`row ${row.id}: geocoding "${hint}" returned no result`);
       }
 
       // 4. Genuinely nothing found (LLM confirmed no address, or the hint
       // didn't geocode to anything) — null out the location. Set staging
       // lat/lon to -1 (sentinel: processed, no address) so this row is
       // excluded from future runs (filter only matches null and 0).
-      await admin.from("places").update({ location: null, updated_at: new Date().toISOString() }).eq("id", placeId);
-      await admin.from("whatsapp_import_staging").update({ lat: -1, lon: -1 }).eq("id", row.id);
+      log(`row ${row.id}: no address found — nulling location and marking sentinel`);
+      const { error: placesErr } = await admin
+        .from("places")
+        .update({ location: null, updated_at: new Date().toISOString() })
+        .eq("id", placeId);
+      if (placesErr) throw new Error(`places location-null update failed: ${placesErr.message}`);
+      const { error: sentinelErr } = await admin
+        .from("whatsapp_import_staging")
+        .update({ lat: -1, lon: -1 })
+        .eq("id", row.id);
+      if (sentinelErr) throw new Error(`staging sentinel update failed: ${sentinelErr.message}`);
+      log(`row ${row.id}: done — nulled`);
       results.push({ id: row.id as string, place_name: row.place_name as string, action: "nulled" });
     } catch (e: any) {
-      // A real failure (network/API error) — leave the staging row untouched
-      // (lat/lon stay null) so it's picked up and retried on the next run,
-      // instead of being permanently marked as "no address found".
-      results.push({ id: row.id as string, place_name: row.place_name as string, action: "error", error: e?.message ?? String(e) });
+      // A real failure (network/API error, or a DB write that reported an
+      // error) — leave the staging row untouched (lat/lon stay null) so
+      // it's picked up and retried on the next run, instead of being
+      // permanently marked as "no address found" or silently reported as
+      // success when nothing actually changed.
+      const message = e?.message ?? String(e);
+      log(`row ${row.id}: ERROR — ${message}`);
+      results.push({ id: row.id as string, place_name: row.place_name as string, action: "error", error: message });
     }
 
     // Small delay between rows so a batch of LLM calls doesn't burst past
@@ -124,9 +165,24 @@ export async function POST(req: Request) {
     await new Promise((r) => setTimeout(r, 350));
   }
 
+  // Re-count AFTER this batch's writes for an accurate "remaining" — rows
+  // that ended in "error" are still in the pending pool and must still count.
+  const { count: remainingAfter } = await admin
+    .from("whatsapp_import_staging")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "approved")
+    .not("created_place_id", "is", null)
+    .or(unprocessedFilter);
+
+  const geocoded = results.filter(r => r.action === "geocoded").length;
+  const nulled = results.filter(r => r.action === "nulled").length;
+  const erroredCount = results.filter(r => r.action === "error").length;
+  log(`batch done: ${geocoded} geocoded, ${nulled} nulled, ${erroredCount} errored, ${remainingAfter ?? 0} remaining`);
+
   return NextResponse.json({
     processed: results.length,
-    remaining: Math.max(0, (remaining ?? 0) - results.length),
+    totalBefore: remainingBefore ?? 0,
+    remaining: remainingAfter ?? 0,
     done: (rows?.length ?? 0) < limit,
     results,
   });

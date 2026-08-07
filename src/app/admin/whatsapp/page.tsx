@@ -219,7 +219,12 @@ export default function WhatsAppStagingPage() {
   const [batchSummarizing, setBatchSummarizing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const [retroGeocoding, setRetroGeocoding] = useState(false);
-  const [retroProgress, setRetroProgress] = useState<{ processed: number; remaining: number } | null>(null);
+  const [retroProgress, setRetroProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [retroSummary, setRetroSummary] = useState<{
+    geocoded: number; nulled: number; errored: number;
+    errorDetails: { place_name: string; error: string }[];
+    stoppedEarly: boolean;
+  } | null>(null);
   const [ratingById, setRatingById] = useState<Record<string, number>>({});
   const [tagsById, setTagsById] = useState<Record<string, string>>({});
 
@@ -440,9 +445,14 @@ export default function WhatsAppStagingPage() {
     if (!token) return;
     setRetroGeocoding(true);
     setRetroProgress(null);
+    setRetroSummary(null);
     setError(null);
+    let totalProcessed = 0;
+    let geocoded = 0, nulled = 0, errored = 0;
+    const errorDetails: { place_name: string; error: string }[] = [];
+    let stoppedEarly = false;
     try {
-      let totalProcessed = 0;
+      let total: number | null = null;
       while (true) {
         const res = await fetch("/api/admin/whatsapp-staging/retroactive-geocode", {
           method: "POST",
@@ -450,13 +460,24 @@ export default function WhatsAppStagingPage() {
           body: JSON.stringify({ limit: 20 }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error ?? "Retroactive geocode failed");
-        totalProcessed += data.processed ?? 0;
-        setRetroProgress({ processed: totalProcessed, remaining: data.remaining ?? 0 });
-        const errors = Array.isArray(data.results) ? data.results.filter((r: any) => r.action === "error") : [];
-        if (errors.length > 0) {
-          throw new Error(`${errors.length} רשומות נכשלו (למשל: "${errors[0]?.error ?? "שגיאה לא ידועה"}") — הרשומות האלה לא סומנו וינסו שוב בהרצה הבאה`);
+        if (!res.ok) {
+          stoppedEarly = true;
+          throw new Error(data?.error ?? "Retroactive geocode failed");
         }
+        totalProcessed += data.processed ?? 0;
+        if (total === null) total = data.totalBefore ?? data.processed ?? 0;
+        setRetroProgress({ processed: totalProcessed, total: total ?? totalProcessed });
+
+        const rowResults: any[] = Array.isArray(data.results) ? data.results : [];
+        geocoded += rowResults.filter(r => r.action === "geocoded").length;
+        nulled += rowResults.filter(r => r.action === "nulled").length;
+        const batchErrors = rowResults.filter(r => r.action === "error");
+        errored += batchErrors.length;
+        for (const r of batchErrors) errorDetails.push({ place_name: r.place_name, error: r.error ?? "שגיאה לא ידועה" });
+
+        // Keep going through remaining batches even if this one had errors —
+        // stopping here used to silently strand every row after the first
+        // failure without ever attempting them.
         if (data.done || !data.processed) break;
       }
       await loadItems();
@@ -464,6 +485,7 @@ export default function WhatsAppStagingPage() {
       setError(e?.message ?? "Retroactive geocode failed");
     } finally {
       setRetroGeocoding(false);
+      setRetroSummary({ geocoded, nulled, errored, errorDetails, stoppedEarly });
     }
   }, [getToken, loadItems]);
 
@@ -688,12 +710,47 @@ export default function WhatsAppStagingPage() {
               className="px-3 py-1.5 rounded border text-sm bg-emerald-50 border-emerald-300 text-emerald-800 disabled:opacity-50"
               title="מוצא כתובות מטקסט ההמלצות שאושרו ומגדיר מיקום נכון — מסמן 'אין מיקום' כשלא נמצאה כתובת">
               {retroGeocoding
-                ? `📍 מעדכן מיקומים... (${retroProgress?.processed ?? 0} עובד, ${retroProgress?.remaining ?? "?"} נותרו)`
+                ? `📍 מעדכן מיקומים... (${retroProgress?.processed ?? 0}/${retroProgress?.total ?? "?"})`
                 : "📍 תקן מיקומים (רטרואקטיבי)"}
             </button>
           </>
         )}
       </div>
+
+      {retroGeocoding && retroProgress && retroProgress.total > 0 && (
+        <div className="w-full">
+          <div className="h-2 rounded-full bg-emerald-100 overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 transition-all"
+              style={{ width: `${Math.min(100, Math.round((retroProgress.processed / retroProgress.total) * 100))}%` }}
+            />
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            מעבד רשומה {Math.min(retroProgress.processed, retroProgress.total)} מתוך {retroProgress.total}
+          </div>
+        </div>
+      )}
+
+      {!retroGeocoding && retroSummary && (
+        <div className={`rounded border px-3 py-2 text-sm space-y-1 ${retroSummary.errored > 0 ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-300 bg-emerald-50 text-emerald-900"}`}>
+          <div className="flex items-center justify-between">
+            <span>
+              ✅ עודכנו מיקומים: {retroSummary.geocoded} · ⭕ לא נמצאה כתובת: {retroSummary.nulled}
+              {retroSummary.errored > 0 && ` · ❌ נכשלו (ינסו שוב בהרצה הבאה): ${retroSummary.errored}`}
+              {retroSummary.stoppedEarly && " · ההרצה נעצרה לפני הסוף"}
+            </span>
+            <button onClick={() => setRetroSummary(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+          {retroSummary.errorDetails.length > 0 && (
+            <ul className="text-xs list-disc pr-4 space-y-0.5">
+              {retroSummary.errorDetails.slice(0, 10).map((e, i) => (
+                <li key={i}><b>{e.place_name}</b>: {e.error}</li>
+              ))}
+              {retroSummary.errorDetails.length > 10 && <li>ועוד {retroSummary.errorDetails.length - 10}...</li>}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Category filter chips */}
       <div className="flex flex-wrap gap-2 items-center">
