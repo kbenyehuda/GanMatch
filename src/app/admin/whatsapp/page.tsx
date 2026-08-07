@@ -539,7 +539,9 @@ export default function WhatsAppStagingPage() {
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
 
-  const decide = useCallback(async (id: string, action: "approve" | "reject") => {
+  const [dupCandidateById, setDupCandidateById] = useState<Record<string, { id: string; name: string; address: string | null }>>({});
+
+  const decide = useCallback(async (id: string, action: "approve" | "reject", overrides?: { link_to_place_id?: string; force_new?: boolean }) => {
     if (!supabase || !user) return;
     setBusyId(id);
     setError(null);
@@ -556,10 +558,16 @@ export default function WhatsAppStagingPage() {
           action,
           moderation_reason: (reasonById[id] ?? "").trim() || null,
           include_text: includeTextById[id] !== false,
+          ...overrides,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok && res.status !== 409) throw new Error(data?.error ?? "Decision failed");
+      if (data?.possible_duplicate && data?.candidate) {
+        setDupCandidateById(prev => ({ ...prev, [id]: data.candidate }));
+        return;
+      }
+      setDupCandidateById(prev => { const next = { ...prev }; delete next[id]; return next; });
       setItems(prev => prev.filter(i => i.id !== id));
       setTotal(prev => Math.max(0, prev - 1));
       if (action === "approve") {
@@ -1109,6 +1117,24 @@ export default function WhatsAppStagingPage() {
                   {/* Actions (pending only) */}
                   {isPending && (
                     <div className="flex flex-col gap-2 pt-1">
+                      {dupCandidateById[item.id] && (
+                        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+                          נמצא מקום דומה במסד: <strong>{dupCandidateById[item.id].name}</strong>
+                          {dupCandidateById[item.id].address && <span> · {dupCandidateById[item.id].address}</span>}
+                          <div className="flex gap-2 mt-1.5">
+                            <button disabled={busyId === item.id}
+                              onClick={() => decide(item.id, "approve", { link_to_place_id: dupCandidateById[item.id].id })}
+                              className="px-3 py-1 rounded bg-amber-600 text-white text-xs font-semibold disabled:opacity-50">
+                              קשר לקיים
+                            </button>
+                            <button disabled={busyId === item.id}
+                              onClick={() => decide(item.id, "approve", { force_new: true })}
+                              className="px-3 py-1 rounded bg-white border border-amber-400 text-amber-800 text-xs font-semibold disabled:opacity-50">
+                              זה מקום אחר — צור חדש
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <textarea placeholder="סיבה (אופציונלי)" value={reasonById[item.id] ?? ""}
                         onChange={e => setReasonById(prev => ({ ...prev, [item.id]: e.target.value }))}
                         className="w-full rounded border p-2 text-sm resize-none" rows={2} />

@@ -2,27 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
+import { nameSimilarity as similarity } from "@/lib/dedupe";
 import * as crypto from "crypto";
-
-function similarity(a: string, b: string): number {
-  const s = a.trim().toLowerCase();
-  const t = b.trim().toLowerCase();
-  if (s === t) return 1;
-  if (!s || !t) return 0;
-  // Levenshtein distance normalized by max length
-  const m = s.length, n = t.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
-    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-  );
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = s[i - 1] === t[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    }
-  }
-  return 1 - dp[m][n] / Math.max(m, n);
-}
 
 function findGroups(records: { id: string; place_name: string }[], minSim: number): string[][] {
   const clusters: { id: string; name: string }[][] = [];

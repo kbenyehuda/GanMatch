@@ -4,6 +4,7 @@ import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { summarizeRecommendation, getCategoryTags, recordNewTags, PHONE_REGEX, applyKidsFieldsToPlace, pickKidsStructuredFields, type Rating } from "@/lib/whatsapp-summarize";
 import { geocodeHint, extractAddressFromText } from "@/lib/whatsapp-geocode";
+import { findSimilarPlace } from "@/lib/dedupe";
 import * as crypto from "crypto";
 
 function contactEmail(reviewerName: string): string {
@@ -54,6 +55,8 @@ export async function POST(req: Request) {
   const action = typeof body?.action === "string" ? body.action : "";
   const reason = typeof body?.moderation_reason === "string" ? body.moderation_reason.trim() : null;
   const includeText: boolean = body?.include_text !== false;
+  const linkToPlaceId: string | null = typeof body?.link_to_place_id === "string" ? body.link_to_place_id : null;
+  const forceNew: boolean = body?.force_new === true;
 
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   if (action !== "approve" && action !== "reject") return NextResponse.json({ error: "action must be approve or reject" }, { status: 400 });
@@ -132,7 +135,19 @@ export async function POST(req: Request) {
   }
 
   // 1. Resolve place — use existing or create new
-  let placeId: string = row.existing_place_id ?? null;
+  let placeId: string = row.existing_place_id ?? linkToPlaceId ?? null;
+
+  // Guard against creating a second place for the same business: two
+  // independent WhatsApp recs for "גן שקד" once became two separate place
+  // rows because nothing checked for a close name match in the same
+  // category. Skip the check once the admin has explicitly confirmed
+  // (link_to_place_id) or said this really is a different place (force_new).
+  if (!placeId && !forceNew) {
+    const candidate = await findSimilarPlace(admin, row.category, row.place_name);
+    if (candidate) {
+      return NextResponse.json({ possible_duplicate: true, candidate });
+    }
+  }
 
   if (!placeId) {
     let hint: string | null = row.address_hint ?? null;
@@ -245,10 +260,11 @@ export async function POST(req: Request) {
 
   // 4. Update staging row
   await admin.from("whatsapp_import_staging").update({
-    status:           "approved",
-    created_place_id: placeId,
-    reviewed_by:      email,
-    reviewed_at:      now,
+    status:            "approved",
+    created_place_id:  placeId,
+    ...(linkToPlaceId ? { existing_place_id: linkToPlaceId } : {}),
+    reviewed_by:       email,
+    reviewed_at:       now,
   }).eq("id", id);
 
   return NextResponse.json({ success: true, place_id: placeId });
