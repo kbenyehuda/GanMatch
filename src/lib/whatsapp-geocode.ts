@@ -1,81 +1,139 @@
 import "server-only";
 
-// Israeli city names — when any of these appear in an address hint we trust
-// that the hint already specifies the city and don't append "גבעתיים".
-export const KNOWN_CITIES = [
-  "רמת גן", "תל אביב", "ראשון לציון", "פתח תקווה", "בת ים", "חולון",
-  "רמת השרון", "הרצליה", "כפר סבא", "רעננה", "נתניה", "רחובות", "ירושלים",
-  "חיפה", "אשדוד", "אשקלון", "נס ציונה", "לוד", "רמלה", "הוד השרון",
-  "קריית אונו", "אור יהודה", "בני ברק", "פתח-תקווה",
-];
+// Israeli city names + approximate centers (lon, lat). Used two ways:
+// 1. Detect whether a city is already named in the hint or raw message text.
+// 2. Bias Mapbox's ranking toward the right area via `proximity`, instead of
+//    concatenating a (possibly wrong) city string into the query text — see
+//    geocodeHint's doc comment for why that approach broke.
+// Centers are approximate on purpose — they're a ranking hint, not a hard
+// filter, so exact precision doesn't matter.
+export const CITY_CENTERS: Record<string, { lon: number; lat: number }> = {
+  "גבעתיים": { lon: 34.8117, lat: 32.0702 },
+  "רמת גן": { lon: 34.8107, lat: 32.0823 },
+  "תל אביב": { lon: 34.7818, lat: 32.0853 },
+  "ראשון לציון": { lon: 34.8044, lat: 31.9730 },
+  "פתח תקווה": { lon: 34.8878, lat: 32.0840 },
+  "פתח-תקווה": { lon: 34.8878, lat: 32.0840 },
+  "בת ים": { lon: 34.7503, lat: 32.0171 },
+  "חולון": { lon: 34.7792, lat: 32.0114 },
+  "רמת השרון": { lon: 34.8394, lat: 32.1467 },
+  "הרצליה": { lon: 34.8436, lat: 32.1624 },
+  "כפר סבא": { lon: 34.9070, lat: 32.1750 },
+  "רעננה": { lon: 34.8720, lat: 32.1848 },
+  "נתניה": { lon: 34.8600, lat: 32.3215 },
+  "רחובות": { lon: 34.8094, lat: 31.8928 },
+  "ירושלים": { lon: 35.2137, lat: 31.7683 },
+  "חיפה": { lon: 34.9896, lat: 32.7940 },
+  "אשדוד": { lon: 34.6446, lat: 31.8044 },
+  "אשקלון": { lon: 34.5715, lat: 31.6693 },
+  "נס ציונה": { lon: 34.7975, lat: 31.9294 },
+  "לוד": { lon: 34.8933, lat: 31.9514 },
+  "רמלה": { lon: 34.8666, lat: 31.9285 },
+  "הוד השרון": { lon: 34.8878, lat: 32.1499 },
+  "קריית אונו": { lon: 34.8600, lat: 32.0623 },
+  "אור יהודה": { lon: 34.8500, lat: 32.0295 },
+  "בני ברק": { lon: 34.8322, lat: 32.0807 },
+};
 
-// Throws on a real request failure (bad status, network error, timeout) —
-// callers must not treat that the same as "genuinely no match" (same bug
-// class as extractAddressFromText: a Nominatim rate-limit/block on the
-// server's IP would otherwise look identical to an empty search result).
-async function nominatimSearch(q: string): Promise<{ lat: number; lon: number } | null> {
-  const log = (...args: unknown[]) => console.log("[nominatimSearch]", ...args);
+export const KNOWN_CITIES = Object.keys(CITY_CENTERS).filter(c => c !== "גבעתיים");
+
+function getMapboxToken(): string | null {
+  return (
+    (process.env.MAPBOX_ACCESS_TOKEN || "").trim() ||
+    (process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "").trim() ||
+    null
+  );
+}
+
+// Same Mapbox Geocoding v5 setup already used by /api/geocode and
+// /api/geocode/suggest (country=il, language=he) — reusing the pattern that
+// already works for the app's main address search, instead of the free-text
+// Nominatim approach this file used before, which had no real way to bias
+// results toward the right city (see geocodeHint below).
+//
+// Throws on a real request failure (bad status, network error, timeout, or
+// missing token) — callers must not treat that the same as "genuinely no
+// match" (same bug class as extractAddressFromText: a failure silently
+// treated as "no result" previously caused rows to be permanently
+// sentinel-marked as unresolvable — see project_launch_readiness memory,
+// 2026-08-07 session).
+async function mapboxSearch(
+  query: string,
+  proximity: { lon: number; lat: number },
+): Promise<{ lat: number; lon: number } | null> {
+  const log = (...args: unknown[]) => console.log("[mapboxSearch]", ...args);
+  const token = getMapboxToken();
+  if (!token) throw new Error("Missing Mapbox token (MAPBOX_ACCESS_TOKEN / NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN)");
+
+  const url = new URL(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json`);
+  url.searchParams.set("access_token", token);
+  url.searchParams.set("country", "il");
+  url.searchParams.set("language", "he");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("types", "address,poi");
+  url.searchParams.set("proximity", `${proximity.lon},${proximity.lat}`);
+
   let res: Response;
   try {
-    res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=il`,
-      { headers: { "User-Agent": "GiveMytime-PlacesImport/1.0" }, signal: AbortSignal.timeout(8000) },
-    );
+    res = await fetch(url.toString(), { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
   } catch (e: any) {
-    log(`request failed for "${q}":`, e?.message ?? String(e));
-    throw new Error(`Nominatim request failed: ${e?.message ?? String(e)}`);
+    log(`request failed for "${query}":`, e?.message ?? String(e));
+    throw new Error(`Mapbox request failed: ${e?.message ?? String(e)}`);
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    log(`non-OK status ${res.status} for "${q}":`, body.slice(0, 300));
-    throw new Error(`Nominatim search failed (${res.status}): ${body.slice(0, 300)}`);
+    log(`non-OK status ${res.status} for "${query}":`, body.slice(0, 300));
+    throw new Error(`Mapbox geocode failed (${res.status}): ${body.slice(0, 300)}`);
   }
   const data = await res.json();
-  if (Array.isArray(data) && data.length > 0) {
-    log(`match for "${q}": ${data[0].lat},${data[0].lon}`);
-    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  const features = Array.isArray(data?.features) ? data.features : [];
+  const first = features[0];
+  const center = Array.isArray(first?.center) ? first.center : null;
+  const lon = Number(center?.[0]);
+  const lat = Number(center?.[1]);
+  if (!isFinite(lon) || !isFinite(lat)) {
+    log(`no match for "${query}"`);
+    return null;
   }
-  log(`no match for "${q}" (empty result, status ${res.status})`);
-  return null;
+  log(`match for "${query}": ${lat},${lon} (${first?.place_name ?? ""})`);
+  return { lat, lon };
 }
 
-// Geocode an address hint.  When no city is detected, "גבעתיים" is appended
-// as a default-city guess.  Returns null if geocoding fails.
+// Geocode an address hint. Returns null if geocoding genuinely finds nothing.
 //
 // City detection checks both the trimmed hint AND the original message text
 // (`contextText`) — the LLM extraction step can drop an explicitly-mentioned
-// city while normalizing the address (e.g. "ברמת גן. שדרות ירושלים 13" →
-// "שדרות ירושלים 13"), and without this fallback the code would then default
-// to "גבעתיים", producing a confident but WRONG match on a same-named street
-// in an unrelated city instead of a clean "not found" (discovered 2026-08-07,
-// see project_launch_readiness memory — בת חן ספרית geocoded to a Holon
-// street of the same name after its "ברמת גן" got dropped).
-//
-// Strategy: always geocode the address alone first — Nominatim doesn't know
-// business names and including them hurts accuracy, and it can usually
-// resolve a bare street name to a point on that street even without a house
-// number (better than nothing — a street-level pin beats no pin at all).
-// Fall back to a business-name query only if the address-only attempt
-// returns nothing.
+// city while normalizing the address. The detected city only sets Mapbox's
+// `proximity` ranking bias — it is never concatenated into the query text.
+// An earlier version of this function DID concatenate a city string (and
+// defaulted to "גבעתיים" when none was detected), which caused a confident
+// but WRONG match: "שדרות ירושלים 13" for בת חן ספרית (actually in רמת גן)
+// matched a same-named street in an unrelated city regardless of which city
+// string was appended, because free-text search doesn't hard-filter by a
+// text token — it just treats it as one more ranking signal. Proximity bias
+// achieves the same goal (favor the right area) without that failure mode.
+// (discovered + fixed 2026-08-07, see project_launch_readiness memory.)
 export async function geocodeHint(
   placeName: string,
   addressHint: string,
   contextText: string = "",
 ): Promise<{ lat: number; lon: number } | null> {
-  const cityInHint = KNOWN_CITIES.some(c => addressHint.includes(c));
+  const cityInHint = KNOWN_CITIES.find(c => addressHint.includes(c));
   const cityInContext = !cityInHint ? KNOWN_CITIES.find(c => contextText.includes(c)) : undefined;
-  const city = cityInHint ? "" : cityInContext ? ` ${cityInContext}` : " גבעתיים";
+  const detectedCity = cityInHint ?? cityInContext;
+  const proximity = detectedCity ? CITY_CENTERS[detectedCity] : CITY_CENTERS["גבעתיים"];
   console.log(
     "[geocodeHint]",
-    cityInHint ? `city already in hint "${addressHint}"` :
-    cityInContext ? `hint lacked a city — using "${cityInContext}" found in raw message text` :
-    `no city in hint or raw text — defaulting to גבעתיים (may be wrong)`,
+    cityInHint ? `city "${cityInHint}" already in hint "${addressHint}"` :
+    cityInContext ? `hint lacked a city — biasing toward "${cityInContext}" found in raw message text` :
+    `no city in hint or raw text — biasing toward גבעתיים (default, may still be wrong)`,
   );
   const errors: string[] = [];
 
-  // Address-first, with or without a house number.
+  // Address-first, with or without a house number — Mapbox can resolve a
+  // bare street name to a point on it, and doesn't need the business name.
   try {
-    const result = await nominatimSearch(`${addressHint}${city} ישראל`);
+    const result = await mapboxSearch(addressHint, proximity);
     if (result) return result;
   } catch (e: any) {
     errors.push(e?.message ?? String(e));
@@ -83,7 +141,7 @@ export async function geocodeHint(
 
   // Fallback: include business name (useful when hint is a neighbourhood / landmark)
   try {
-    return await nominatimSearch(`${placeName} ${addressHint}${city} ישראל`);
+    return await mapboxSearch(`${placeName} ${addressHint}`, proximity);
   } catch (e: any) {
     errors.push(e?.message ?? String(e));
     // Both attempts failed with a real error (not a clean empty match) —
@@ -93,8 +151,23 @@ export async function geocodeHint(
   }
 }
 
+// Reject a hint if it contains a number that doesn't appear anywhere in the
+// source text — house numbers are exactly the kind of concrete fact a model
+// fabricates when normalizing/summarizing rather than genuinely extracting.
+// Confirmed on 2026-08-07: gpt-4o-mini invented "כצנלסון 94" from text that
+// only said "בכצנלסון" (no number at all), and invented a full unrelated
+// address "שדרות ירושלים 13 רמת גן" for a message that never mentioned any
+// street, number, or city (it only said "מול רולדין... בקניון"). Both
+// fabricated numbers/strings were echoes of literal examples that had been
+// placed in the extraction prompt — see extractAddressFromText.
+function hintLooksFabricated(hint: string, sourceText: string): boolean {
+  const hintNumbers = hint.match(/\d+/g) ?? [];
+  return hintNumbers.some(n => !sourceText.includes(n));
+}
+
 // Ask the LLM to extract a street/neighborhood/city from a WhatsApp message.
-// Returns the raw address string, or null if the LLM genuinely found none.
+// Returns the raw address string, or null if the LLM genuinely found none —
+// including when it found something but hintLooksFabricated() rejected it.
 // Throws (does NOT return null) on a request/API failure — callers must not
 // treat a failed call the same as "no address mentioned": doing so previously
 // caused an OpenAI rate-limit burst to silently mark real addresses as
@@ -108,11 +181,11 @@ export async function extractAddressFromText(
   const prompt = `המלצה מוואטסאפ על "${placeName}":
 ${text}
 
-אם ההמלצה מזכירה כתובת, רחוב, שכונה, או עיר — כתוב אותה כמחרוזת קצרה, בצורה שמנוע חיפוש גיאוגרפי (כמו OpenStreetMap) יוכל למצוא בוודאות.
-נרמל את הכתובת: הסר אותיות יחס דבוקות בתחילת שם הרחוב (למשל "בשינקין 94" → "שינקין 94", "לרוטשילד" → "רוטשילד"), והשאר רק את שם הרחוב/שכונה/עיר והמספר, בלי מילות תיאור מסביב (למשל "מקבלת ברחוב הרצל 10 בבניין הכתום" → "הרצל 10").
-חשוב: אם ההמלצה מזכירה עיר במפורש (למשל "ברמת גן", "בתל אביב") — חובה לשמור את שם העיר במחרוזת שאתה מחזיר, גם אחרי הנרמול (למשל "ברמת גן. שדרות ירושלים 13" → "שדרות ירושלים 13 רמת גן", לא רק "שדרות ירושלים 13"). אל תשמיט עיר שצוינה במפורש.
-אם אין שום ציון מיקום — החזר null.
-החזר רק את הכתובת המנורמלת או המילה null, ללא הסברים נוספים.`;
+אם ההמלצה מזכירה כתובת, רחוב, שכונה, או עיר — כתוב אותה כמחרוזת קצרה.
+אסור בהחלט להמציא, לנחש או להוסיף פרטים שלא מופיעים במפורש בטקסט למעלה — לא מספר בית, לא שם רחוב, ולא עיר. אם חלק מהכתובת חסר (למשל אין מספר בית, או לא צוינה עיר) — פשוט השאר אותו חסר, אל תמלא אותו מהידע הכללי שלך.
+אפשר לנרמל רק דברים שכן כתובים בטקסט: הסר אותיות יחס דבוקות בתחילת שם רחוב שכן מופיע בטקסט (למשל אם כתוב "בדיזנגוף" תחזיר "דיזנגוף"), והשאר רק את הרחוב/שכונה/עיר והמספר שבאמת נכתבו, בלי מילות תיאור מסביב.
+אם אין שום ציון מיקום בטקסט — החזר null.
+החזר רק את הכתובת או המילה null, ללא הסברים נוספים.`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -132,5 +205,9 @@ ${text}
   const data = await res.json();
   const raw = String(data?.choices?.[0]?.message?.content ?? "").trim();
   if (!raw || raw.toLowerCase() === "null" || raw === "—") return null;
+  if (hintLooksFabricated(raw, text)) {
+    console.log(`[extractAddressFromText] rejecting likely-fabricated hint "${raw}" — a number in it doesn't appear in the source text`);
+    return null;
+  }
   return raw;
 }

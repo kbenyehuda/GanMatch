@@ -153,6 +153,13 @@ export async function POST(req: Request) {
     let hint: string | null = row.address_hint ?? null;
     let extractionFailed = false;
 
+    // Raw message text — used both as the LLM extraction source AND as a
+    // fallback city-detection signal for geocodeHint (see its doc comment).
+    const textToSearch = [
+      ...(Array.isArray(row.source_messages) ? row.source_messages : []),
+      row.recommendation_text ?? "",
+    ].join("\n").trim();
+
     // No stored coords and no address hint yet — ask the LLM to find one in the
     // WhatsApp text itself before falling back to "no location". This mirrors
     // the retroactive-geocode endpoint's logic so approvals never silently
@@ -162,17 +169,11 @@ export async function POST(req: Request) {
     // staging row gets wrongly marked as permanently unresolvable (2026-08-07 bug).
     if (!(row.lat && row.lon) && !hint) {
       const { OPENAI_API_KEY: openaiKeyForAddr } = serverEnv;
-      if (openaiKeyForAddr) {
-        const textToSearch = [
-          ...(Array.isArray(row.source_messages) ? row.source_messages : []),
-          row.recommendation_text ?? "",
-        ].join("\n").trim();
-        if (textToSearch) {
-          try {
-            hint = await extractAddressFromText(textToSearch, row.place_name, openaiKeyForAddr);
-          } catch {
-            extractionFailed = true;
-          }
+      if (openaiKeyForAddr && textToSearch) {
+        try {
+          hint = await extractAddressFromText(textToSearch, row.place_name, openaiKeyForAddr);
+        } catch {
+          extractionFailed = true;
         }
       }
     }
@@ -180,7 +181,7 @@ export async function POST(req: Request) {
     const coords = (row.lat && row.lon)
       ? { lat: row.lat as number, lon: row.lon as number }
       : hint
-        ? await geocodeHint(row.place_name, hint)
+        ? await geocodeHint(row.place_name, hint, textToSearch)
         : null;
 
     const { data: newPlaceId, error: placeErr } = await admin.rpc("insert_community_place", {
