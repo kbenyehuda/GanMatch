@@ -9,17 +9,33 @@ export const KNOWN_CITIES = [
   "קריית אונו", "אור יהודה", "בני ברק", "פתח-תקווה",
 ];
 
+// Throws on a real request failure (bad status, network error, timeout) —
+// callers must not treat that the same as "genuinely no match" (same bug
+// class as extractAddressFromText: a Nominatim rate-limit/block on the
+// server's IP would otherwise look identical to an empty search result).
 async function nominatimSearch(q: string): Promise<{ lat: number; lon: number } | null> {
+  const log = (...args: unknown[]) => console.log("[nominatimSearch]", ...args);
+  let res: Response;
   try {
-    const res = await fetch(
+    res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=il`,
       { headers: { "User-Agent": "GiveMytime-PlacesImport/1.0" }, signal: AbortSignal.timeout(8000) },
     );
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
-      return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-    }
-  } catch { /* fall through */ }
+  } catch (e: any) {
+    log(`request failed for "${q}":`, e?.message ?? String(e));
+    throw new Error(`Nominatim request failed: ${e?.message ?? String(e)}`);
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    log(`non-OK status ${res.status} for "${q}":`, body.slice(0, 300));
+    throw new Error(`Nominatim search failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  if (Array.isArray(data) && data.length > 0) {
+    log(`match for "${q}": ${data[0].lat},${data[0].lon}`);
+    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  }
+  log(`no match for "${q}" (empty result, status ${res.status})`);
   return null;
 }
 
@@ -37,15 +53,28 @@ export async function geocodeHint(
   const cityInHint = KNOWN_CITIES.some(c => addressHint.includes(c));
   const city = cityInHint ? "" : " גבעתיים";
   const hintHasNumber = /\d/.test(addressHint);
+  const errors: string[] = [];
 
   if (hintHasNumber) {
     // Address-first: try without the business name
-    const result = await nominatimSearch(`${addressHint}${city} ישראל`);
-    if (result) return result;
+    try {
+      const result = await nominatimSearch(`${addressHint}${city} ישראל`);
+      if (result) return result;
+    } catch (e: any) {
+      errors.push(e?.message ?? String(e));
+    }
   }
 
   // Fallback: include business name (useful when hint is a neighbourhood / landmark)
-  return nominatimSearch(`${placeName} ${addressHint}${city} ישראל`);
+  try {
+    return await nominatimSearch(`${placeName} ${addressHint}${city} ישראל`);
+  } catch (e: any) {
+    errors.push(e?.message ?? String(e));
+    // Both attempts failed with a real error (not a clean empty match) —
+    // this must propagate so the caller retries the row instead of
+    // permanently marking it "no address found".
+    throw new Error(`geocodeHint failed for "${addressHint}": ${errors.join(" | ")}`);
+  }
 }
 
 // Ask the LLM to extract a street/neighborhood/city from a WhatsApp message.
@@ -63,9 +92,10 @@ export async function extractAddressFromText(
   const prompt = `המלצה מוואטסאפ על "${placeName}":
 ${text}
 
-אם ההמלצה מזכירה כתובת, רחוב, שכונה, או עיר — כתוב אותה בדיוק כפי שהיא, כמחרוזת קצרה.
+אם ההמלצה מזכירה כתובת, רחוב, שכונה, או עיר — כתוב אותה כמחרוזת קצרה, בצורה שמנוע חיפוש גיאוגרפי (כמו OpenStreetMap) יוכל למצוא בוודאות.
+נרמל את הכתובת: הסר אותיות יחס דבוקות בתחילת שם הרחוב (למשל "בשינקין 94" → "שינקין 94", "לרוטשילד" → "רוטשילד"), והשאר רק את שם הרחוב/שכונה/עיר והמספר, בלי מילות תיאור מסביב (למשל "מקבלת ברחוב הרצל 10 בבניין הכתום" → "הרצל 10").
 אם אין שום ציון מיקום — החזר null.
-החזר רק את הכתובת או המילה null, ללא הסברים נוספים.`;
+החזר רק את הכתובת המנורמלת או המילה null, ללא הסברים נוספים.`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
