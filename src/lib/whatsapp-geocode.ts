@@ -39,30 +39,46 @@ async function nominatimSearch(q: string): Promise<{ lat: number; lon: number } 
   return null;
 }
 
-// Geocode an address hint.  When no city is detected in the hint, "גבעתיים"
-// is appended as the default city.  Returns null if geocoding fails.
+// Geocode an address hint.  When no city is detected, "גבעתיים" is appended
+// as a default-city guess.  Returns null if geocoding fails.
 //
-// Strategy: when the hint looks like a street address (contains a digit),
-// geocode the address alone first — Nominatim doesn't know business names and
-// including them hurts accuracy.  Fall back to a business-name query only if
-// the address-only attempt returns nothing.
+// City detection checks both the trimmed hint AND the original message text
+// (`contextText`) — the LLM extraction step can drop an explicitly-mentioned
+// city while normalizing the address (e.g. "ברמת גן. שדרות ירושלים 13" →
+// "שדרות ירושלים 13"), and without this fallback the code would then default
+// to "גבעתיים", producing a confident but WRONG match on a same-named street
+// in an unrelated city instead of a clean "not found" (discovered 2026-08-07,
+// see project_launch_readiness memory — בת חן ספרית geocoded to a Holon
+// street of the same name after its "ברמת גן" got dropped).
+//
+// Strategy: always geocode the address alone first — Nominatim doesn't know
+// business names and including them hurts accuracy, and it can usually
+// resolve a bare street name to a point on that street even without a house
+// number (better than nothing — a street-level pin beats no pin at all).
+// Fall back to a business-name query only if the address-only attempt
+// returns nothing.
 export async function geocodeHint(
   placeName: string,
   addressHint: string,
+  contextText: string = "",
 ): Promise<{ lat: number; lon: number } | null> {
   const cityInHint = KNOWN_CITIES.some(c => addressHint.includes(c));
-  const city = cityInHint ? "" : " גבעתיים";
-  const hintHasNumber = /\d/.test(addressHint);
+  const cityInContext = !cityInHint ? KNOWN_CITIES.find(c => contextText.includes(c)) : undefined;
+  const city = cityInHint ? "" : cityInContext ? ` ${cityInContext}` : " גבעתיים";
+  console.log(
+    "[geocodeHint]",
+    cityInHint ? `city already in hint "${addressHint}"` :
+    cityInContext ? `hint lacked a city — using "${cityInContext}" found in raw message text` :
+    `no city in hint or raw text — defaulting to גבעתיים (may be wrong)`,
+  );
   const errors: string[] = [];
 
-  if (hintHasNumber) {
-    // Address-first: try without the business name
-    try {
-      const result = await nominatimSearch(`${addressHint}${city} ישראל`);
-      if (result) return result;
-    } catch (e: any) {
-      errors.push(e?.message ?? String(e));
-    }
+  // Address-first, with or without a house number.
+  try {
+    const result = await nominatimSearch(`${addressHint}${city} ישראל`);
+    if (result) return result;
+  } catch (e: any) {
+    errors.push(e?.message ?? String(e));
   }
 
   // Fallback: include business name (useful when hint is a neighbourhood / landmark)
@@ -94,6 +110,7 @@ ${text}
 
 אם ההמלצה מזכירה כתובת, רחוב, שכונה, או עיר — כתוב אותה כמחרוזת קצרה, בצורה שמנוע חיפוש גיאוגרפי (כמו OpenStreetMap) יוכל למצוא בוודאות.
 נרמל את הכתובת: הסר אותיות יחס דבוקות בתחילת שם הרחוב (למשל "בשינקין 94" → "שינקין 94", "לרוטשילד" → "רוטשילד"), והשאר רק את שם הרחוב/שכונה/עיר והמספר, בלי מילות תיאור מסביב (למשל "מקבלת ברחוב הרצל 10 בבניין הכתום" → "הרצל 10").
+חשוב: אם ההמלצה מזכירה עיר במפורש (למשל "ברמת גן", "בתל אביב") — חובה לשמור את שם העיר במחרוזת שאתה מחזיר, גם אחרי הנרמול (למשל "ברמת גן. שדרות ירושלים 13" → "שדרות ירושלים 13 רמת גן", לא רק "שדרות ירושלים 13"). אל תשמיט עיר שצוינה במפורש.
 אם אין שום ציון מיקום — החזר null.
 החזר רק את הכתובת המנורמלת או המילה null, ללא הסברים נוספים.`;
 

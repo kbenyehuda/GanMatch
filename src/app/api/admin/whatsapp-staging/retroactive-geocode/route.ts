@@ -91,17 +91,21 @@ export async function POST(req: Request) {
       let hint: string | null = row.address_hint ?? null;
       if (hint) log(`row ${row.id}: using existing address_hint "${hint}"`);
 
+      // Raw message text — used both as the LLM extraction source AND as a
+      // fallback city-detection signal for geocodeHint (the LLM's trimmed
+      // hint can drop an explicitly-mentioned city; see geocodeHint's
+      // contextText param).
+      const textToSearch = [
+        ...(Array.isArray(row.source_messages) ? row.source_messages : []),
+        row.recommendation_text ?? "",
+      ].join("\n").trim();
+
       // 2. If no hint, ask LLM to extract one from the recommendation text.
       // extractAddressFromText throws on a real API failure (e.g. rate limit)
       // instead of returning null — a thrown error must NOT be treated as
       // "no address found" (that bug previously nulled out real addresses
       // during a rate-limited burst — see project_ui_polish_backlog memory).
       if (!hint) {
-        const textToSearch = [
-          ...(Array.isArray(row.source_messages) ? row.source_messages : []),
-          row.recommendation_text ?? "",
-        ].join("\n").trim();
-
         if (textToSearch) {
           log(`row ${row.id}: calling LLM to extract address from text`);
           hint = await extractAddressFromText(textToSearch, row.place_name as string, openaiKey);
@@ -114,7 +118,7 @@ export async function POST(req: Request) {
       if (hint) {
         // 3. Geocode the hint
         log(`row ${row.id}: geocoding "${hint}"`);
-        const coords = await geocodeHint(row.place_name as string, hint);
+        const coords = await geocodeHint(row.place_name as string, hint, textToSearch);
         if (coords) {
           log(`row ${row.id}: geocoded to ${coords.lat},${coords.lon} — writing to places + staging`);
           const { error: rpcErr } = await admin.rpc("update_place_location", { p_id: placeId, p_lat: coords.lat, p_lon: coords.lon });
