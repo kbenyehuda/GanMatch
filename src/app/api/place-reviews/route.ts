@@ -96,6 +96,19 @@ export async function POST(req: NextRequest) {
       ? String((body as Record<string, unknown>).reviewer_public_name).trim() || null
       : null;
 
+  // Optional community-sourced kids attributes — anyone with access can fill in
+  // gaps the app already knows how to store (price, vacancy) via their review.
+  const rawPrice = (body as Record<string, unknown>)?.monthly_price_nis;
+  const monthlyPriceNis =
+    typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0 && rawPrice <= 30000
+      ? rawPrice
+      : null;
+  const rawVacancy = (body as Record<string, unknown>)?.vacancy_status;
+  const vacancyStatus =
+    typeof rawVacancy === "string" && ["Available", "Limited", "Full"].includes(rawVacancy)
+      ? rawVacancy
+      : null;
+
   if (!placeId) {
     return NextResponse.json({ error: "Missing place_id" }, { status: 400 });
   }
@@ -140,6 +153,16 @@ export async function POST(req: NextRequest) {
       { error: insertErr?.message ?? "Failed to submit review" },
       { status: 500 }
     );
+  }
+
+  // Fold in any community-sourced attributes the reviewer supplied. Best-effort:
+  // a failure here shouldn't fail the review submission that already succeeded.
+  if (monthlyPriceNis != null || vacancyStatus != null) {
+    const { data: existingPlace } = await admin.from("places").select("attributes").eq("id", placeId).single();
+    const attrs = { ...((existingPlace?.attributes as Record<string, unknown>) ?? {}) };
+    if (monthlyPriceNis != null) attrs.monthly_price_nis = monthlyPriceNis;
+    if (vacancyStatus != null) attrs.vacancy_status = vacancyStatus;
+    await admin.from("places").update({ attributes: attrs, updated_at: new Date().toISOString() }).eq("id", placeId);
   }
 
   return NextResponse.json({ success: true, id: inserted.id });

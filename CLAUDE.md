@@ -6,6 +6,12 @@ Israeli kindergarten/daycare discovery platform. Parents find and compare ganim 
 
 ---
 
+## Ask before acting
+
+**Do not run any action — Supabase MCP tools (migrations, SQL writes, pause/restore project, branches, etc.), destructive git commands, deployments, or any other state-changing operation — without asking the user first and getting explicit confirmation, every time.** This holds even mid-task, even for steps that seem obviously implied by what was just discussed. Read-only lookups (reading files, listing tables, `git status`) are fine without asking.
+
+---
+
 ## Active Categories (as of 2026-05-23)
 
 Only **3 categories** are shown in the UI right now: `kids`, `doctor`, `cosmetics`.

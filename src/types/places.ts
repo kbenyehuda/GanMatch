@@ -14,15 +14,13 @@ export type PlaceCategory =
   | "food"
   | "cosmetics";
 
+// Must mirror the neighborhood_givatayim Postgres enum exactly.
 export type NeighborhoodGivatayim =
   | "BOROCHOV"
+  | "RAMBAM"
+  | "SIRKIN"
   | "ARLOZOROV"
-  | "GIVAT_RAMBAM"
-  | "KIRYAT_YOSEF"
-  | "SHEINKIN"
-  | "KOZLOVSKY"
-  | "HATEKUMA"
-  | "BEN_GURION";
+  | "GIVAT_RAMBAM";
 
 export type KosherStatus = "CERTIFIED" | "NOT_CERTIFIED" | "UNKNOWN";
 
@@ -103,8 +101,8 @@ export interface Place {
   rec_count: number;
   is_verified: boolean;
   source: "community" | "migrated_ganmatch";
-  lat: number;
-  lon: number;
+  lat: number | null;
+  lon: number | null;
 }
 
 // =============================================================================
@@ -148,13 +146,10 @@ export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
 
 export const NEIGHBORHOOD_LABELS: Record<NeighborhoodGivatayim, string> = {
   BOROCHOV: "בורוכוב",
+  RAMBAM: "רמב\"ם",
+  SIRKIN: "סירקין",
   ARLOZOROV: "ארלוזורוב",
   GIVAT_RAMBAM: "גבעת רמב\"ם",
-  KIRYAT_YOSEF: "קריית יוסף",
-  SHEINKIN: "שינקין",
-  KOZLOVSKY: "קוזלובסקי",
-  HATEKUMA: "התקומה",
-  BEN_GURION: "בן גוריון",
 };
 
 export const HMO_LABELS: Record<string, string> = {

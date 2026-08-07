@@ -222,7 +222,7 @@ export function MapContainer({
     const map = mapRef.current;
     if (!map) return;
     const place = places.find((p) => p.id === selectedPlaceId);
-    if (!place || !isFinite(place.lon) || !isFinite(place.lat)) return;
+    if (!place || place.lon == null || place.lat == null) return;
     lastPannedPlaceId.current = selectedPlaceId;
     const currentZoom = map.getZoom?.() ?? DEFAULT_VIEW.zoom;
     map.easeTo({
@@ -276,7 +276,7 @@ export function MapContainer({
     const sc = new Supercluster<PlacePointProps>({ radius: 60, maxZoom: 18 });
     sc.load(
       places
-        .filter((p) => isFinite(p.lat) && isFinite(p.lon))
+        .filter((p): p is Place & { lat: number; lon: number } => p.lat != null && p.lon != null)
         .map((p) => ({
           type: "Feature" as const,
           properties: { place: p },
@@ -473,7 +473,7 @@ export function MapContainer({
       {selectedPlaceId &&
         (() => {
           const sel = places.find((p) => p.id === selectedPlaceId);
-          if (!sel || !isFinite(sel.lat) || !isFinite(sel.lon)) return null;
+          if (!sel || sel.lat == null || sel.lon == null) return null;
           const inClusters = (clusters as ClusterOrPoint[]).some(
             (c) =>
               !isClusterFeature(c) &&

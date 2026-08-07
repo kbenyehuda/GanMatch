@@ -53,7 +53,7 @@ const HMO_LIST = [
   { id: "leumit",   label: "לאומית", logo: "/hmo/leumit.png"   },
 ];
 
-const ALL_NEIGHBORHOODS: NeighborhoodGivatayim[] = ["BOROCHOV","ARLOZOROV","GIVAT_RAMBAM","KIRYAT_YOSEF","SHEINKIN","KOZLOVSKY","HATEKUMA","BEN_GURION"];
+const ALL_NEIGHBORHOODS: NeighborhoodGivatayim[] = ["BOROCHOV","RAMBAM","SIRKIN","ARLOZOROV","GIVAT_RAMBAM"];
 
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,11 @@ function sortPlaces(places: Place[], sort: SortOption, userLoc: { lon: number; l
     case "rating": return arr.sort((a, b) => (b.avg_rating ?? -1) - (a.avg_rating ?? -1));
     case "nearest":
       if (!userLoc) return arr;
-      return arr.sort((a, b) => Math.hypot(a.lat - userLoc.lat, a.lon - userLoc.lon) - Math.hypot(b.lat - userLoc.lat, b.lon - userLoc.lon));
+      return arr.sort((a, b) => {
+        const da = a.lat != null && a.lon != null ? Math.hypot(a.lat - userLoc.lat, a.lon - userLoc.lon) : Infinity;
+        const db = b.lat != null && b.lon != null ? Math.hypot(b.lat - userLoc.lat, b.lon - userLoc.lon) : Infinity;
+        return da - db;
+      });
     case "newest": return arr; // rely on server order
     case "top":
     default: {

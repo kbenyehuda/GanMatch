@@ -67,7 +67,7 @@ function MapPeekSheet({
   const lightColor = lightenHex(color);
 
   const dist = useMemo(() => {
-    if (!userLocation) return null;
+    if (!userLocation || place.lat == null || place.lon == null) return null;
     const R = 6371e3;
     const dLat = ((place.lat - userLocation.lat) * Math.PI) / 180;
     const dLon = ((place.lon - userLocation.lon) * Math.PI) / 180;
@@ -437,7 +437,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   useEffect(() => {
     if (!seedPlace) return;
     addPlace(seedPlace);
-    setFitToAddress({ lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 });
+    if (seedPlace.lon != null && seedPlace.lat != null) {
+      setFitToAddress({ lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 });
+    }
     const t = setTimeout(() => setFitToAddress(null), 700);
     return () => clearTimeout(t);
   }, [seedPlace, addPlace]);
@@ -551,7 +553,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           <MapContainer
             places={filteredPlaces}
             selectedPlaceId={selectedPlace?.id ?? null}
-            initialMapFocus={seedPlace ? { lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 } : null}
+            initialMapFocus={seedPlace?.lon != null && seedPlace?.lat != null ? { lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 } : null}
             fitToAddress={fitToAddress}
             onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); }}
             onSelectCluster={(list) => { setSelectedClusterPlaces(list); setSelectedPlace(null); }}
@@ -690,7 +692,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           <MapContainer
             places={filteredPlaces}
             selectedPlaceId={selectedPlace?.id ?? null}
-            initialMapFocus={seedPlace ? { lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 } : null}
+            initialMapFocus={seedPlace?.lon != null && seedPlace?.lat != null ? { lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 } : null}
             fitToAddress={fitToAddress}
             onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); }}
             onSelectCluster={(list) => { setSelectedClusterPlaces(list); setSelectedPlace(null); }}

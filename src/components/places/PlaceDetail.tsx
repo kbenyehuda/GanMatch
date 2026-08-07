@@ -19,7 +19,7 @@ function lightenColor(hex: string, t = 0.35): string {
 }
 
 function distanceLabel(place: Place, user: { lon: number; lat: number } | null): string | null {
-  if (!user) return null;
+  if (!user || place.lat == null || place.lon == null) return null;
   const R = 6371e3;
   const dLat = ((place.lat - user.lat) * Math.PI) / 180;
   const dLon = ((place.lon - user.lon) * Math.PI) / 180;
@@ -221,6 +221,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const [formText, setFormText] = useState("");
   const [formAnonymous, setFormAnonymous] = useState(true);
   const [formName, setFormName] = useState("");
+  const [formPrice, setFormPrice] = useState("");
+  const [formVacancy, setFormVacancy] = useState<"" | "Available" | "Limited" | "Full">("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -231,10 +233,18 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
     if (!user || !session) return;
     setSubmitting(true); setSubmitError(null);
     try {
+      const priceNis = formPrice.trim() ? Number(formPrice.trim()) : null;
       const res = await fetch("/api/place-reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ place_id: place.id, rating: formRating, text: formText.trim() || null, is_anonymous: formAnonymous, reviewer_public_name: formAnonymous ? null : formName.trim() || null }),
+        body: JSON.stringify({
+          place_id: place.id, rating: formRating, text: formText.trim() || null,
+          is_anonymous: formAnonymous, reviewer_public_name: formAnonymous ? null : formName.trim() || null,
+          ...(place.place_category === "kids" ? {
+            monthly_price_nis: priceNis != null && Number.isFinite(priceNis) && priceNis > 0 ? priceNis : null,
+            vacancy_status: formVacancy || null,
+          } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשליחה");
@@ -243,7 +253,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       onShowToast?.("ההמלצה נשלחה! תודה 🙏");
     } catch (e) { setSubmitError(e instanceof Error ? e.message : "שגיאה בשליחה"); }
     finally { setSubmitting(false); }
-  }, [formRating, formText, formAnonymous, formName, place.id, user, session, loadReviews, onShowToast]);
+  }, [formRating, formText, formAnonymous, formName, formPrice, formVacancy, place.id, place.place_category, user, session, loadReviews, onShowToast]);
 
   // Tags for detail view
   const detailTags: { label: string; style: React.CSSProperties }[] = [
@@ -414,11 +424,39 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             </div>
           )}
 
+          {/* Specialty (doctor / cosmetics) */}
+          {(place.place_category === "doctor" || place.place_category === "cosmetics") && (
+            <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
+              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>תחום התמחות</span>
+              {attrs.specialty ? (
+                <span className="font-hebrew font-semibold" style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>{String(attrs.specialty)}</span>
+              ) : (
+                <p className="font-hebrew" style={{ fontSize: 11.5, color: "#8A95A8", lineHeight: 1.5 }}>
+                  עדיין אין לנו מידע על תחום ההתמחות — ספרו לנו בביקורת.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Kids attrs */}
-          {place.place_category === "kids" && Object.keys(attrs).length > 0 && (
+          {place.place_category === "kids" && (
             <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
               <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>פרטים נוספים</span>
-              <KidsAttributeChips attrs={attrs} />
+              {Object.keys(attrs).length > 0 && <KidsAttributeChips attrs={attrs} />}
+              {(() => {
+                const missing: string[] = [];
+                if (attrs.monthly_price_nis == null) missing.push("מחיר");
+                if (attrs.vacancy_status == null || attrs.vacancy_status === "UNKNOWN") missing.push("מקום פנוי");
+                if (attrs.min_age_months == null) missing.push("טווח גילאים");
+                if (!missing.length) return null;
+                return (
+                  <button type="button" onClick={() => { setShowForm(true); }}
+                    className="font-hebrew text-start w-full"
+                    style={{ marginTop: 8, fontSize: 11.5, color: "#8A95A8", background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
+                    עדיין אין לנו מידע על: {missing.join(", ")} — האפליקציה יודעת לשמור את זה, רק צריך שמישהו יעדכן. <span style={{ color: "#1F5BB5", fontWeight: 700 }}>עזרו לנו למלא ←</span>
+                  </button>
+                );
+              })()}
             </div>
           )}
 
@@ -476,6 +514,25 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 <textarea value={formText} onChange={e => setFormText(e.target.value)}
                   placeholder="שתף/י את הניסיון שלך..." rows={3} className="w-full font-hebrew text-sm resize-none"
                   style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 12, padding: "10px 12px", outline: "none", color: "#0F1A2E", lineHeight: 1.6, width: "100%", boxSizing: "border-box" }} />
+                {place.place_category === "kids" && (
+                  <div className="mt-2 p-2.5 rounded-xl" style={{ background: "#fff", border: "1px dashed #C5CDD8" }}>
+                    <p className="font-hebrew text-xs mb-2" style={{ color: "#8A95A8", fontWeight: 600 }}>
+                      יודע/ת מחיר או האם יש מקום פנוי? עוזר לכולם — לגמרי אופציונלי:
+                    </p>
+                    <div className="flex gap-2">
+                      <input type="number" inputMode="numeric" min={0} value={formPrice} onChange={e => setFormPrice(e.target.value)}
+                        placeholder="מחיר חודשי (₪)" className="flex-1 font-hebrew text-sm"
+                        style={{ background: "#F6F9FE", border: "1px solid #E5E9F0", borderRadius: 10, padding: "8px 10px", outline: "none", minWidth: 0 }} />
+                      <select value={formVacancy} onChange={e => setFormVacancy(e.target.value as typeof formVacancy)}
+                        className="flex-1 font-hebrew text-sm" style={{ background: "#F6F9FE", border: "1px solid #E5E9F0", borderRadius: 10, padding: "8px 10px", outline: "none", minWidth: 0 }}>
+                        <option value="">מקום פנוי — לא ידוע</option>
+                        <option value="Available">יש מקום</option>
+                        <option value="Limited">מקומות מוגבלים</option>
+                        <option value="Full">מלא</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
                 <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
                   <input type="checkbox" checked={formAnonymous} onChange={e => setFormAnonymous(e.target.checked)} style={{ accentColor: "#0A2B6B" }} />
                   <span className="font-hebrew text-xs" style={{ color: "#4A5568" }}>שלח/י באנונימיות</span>
@@ -520,13 +577,21 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         style={{ padding: "14px 18px calc(22px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)", zIndex: 6 }}
       >
         {/* Directions */}
-        <button type="button"
-          onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lon}`, "_blank")}
-          className="flex-1 flex items-center justify-center gap-2 font-hebrew font-bold"
-          style={{ padding: 14, borderRadius: 16, background: "#0A2B6B", color: "#fff", fontSize: 14, border: "none", cursor: "pointer", boxShadow: "0 10px 22px rgba(10,43,107,.3)" }}>
-          <Navigation style={{ width: 16, height: 16 }} />
-          ניווט
-        </button>
+        {place.lat != null && place.lon != null ? (
+          <button type="button"
+            onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lon}`, "_blank")}
+            className="flex-1 flex items-center justify-center gap-2 font-hebrew font-bold"
+            style={{ padding: 14, borderRadius: 16, background: "#0A2B6B", color: "#fff", fontSize: 14, border: "none", cursor: "pointer", boxShadow: "0 10px 22px rgba(10,43,107,.3)" }}>
+            <Navigation style={{ width: 16, height: 16 }} />
+            ניווט
+          </button>
+        ) : (
+          <div className="flex-1 flex items-center justify-center gap-2 font-hebrew"
+            style={{ padding: 14, borderRadius: 16, background: "#F0F3F8", color: "#8A95A8", fontSize: 14, border: "1px solid #E5E9F0" }}>
+            <MapPin style={{ width: 16, height: 16 }} />
+            אין מיקום
+          </div>
+        )}
         {/* Call */}
         {place.phone?.[0] && (
           <a href={`tel:${place.phone[0]}`}

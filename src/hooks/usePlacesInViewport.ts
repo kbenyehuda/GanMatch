@@ -94,7 +94,7 @@ export function usePlacesInViewport(
         return Array.from(byId.values()).filter(
           (p) =>
             (preservePlaceIds?.has(p.id) ?? false) ||
-            pointInBounds(p.lon, p.lat, bounds)
+            (p.lon != null && p.lat != null && pointInBounds(p.lon, p.lat, bounds))
         );
       });
     },
@@ -131,7 +131,7 @@ export function usePlacesInViewport(
 
       if (cached && !(cacheMayBeIncomplete && boundsMuchSmaller)) {
         const inView = cached.places.filter((p) =>
-          pointInBounds(p.lon, p.lat, bounds)
+          p.lon != null && p.lat != null && pointInBounds(p.lon, p.lat, bounds)
         );
         applyDelta(inView, bounds);
         prevCenterRef.current = { lon: centerLon, lat: centerLat };

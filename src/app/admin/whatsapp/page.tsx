@@ -218,6 +218,8 @@ export default function WhatsAppStagingPage() {
   const [summaryErrorById, setSummaryErrorById] = useState<Record<string, string>>({});
   const [batchSummarizing, setBatchSummarizing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
+  const [retroGeocoding, setRetroGeocoding] = useState(false);
+  const [retroProgress, setRetroProgress] = useState<{ processed: number; remaining: number } | null>(null);
   const [ratingById, setRatingById] = useState<Record<string, number>>({});
   const [tagsById, setTagsById] = useState<Record<string, string>>({});
 
@@ -433,6 +435,34 @@ export default function WhatsAppStagingPage() {
     }
   }, [categoryFilter, getToken, loadItems, loadTaxonomy]);
 
+  const runRetroGeocode = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    setRetroGeocoding(true);
+    setRetroProgress(null);
+    setError(null);
+    try {
+      let totalProcessed = 0;
+      while (true) {
+        const res = await fetch("/api/admin/whatsapp-staging/retroactive-geocode", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ limit: 20 }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error ?? "Retroactive geocode failed");
+        totalProcessed += data.processed ?? 0;
+        setRetroProgress({ processed: totalProcessed, remaining: data.remaining ?? 0 });
+        if (data.done || !data.processed) break;
+      }
+      await loadItems();
+    } catch (e: any) {
+      setError(e?.message ?? "Retroactive geocode failed");
+    } finally {
+      setRetroGeocoding(false);
+    }
+  }, [getToken, loadItems]);
+
   const toggleHmo = useCallback(async (id: string, hmo: string, currentHmo: string[]) => {
     const next = currentHmo.includes(hmo)
       ? currentHmo.filter(h => h !== hmo)
@@ -636,11 +666,20 @@ export default function WhatsAppStagingPage() {
           </button>
         )}
         {status === "approved" && (
-          <button onClick={summarizeAllMissing} disabled={batchSummarizing}
-            className="px-3 py-1.5 rounded border text-sm bg-indigo-50 border-indigo-300 text-indigo-800 disabled:opacity-50 mr-auto"
-            title="מסכם רק רשומות שאושרו ועוד אין להן סיכום — לא נוגע ברשומות שמחכות לאישור">
-            {batchSummarizing ? `✨ מסכם... (${batchProgress})` : "✨ סכם הכל (מאושרות ללא סיכום)"}
-          </button>
+          <>
+            <button onClick={summarizeAllMissing} disabled={batchSummarizing}
+              className="px-3 py-1.5 rounded border text-sm bg-indigo-50 border-indigo-300 text-indigo-800 disabled:opacity-50 mr-auto"
+              title="מסכם רק רשומות שאושרו ועוד אין להן סיכום — לא נוגע ברשומות שמחכות לאישור">
+              {batchSummarizing ? `✨ מסכם... (${batchProgress})` : "✨ סכם הכל (מאושרות ללא סיכום)"}
+            </button>
+            <button onClick={runRetroGeocode} disabled={retroGeocoding}
+              className="px-3 py-1.5 rounded border text-sm bg-emerald-50 border-emerald-300 text-emerald-800 disabled:opacity-50"
+              title="מוצא כתובות מטקסט ההמלצות שאושרו ומגדיר מיקום נכון — מסמן 'אין מיקום' כשלא נמצאה כתובת">
+              {retroGeocoding
+                ? `📍 מעדכן מיקומים... (${retroProgress?.processed ?? 0} עובד, ${retroProgress?.remaining ?? "?"} נותרו)`
+                : "📍 תקן מיקומים (רטרואקטיבי)"}
+            </button>
+          </>
         )}
       </div>
 

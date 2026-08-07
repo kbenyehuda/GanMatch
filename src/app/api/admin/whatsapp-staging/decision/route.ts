@@ -3,22 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { summarizeRecommendation, getCategoryTags, recordNewTags, PHONE_REGEX, applyKidsFieldsToPlace, pickKidsStructuredFields, type Rating } from "@/lib/whatsapp-summarize";
+import { geocodeHint, extractAddressFromText } from "@/lib/whatsapp-geocode";
 import * as crypto from "crypto";
-
-const GIVATAYIM = { lat: 32.0702, lon: 34.8117 };
-
-async function geocode(name: string, addressHint: string | null): Promise<{ lat: number; lon: number }> {
-  const q = addressHint || `${name} גבעתיים ישראל`;
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=il`,
-      { headers: { "User-Agent": "GiveMytime-PlacesImport/1.0" }, signal: AbortSignal.timeout(8000) }
-    );
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-  } catch { /* fall through */ }
-  return GIVATAYIM;
-}
 
 function contactEmail(reviewerName: string): string {
   const hash = crypto.createHash("md5").update(reviewerName.trim()).digest("hex").slice(0, 16);
@@ -149,16 +135,37 @@ export async function POST(req: Request) {
   let placeId: string = row.existing_place_id ?? null;
 
   if (!placeId) {
+    let hint: string | null = row.address_hint ?? null;
+
+    // No stored coords and no address hint yet — ask the LLM to find one in the
+    // WhatsApp text itself before falling back to "no location". This mirrors
+    // the retroactive-geocode endpoint's logic so approvals never silently
+    // create a placeless (invisible) pin when the text does mention an address.
+    if (!(row.lat && row.lon) && !hint) {
+      const { OPENAI_API_KEY: openaiKeyForAddr } = serverEnv;
+      if (openaiKeyForAddr) {
+        const textToSearch = [
+          ...(Array.isArray(row.source_messages) ? row.source_messages : []),
+          row.recommendation_text ?? "",
+        ].join("\n").trim();
+        if (textToSearch) {
+          hint = await extractAddressFromText(textToSearch, row.place_name, openaiKeyForAddr);
+        }
+      }
+    }
+
     const coords = (row.lat && row.lon)
-      ? { lat: row.lat, lon: row.lon }
-      : await geocode(row.place_name, row.address_hint);
+      ? { lat: row.lat as number, lon: row.lon as number }
+      : hint
+        ? await geocodeHint(row.place_name, hint)
+        : null;
 
     const { data: newPlaceId, error: placeErr } = await admin.rpc("insert_community_place", {
       p_name:        row.place_name,
       p_category:    row.category,
-      p_lon:         coords.lon,
-      p_lat:         coords.lat,
-      p_address:     row.address_hint ?? null,
+      p_lon:         coords?.lon ?? null,
+      p_lat:         coords?.lat ?? null,
+      p_address:     hint ?? null,
       p_description: null,
       p_phone:       null,
       p_website:     null,
@@ -168,6 +175,18 @@ export async function POST(req: Request) {
     if (placeErr) return NextResponse.json({ error: placeErr.message }, { status: 500 });
 
     placeId = newPlaceId as string;
+
+    // Persist what we learned back onto the staging row: a real hint/coords so
+    // future runs don't redo the LLM call, or the -1 sentinel (matching
+    // retroactive-geocode's convention) when nothing was found, so the
+    // retroactive tool doesn't waste another pass on this row either.
+    if (!(row.lat && row.lon)) {
+      await admin.from("whatsapp_import_staging").update(
+        coords
+          ? { address_hint: hint, lat: coords.lat, lon: coords.lon }
+          : { lat: -1, lon: -1 }
+      ).eq("id", id);
+    }
 
     // Mark as whatsapp-sourced and carry enrichment fields for new places
     const newPlaceUpdate: Record<string, unknown> = { source: "whatsapp", is_verified: false };
