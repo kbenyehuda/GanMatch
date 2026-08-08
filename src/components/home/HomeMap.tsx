@@ -8,6 +8,7 @@ import { PlaceFeedPanel, FilterSheet } from "@/components/places/PlaceFeedPanel"
 import { PlaceDetail } from "@/components/places/PlaceDetail";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { AddPlaceModal } from "@/components/places/AddPlaceModal";
+import { RequestLocationChangeModal } from "@/components/places/RequestLocationChangeModal";
 import { Toast, useToast } from "@/components/ui/Toast";
 import { usePlacesInViewport } from "@/hooks/usePlacesInViewport";
 import type { Bounds } from "@/lib/places-api";
@@ -379,6 +380,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   const [pickingPin, setPickingPin] = useState(false);
   const [suggestPin, setSuggestPin] = useState<{ lon: number; lat: number } | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [locationRequestPlace, setLocationRequestPlace] = useState<Place | null>(null);
+  const [pickingLocationPin, setPickingLocationPin] = useState(false);
+  const [locationRequestPin, setLocationRequestPin] = useState<{ lon: number; lat: number } | null>(null);
   const [userLocation, setUserLocation] = useState<{ lon: number; lat: number } | null>(null);
 
   // ── Saved places (localStorage) ──────────────────────────────────────────────
@@ -486,6 +490,29 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     setActiveTab("map");
   }, []);
 
+  // Called from inside RequestLocationChangeModal when user wants to pick a pin on the map
+  const handlePickLocationPin = useCallback(() => {
+    setLocationRequestPin(null);
+    setPickingLocationPin(true);
+    setActiveTab("map");
+  }, []);
+
+  const handleMapPinPicked = useCallback(
+    (pos: { lon: number; lat: number }) => {
+      if (pickingPin) {
+        setSuggestPin(pos);
+        setPickingPin(false);
+        setShowAddModal(true);
+        setActiveTab("home");
+      } else if (pickingLocationPin) {
+        setLocationRequestPin(pos);
+        setPickingLocationPin(false);
+        setActiveTab("home");
+      }
+    },
+    [pickingPin, pickingLocationPin]
+  );
+
   const handleBoundsChange = useCallback(
     (bounds: Bounds) => { setCurrentBounds(bounds); onBoundsChange(bounds); },
     [onBoundsChange]
@@ -559,11 +586,11 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             onSelectCluster={(list) => { setSelectedClusterPlaces(list); setSelectedPlace(null); }}
             onBoundsChange={handleBoundsChange}
             loading={placesLoading || placesPending}
-            pendingPin={suggestPin}
-            onMapClick={pickingPin ? (pos) => { setSuggestPin(pos); setPickingPin(false); setShowAddModal(true); } : undefined}
+            pendingPin={suggestPin ?? locationRequestPin}
+            onMapClick={pickingPin || pickingLocationPin ? handleMapPinPicked : undefined}
           />
           {/* Desktop detail: physical right-side overlay */}
-          {(detailPlace || selectedPlace || selectedClusterPlaces) && (
+          {(detailPlace || selectedPlace || selectedClusterPlaces) && !pickingLocationPin && (
             <div
               className="absolute top-4 w-[360px] z-20 overflow-hidden"
               style={{
@@ -581,6 +608,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                     isSaved={savedIds.has(detailPlace.id)}
                     onToggleSave={() => { toggleSave(detailPlace.id); showToast(savedIds.has(detailPlace.id) ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️"); }}
                     onShowToast={showToast}
+                    onRequestLocationChange={(p) => setLocationRequestPlace(p)}
                     userLocation={userLocation}
                   />
                 </div>
@@ -709,8 +737,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             onSelectCluster={(list) => { setSelectedClusterPlaces(list); setSelectedPlace(null); }}
             onBoundsChange={handleBoundsChange}
             loading={placesLoading || placesPending}
-            onMapClick={pickingPin ? (pos) => { setSuggestPin(pos); setPickingPin(false); setShowAddModal(true); setActiveTab("home"); } : undefined}
-            pendingPin={suggestPin}
+            onMapClick={pickingPin || pickingLocationPin ? handleMapPinPicked : undefined}
+            pendingPin={suggestPin ?? locationRequestPin}
           />
 
           {/* Floating category chips over map */}
@@ -818,12 +846,13 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
       </div>
 
       {/* Mobile full-screen PlaceDetail overlay */}
-      {detailPlace && (
+      {detailPlace && !pickingLocationPin && (
         <div className="md:hidden absolute inset-0 z-40 overflow-hidden" style={{ background: "#F6F9FE" }}>
           <PlaceDetail
             place={detailPlace}
             onClose={() => setDetailPlace(null)}
             isSaved={savedIds.has(detailPlace.id)}
+            onRequestLocationChange={(p) => setLocationRequestPlace(p)}
             onToggleSave={() => {
               const wasSaved = savedIds.has(detailPlace.id);
               toggleSave(detailPlace.id);
@@ -836,7 +865,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
       )}
 
       {/* Pin-picking guidance banner */}
-      {pickingPin && (
+      {(pickingPin || pickingLocationPin) && (
         <div
           className="absolute inset-x-4 z-30 pointer-events-none"
           style={{ top: "calc(var(--safe-top, 0px) + 16px)" }}
@@ -853,6 +882,49 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             הקש על המפה כדי לסמן מיקום
           </div>
         </div>
+      )}
+
+      {/* RequestLocationChangeModal — full-screen on mobile, centered card on desktop */}
+      {locationRequestPlace && !pickingLocationPin && (
+        <>
+          {/* Desktop backdrop */}
+          <div
+            className="hidden md:block fixed inset-0 z-50"
+            style={{ background: "rgba(10,43,107,.45)", backdropFilter: "blur(4px)" }}
+            onClick={() => { setLocationRequestPlace(null); setLocationRequestPin(null); }}
+          />
+          {/* Mobile: full screen */}
+          <div className="md:hidden absolute inset-0 z-50 bg-white overflow-hidden">
+            <RequestLocationChangeModal
+              place={locationRequestPlace}
+              initialLocation={locationRequestPin}
+              onClose={() => { setLocationRequestPlace(null); setLocationRequestPin(null); }}
+              onPickPin={handlePickLocationPin}
+              onSuccess={() => {
+                setLocationRequestPlace(null);
+                setLocationRequestPin(null);
+                showToast("הבקשה נשלחה, ממתינה לאישור מנהל 🙏");
+              }}
+            />
+          </div>
+          {/* Desktop: centered card */}
+          <div className="hidden md:flex fixed inset-0 z-50 items-center justify-center pointer-events-none">
+            <div className="pointer-events-auto overflow-hidden"
+              style={{ width: "min(520px, 92vw)", maxHeight: "88dvh", borderRadius: 24, boxShadow: "0 24px 60px rgba(10,43,107,.35)", display: "flex", flexDirection: "column" }}>
+              <RequestLocationChangeModal
+                place={locationRequestPlace}
+                initialLocation={locationRequestPin}
+                onClose={() => { setLocationRequestPlace(null); setLocationRequestPin(null); }}
+                onPickPin={handlePickLocationPin}
+                onSuccess={() => {
+                  setLocationRequestPlace(null);
+                  setLocationRequestPin(null);
+                  showToast("הבקשה נשלחה, ממתינה לאישור מנהל 🙏");
+                }}
+              />
+            </div>
+          </div>
+        </>
       )}
 
       {/* AddPlaceModal — full-screen on mobile, centered card on desktop */}
@@ -1061,6 +1133,7 @@ function ProfileScreen({
             </div>
             <ProfileListCard icon={<Send style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' WhatsApp" sub="אישור המלצות שחולצו מוואטסאפ" onClick={() => (window.location.href = "/admin/whatsapp")} />
             <ProfileListCard icon={<Shield style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' גנים" sub="עריכות והמלצות ממתינות" onClick={() => (window.location.href = "/admin/triage")} />
+            <ProfileListCard icon={<MapPin style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות שינוי מיקום" sub="אישור עדכוני מיקום ממשתמשים" onClick={() => (window.location.href = "/admin/place-location-requests")} />
           </>
         )}
 

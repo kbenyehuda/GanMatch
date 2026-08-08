@@ -171,11 +171,12 @@ export interface PlaceDetailProps {
   onToggleSave?: () => void;
   onShowToast?: (msg: string) => void;
   userLocation?: { lon: number; lat: number } | null;
+  onRequestLocationChange?: (place: Place) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onShowToast, userLocation = null }: PlaceDetailProps) {
+export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onShowToast, userLocation = null, onRequestLocationChange }: PlaceDetailProps) {
   const { user, session } = useSession();
   const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
   const lightColor = lightenColor(color);
@@ -393,12 +394,23 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               </div>
             </a>
           ))}
-          {place.address && (
+          {(place.address || (user && onRequestLocationChange)) && (
             <div className="flex items-start gap-3" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
               <MapPin style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
-              <div>
+              <div className="flex-1">
                 <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700, marginBottom: 2 }}>כתובת</span>
-                <strong className="font-hebrew" style={{ fontSize: 13, fontWeight: 600, color: "#0F1A2E" }}>{place.address}</strong>
+                {place.address ? (
+                  <strong className="font-hebrew" style={{ fontSize: 13, fontWeight: 600, color: "#0F1A2E" }}>{place.address}</strong>
+                ) : (
+                  <span className="font-hebrew" style={{ fontSize: 13, color: "#8A95A8" }}>אין כתובת רשומה</span>
+                )}
+                {user && onRequestLocationChange && (
+                  <button type="button" onClick={() => onRequestLocationChange(place)}
+                    className="font-hebrew font-semibold block"
+                    style={{ marginTop: 4, fontSize: 11.5, color: "#1F5BB5", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+                    המיקום לא מדויק? בקשו עדכון ←
+                  </button>
+                )}
               </div>
             </div>
           )}
