@@ -16,12 +16,14 @@ function isEmailLike(v: string) {
 }
 
 export function ContactReviewerModal({
-  reviewId,
-  ganName,
+  targetId,
+  kind = "gan",
+  placeName,
   onClose,
 }: {
-  reviewId: string;
-  ganName?: string | null;
+  targetId: string;
+  kind?: "gan" | "place";
+  placeName?: string | null;
   onClose: () => void;
 }) {
   const { user, session } = useSession();
@@ -73,7 +75,7 @@ export function ContactReviewerModal({
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ reviewId, senderEmail: email, messageText: msg }),
+        body: JSON.stringify({ targetId, kind, senderEmail: email, messageText: msg }),
       });
       const data = (await res.json().catch(() => null)) as any;
       if (!res.ok) {
@@ -94,7 +96,7 @@ export function ContactReviewerModal({
         <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 pb-2">
           <div className="min-w-0">
             <CardTitle className="font-hebrew text-base">
-              שלח הודעה לממליץ{ganName ? ` על ${ganName}` : ""}
+              שלח הודעה לממליץ{placeName ? ` על ${placeName}` : ""}
             </CardTitle>
             <div className="mt-1 text-xs text-gray-600 font-hebrew">
               הממליץ יקבל אימייל ויוכל להשיב ישירות לאימייל שתכתבו כאן.

@@ -1819,8 +1819,9 @@ export function GanDetail({
       ) : null}
       {contactReviewId ? (
         <ContactReviewerModal
-          reviewId={contactReviewId}
-          ganName={gan.name_he}
+          targetId={contactReviewId}
+          kind="gan"
+          placeName={gan.name_he}
           onClose={() => setContactReviewId(null)}
         />
       ) : null}

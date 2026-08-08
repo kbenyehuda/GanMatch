@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera } from "lucide-react";
+import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail } from "lucide-react";
 import type { Place, PlaceReview, SpokenLanguage } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS, HMO_LABELS,
 } from "@/types/places";
 import { DrumstickIcon, PeanutIcon, getLanguageChar } from "@/components/gan/GanAttributeIcons";
+import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import { useSession } from "@/lib/useSession";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 
@@ -52,7 +53,7 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
 
 const AVA_COLORS = ["#1F5BB5","#E59A2C","#2EA86B","#D86B7D","#9C5BBD"];
 
-function ReviewCard({ review, helpfulIds, onHelpful }: { review: PlaceReview; helpfulIds: Set<string>; onHelpful: (id: string) => void }) {
+function ReviewCard({ review, helpfulIds, onHelpful, currentUserId, onContact }: { review: PlaceReview; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void }) {
   const name = review.reviewer_public_name ?? (review.is_anonymous ? "אנונימי" : "משתמש");
   const initials = name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
   const avaColor = AVA_COLORS[name.charCodeAt(0) % AVA_COLORS.length];
@@ -104,6 +105,13 @@ function ReviewCard({ review, helpfulIds, onHelpful }: { review: PlaceReview; he
           </svg>
           מועיל
         </button>
+        {currentUserId && review.user_id !== currentUserId && review.allow_contact && (
+          <button type="button" onClick={() => onContact(review.id)}
+            className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", fontWeight: 600, fontSize: 11 }}>
+            <Mail style={{ width: 13, height: 13 }} />
+            שליחת הודעה
+          </button>
+        )}
       </div>
     </div>
   );
@@ -190,6 +198,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const [reviews, setReviews] = useState<PlaceReview[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [helpfulIds, setHelpfulIds] = useState<Set<string>>(new Set());
+  const [contactReviewId, setContactReviewId] = useState<string | null>(null);
 
   const loadReviews = useCallback(async () => {
     setReviewsLoading(true);
@@ -512,7 +521,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>היה/י הראשון/ה להמליץ!</p>
               </div>
             ) : (
-              reviews.map(r => <ReviewCard key={r.id} review={r} helpfulIds={helpfulIds} onHelpful={handleHelpful} />)
+              reviews.map(r => <ReviewCard key={r.id} review={r} helpfulIds={helpfulIds} onHelpful={handleHelpful} currentUserId={user?.id ?? null} onContact={setContactReviewId} />)
             )}
 
             {submitSuccess && (
@@ -637,6 +646,15 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           onClose={() => setShowAttrEdit(false)}
           onSaved={(updated) => onPlaceUpdated?.(updated)}
           onShowToast={onShowToast}
+        />
+      )}
+
+      {contactReviewId && (
+        <ContactReviewerModal
+          targetId={contactReviewId}
+          kind="place"
+          placeName={place.name}
+          onClose={() => setContactReviewId(null)}
         />
       )}
     </div>
