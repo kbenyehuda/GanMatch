@@ -12,6 +12,30 @@ const BUILTIN_CATEGORIES: (PlaceCategory | "other")[] = ["doctor", "clinic", "ca
 // Triage-only label overrides — the live app's PLACE_CATEGORY_LABELS stay untouched.
 const TRIAGE_CATEGORY_LABELS: Record<string, string> = { ...PLACE_CATEGORY_LABELS, kids: "ילדים" };
 const CUSTOM_CATS_KEY = "whatsapp_triage_custom_categories";
+
+// address_hint is stored as a small JSON blob (structured he/en address
+// fields — see src/lib/whatsapp-geocode.ts) since 2026-08-07, not a plain
+// string. This client component can't import that server-only module, so it
+// duplicates the tiny bit of formatting logic needed to show it readably
+// instead of dumping raw JSON in the triage list. Falls back to the raw
+// value for pre-existing plain-string hints.
+function formatAddressHintDisplay(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const he = parsed?.he;
+    if (he && typeof he === "object") {
+      const parts: string[] = [];
+      if (he.street) parts.push([he.street, he.houseNumber].filter(Boolean).join(" "));
+      if (he.landmark) parts.push(he.landmark);
+      if (he.city) parts.push(he.city);
+      return parts.join(", ") || null;
+    }
+  } catch {
+    // legacy plain-string hint
+  }
+  return raw;
+}
 const HMO_OPTIONS = ["מכבי", "כללית", "מאוחדת", "לאומית"];
 const HMO_CATEGORIES = new Set(["doctor", "clinic"]);
 
@@ -891,7 +915,7 @@ export default function WhatsAppStagingPage() {
                       </div>
                       <div className="text-xs text-gray-400">
                         {formatMessageDate(item.message_date) ?? `יובא ${formatAge(item.created_at)}`} · {item.source_file ?? "—"}
-                        {item.address_hint && <span> · {item.address_hint}</span>}
+                        {formatAddressHintDisplay(item.address_hint) && <span> · {formatAddressHintDisplay(item.address_hint)}</span>}
                       </div>
                     </div>
                   </div>

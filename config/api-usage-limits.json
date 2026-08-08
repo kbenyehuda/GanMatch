@@ -1,0 +1,23 @@
+{
+  "openai": {
+    "enabled": true,
+    "monthly_budget_usd": 5,
+    "free_calls_per_month": 0,
+    "estimated_cost_per_1000_calls_usd": 0.2,
+    "notes": "gpt-4o-mini WhatsApp address-extraction calls. No free tier. ~$0.0002/call estimated for these short prompts (prices change — verify against your real usage at platform.openai.com/usage and adjust estimated_cost_per_1000_calls_usd if it drifts)."
+  },
+  "mapbox": {
+    "enabled": true,
+    "monthly_budget_usd": 5,
+    "free_calls_per_month": 100000,
+    "estimated_cost_per_1000_calls_usd": 0.75,
+    "notes": "Mapbox Geocoding v5, used for street + landmark lookups. $0.75/1000 requests after 100,000 free/month as of 2026-08-08 — verify current rate at mapbox.com/pricing."
+  },
+  "google_places": {
+    "enabled": false,
+    "monthly_budget_usd": 5,
+    "free_calls_per_month": 800,
+    "estimated_cost_per_1000_calls_usd": 35,
+    "notes": "DISABLED as of 2026-08-08 — every call currently returns 403 PERMISSION_DENIED. The existing GOOGLE_PLACES_API_KEY was provisioned for the legacy Places API (used by scripts/places_import/enrich_google.py), not the newer Places API (New) this integration calls. To re-enable: in Google Cloud Console, enable 'Places API (New)' and confirm billing is active on that key's project, then set enabled to true here. Pricing is an estimate for the Pro-tier Text Search fields this integration requests (location/displayName/formattedAddress/types) — verify the real rate at Google Cloud Console billing once enabled, since Google's field-tier pricing changes and wasn't fully confirmed as of this writing."
+  }
+}

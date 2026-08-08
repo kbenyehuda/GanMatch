@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
-import { geocodeHint, extractAddressFromText } from "@/lib/whatsapp-geocode";
+import { geocodeHint, extractAddressFromText, parseStoredHint, serializeHint, formatHintForDisplay, type BilingualExtractedAddress } from "@/lib/whatsapp-geocode";
 
 // POST /api/admin/whatsapp-staging/retroactive-geocode
 //
@@ -88,8 +88,8 @@ export async function POST(req: Request) {
 
     try {
       // 1. Try existing address_hint first
-      let hint: string | null = row.address_hint ?? null;
-      if (hint) log(`row ${row.id}: using existing address_hint "${hint}"`);
+      let hint: BilingualExtractedAddress | null = parseStoredHint(row.address_hint as string | null);
+      if (hint) log(`row ${row.id}: using existing address_hint "${formatHintForDisplay(hint)}"`);
 
       // Raw message text — used both as the LLM extraction source AND as a
       // fallback city-detection signal for geocodeHint (the LLM's trimmed
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
         if (textToSearch) {
           log(`row ${row.id}: calling LLM to extract address from text`);
           hint = await extractAddressFromText(textToSearch, row.place_name as string, openaiKey);
-          log(`row ${row.id}: LLM returned ${hint ? `"${hint}"` : "no address"}`);
+          log(`row ${row.id}: LLM returned ${hint ? `"${formatHintForDisplay(hint)}"` : "no address"}`);
         } else {
           log(`row ${row.id}: no text to search, skipping LLM`);
         }
@@ -117,7 +117,8 @@ export async function POST(req: Request) {
 
       if (hint) {
         // 3. Geocode the hint
-        log(`row ${row.id}: geocoding "${hint}"`);
+        const display = formatHintForDisplay(hint);
+        log(`row ${row.id}: geocoding "${display}"`);
         const coords = await geocodeHint(row.place_name as string, hint, textToSearch);
         if (coords) {
           log(`row ${row.id}: geocoded to ${coords.lat},${coords.lon} — writing to places + staging`);
@@ -126,14 +127,14 @@ export async function POST(req: Request) {
           // Mark staging row with real coords so it won't be re-fetched next run
           const { error: stagingErr } = await admin
             .from("whatsapp_import_staging")
-            .update({ address_hint: hint, lat: coords.lat, lon: coords.lon })
+            .update({ address_hint: serializeHint(hint), lat: coords.lat, lon: coords.lon })
             .eq("id", row.id);
           if (stagingErr) throw new Error(`staging row update failed: ${stagingErr.message}`);
           log(`row ${row.id}: done — geocoded`);
-          results.push({ id: row.id as string, place_name: row.place_name as string, action: "geocoded", address: hint });
+          results.push({ id: row.id as string, place_name: row.place_name as string, action: "geocoded", address: display });
           continue;
         }
-        log(`row ${row.id}: geocoding "${hint}" returned no result`);
+        log(`row ${row.id}: geocoding "${display}" returned no result`);
       }
 
       // 4. Genuinely nothing found (LLM confirmed no address, or the hint

@@ -44,6 +44,11 @@ export const serverEnv = {
   RESEND_API_KEY: getTrimmed("RESEND_API_KEY"),
   RESEND_FROM_EMAIL: getTrimmed("RESEND_FROM_EMAIL"),
   OPENAI_API_KEY: getTrimmed("OPENAI_API_KEY"),
+  GOOGLE_PLACES_API_KEY: getTrimmed("GOOGLE_PLACES_API_KEY"),
+  // Monthly dollar budgets for paid external API calls (OpenAI, Mapbox,
+  // Google Places) live in config/api-usage-limits.json — a human-edited
+  // file, not env vars, so limits can be tuned without a redeploy. See
+  // src/lib/api-usage.ts.
   ADMIN_EMAILS: csvLowerSet(process.env.ADMIN_EMAILS),
   // Local-dev-only: absolute path to the raw WhatsApp .txt export, used by the
   // triage "open chat context" feature. Not set in production.

@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { summarizeRecommendation, getCategoryTags, recordNewTags, PHONE_REGEX, applyKidsFieldsToPlace, pickKidsStructuredFields, type Rating } from "@/lib/whatsapp-summarize";
-import { geocodeHint, extractAddressFromText } from "@/lib/whatsapp-geocode";
+import { geocodeHint, extractAddressFromText, parseStoredHint, serializeHint, formatHintForDisplay, type BilingualExtractedAddress } from "@/lib/whatsapp-geocode";
 import { findSimilarPlace } from "@/lib/dedupe";
 import * as crypto from "crypto";
 
@@ -150,7 +150,7 @@ export async function POST(req: Request) {
   }
 
   if (!placeId) {
-    let hint: string | null = row.address_hint ?? null;
+    let hint: BilingualExtractedAddress | null = parseStoredHint(row.address_hint as string | null);
     let extractionFailed = false;
 
     // Raw message text — used both as the LLM extraction source AND as a
@@ -189,7 +189,7 @@ export async function POST(req: Request) {
       p_category:    row.category,
       p_lon:         coords?.lon ?? null,
       p_lat:         coords?.lat ?? null,
-      p_address:     hint ?? null,
+      p_address:     hint ? formatHintForDisplay(hint) : null,
       p_description: null,
       p_phone:       null,
       p_website:     null,
@@ -208,8 +208,8 @@ export async function POST(req: Request) {
     // instead of it being wrongly marked unresolvable forever.
     if (!(row.lat && row.lon) && !extractionFailed) {
       await admin.from("whatsapp_import_staging").update(
-        coords
-          ? { address_hint: hint, lat: coords.lat, lon: coords.lon }
+        coords && hint
+          ? { address_hint: serializeHint(hint), lat: coords.lat, lon: coords.lon }
           : { lat: -1, lon: -1 }
       ).eq("id", id);
     }
