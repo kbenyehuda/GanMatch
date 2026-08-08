@@ -302,17 +302,23 @@ function stripInstitutionWords(text) {
 }
 
 async function geocodeSingleLanguage(placeName, extracted, houseNumber, proximity, language, knownCity) {
+  // Defaults to גבעתיים when no city is known, for street AND landmark
+  // queries alike — not just proximity-biasing toward it. Extended to
+  // street queries 2026-08-08: a real batch run found "ארלוזורב" (a real
+  // Givatayim street, no city stated) match an unrelated same-named street
+  // in Tel Aviv instead, since street queries previously had no city hard
+  // filter at all when the city was unknown.
+  const effectiveCity = knownCity ?? "גבעתיים";
+
   const streetQuery = [extracted.street, houseNumber].filter(Boolean).join(" ").trim();
   if (streetQuery) {
-    const result = await tryQueries([streetQuery, `${placeName} ${streetQuery}`], proximity, "address,poi", language, knownCity);
+    const result = await tryQueries([streetQuery, `${placeName} ${streetQuery}`], proximity, "address,poi", language, effectiveCity);
     if (result) return result;
   }
   // Landmarks are institutions/venues — POI only, never widened to
   // address/street type. A same-named street is a coincidence, not a
   // fallback location (see whatsapp-geocode.ts for the Shimoni School
-  // regression this was caught from). Defaults to גבעתיים when no city is
-  // known, rather than only proximity-biasing toward it.
-  const landmarkCity = knownCity ?? "גבעתיים";
+  // regression this was caught from).
   for (const landmark of extracted.landmarks) {
     const stripped = stripLandmarkPrepositions(landmark);
     if (!stripped) continue;
@@ -320,12 +326,12 @@ async function geocodeSingleLanguage(placeName, extracted, houseNumber, proximit
     const bare = stripInstitutionWords(stripped);
     const variants = [...new Set([stripped, expanded, bare].filter(Boolean))];
     for (const variant of variants) {
-      const result = await tryQueries([variant, `${placeName} ${variant}`], proximity, "poi", language, landmarkCity);
+      const result = await tryQueries([variant, `${placeName} ${variant}`], proximity, "poi", language, effectiveCity);
       if (result) return result;
     }
-    const nominatimResult = await tryNominatimQueries(variants, landmarkCity);
+    const nominatimResult = await tryNominatimQueries(variants, effectiveCity);
     if (nominatimResult) return nominatimResult;
-    const googleResult = await tryGooglePlacesQueries(variants, landmarkCity);
+    const googleResult = await tryGooglePlacesQueries(variants, effectiveCity);
     if (googleResult) return googleResult;
   }
   return null;

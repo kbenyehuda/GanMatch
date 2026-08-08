@@ -328,17 +328,22 @@ const GOOGLE_DISALLOWED_TYPES = new Set([
 
 async function googlePlacesSearch(query: string, knownCity: string): Promise<{ lat: number; lon: number } | null> {
   const log = (...args: unknown[]) => console.log("[googlePlacesSearch]", ...args);
-  const apiKey = serverEnv.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) throw new Error("Missing GOOGLE_PLACES_API_KEY");
   // Soft check — Google is the last fallback tier; being disabled or over
   // budget should just mean "nothing from this tier," not an error for the
   // whole row. (As of 2026-08-08 this is disabled in
-  // config/api-usage-limits.json — see that file's notes.)
+  // config/api-usage-limits.json — see that file's notes.) MUST run before
+  // the API-key check below: production never had GOOGLE_PLACES_API_KEY set
+  // (only .env.local did), and checking the key first meant every call threw
+  // "Missing GOOGLE_PLACES_API_KEY" as an error instead of cleanly skipping
+  // via the disabled flag — surfaced as 10 errored rows in a real batch run,
+  // 2026-08-08.
   const usage = await checkApiUsage("google_places");
   if (!usage.allowed) {
     log(`skipping — ${usage.reason}`);
     return null;
   }
+  const apiKey = serverEnv.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) throw new Error("Missing GOOGLE_PLACES_API_KEY");
 
   let res: Response;
   try {
@@ -468,9 +473,21 @@ async function geocodeSingleLanguage(
   language: "he" | "en",
   knownCity?: string,
 ): Promise<{ lat: number; lon: number } | null> {
+  // Hard-filters to the detected city if one exists, otherwise defaults to
+  // גבעתיים (the app's home city) — "look for it in Givatayim, unless the
+  // text says another city" — rather than only proximity-biasing toward it
+  // as `proximity` already does. Applied to street queries too as of
+  // 2026-08-08: a real batch run found "ארלוזורב" (Arlozorov — a real
+  // street in Givatayim, extracted with no city stated) confidently matched
+  // an unrelated same-named street in Tel Aviv instead, because street
+  // queries only had proximity bias, never this hard filter. Same failure
+  // shape as the earlier landmark bugs — a common street name isn't safe to
+  // resolve on relevance/proximity alone when nothing pins down the city.
+  const effectiveCity = knownCity ?? "גבעתיים";
+
   const streetQuery = [extracted.street, houseNumber].filter(Boolean).join(" ").trim();
   if (streetQuery) {
-    const result = await tryQueries([streetQuery, `${placeName} ${streetQuery}`], proximity, "address,poi", language, knownCity);
+    const result = await tryQueries([streetQuery, `${placeName} ${streetQuery}`], proximity, "address,poi", language, effectiveCity);
     if (result) return result;
   }
   // Landmarks are institutions/venues (school, mall, business) — they only
@@ -485,12 +502,6 @@ async function geocodeSingleLanguage(
   // do with the school. A same-named street is a coincidence, not a
   // fallback location for an institution; city-correctness doesn't fix a
   // category mismatch (school ≠ street). Caught by the user, 2026-08-07.
-  //
-  // Anchors to the detected city if one exists, otherwise hard-filters to
-  // גבעתיים (the app's home city) by default — "look for a school in
-  // Givatayim, unless the text says another city" — rather than only
-  // proximity-biasing toward it as `proximity` already does.
-  const landmarkCity = knownCity ?? "גבעתיים";
   for (const landmark of extracted.landmarks) {
     const stripped = stripLandmarkPrepositions(landmark);
     if (!stripped) continue;
@@ -498,15 +509,15 @@ async function geocodeSingleLanguage(
     const bare = stripInstitutionWords(stripped);
     const variants = Array.from(new Set([stripped, expanded, bare].filter(Boolean)));
     for (const variant of variants) {
-      const result = await tryQueries([variant, `${placeName} ${variant}`], proximity, "poi", language, landmarkCity);
+      const result = await tryQueries([variant, `${placeName} ${variant}`], proximity, "poi", language, effectiveCity);
       if (result) return result;
     }
     // Mapbox's POI index has confirmed gaps for small/local Israeli venues
     // (see nominatimSearch's comment) — only tried once Mapbox found
     // nothing for this landmark, with the same city + POI-only rules.
-    const nominatimResult = await tryNominatimQueries(variants, landmarkCity);
+    const nominatimResult = await tryNominatimQueries(variants, effectiveCity);
     if (nominatimResult) return nominatimResult;
-    const googleResult = await tryGooglePlacesQueries(variants, landmarkCity);
+    const googleResult = await tryGooglePlacesQueries(variants, effectiveCity);
     if (googleResult) return googleResult;
   }
   return null;
