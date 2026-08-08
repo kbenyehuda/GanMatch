@@ -173,6 +173,28 @@ function Section({ label, first, children }: { label: string; first?: boolean; c
   );
 }
 
+function CategoryFilterGroup({
+  category, expanded, onToggle, children,
+}: {
+  category: PlaceCategory; expanded: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div style={{ paddingTop: 14 }}>
+      <button type="button" onClick={onToggle}
+        className="w-full flex items-center gap-2"
+        style={{ background: "none", border: "none", padding: "6px 0", cursor: "pointer" }}>
+        <span style={{ fontSize: 16 }}>{CATEGORY_EMOJI[category]}</span>
+        <h4 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, color: PLACE_CATEGORY_COLORS[category] }}>
+          פילטרים נוספים · {PLACE_CATEGORY_LABELS[category]}
+        </h4>
+        <div style={{ flex: 1, height: 1, background: "#E5E9F0" }} />
+        <ChevronDown style={{ width: 16, height: 16, color: "#8A95A8", transform: expanded ? "rotate(180deg)" : undefined, transition: "transform .15s" }} />
+      </button>
+      {expanded && <div style={{ paddingTop: 4 }}>{children}</div>}
+    </div>
+  );
+}
+
 function Chips({ items, active, onToggle }: { items: { id: string; label: string }[]; active: string[]; onToggle: (id: string) => void }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -189,9 +211,6 @@ function Chips({ items, active, onToggle }: { items: { id: string; label: string
   );
 }
 
-// Set to false to hide unconfirmed kids filters until data is uploaded.
-const KIDS_DETAIL_FILTERS = true;
-
 // ─── Filter bottom sheet ──────────────────────────────────────────────────────
 
 export function FilterSheet({
@@ -206,8 +225,11 @@ export function FilterSheet({
 
   // Category helpers
   const cats = pending.categories ?? [];
-  const onlyCat = (c: PlaceCategory) => cats.length === 1 && cats[0] === c;
   const showAll = cats.length === 0;
+  // A category's own filters show whenever it's part of the active selection —
+  // not only when it's the sole category picked (user explicitly asked for this:
+  // filtering across several categories at once should still let you narrow each one).
+  const categoryActive = (c: PlaceCategory) => showAll || cats.includes(c);
   const foodRelated = ["cafe", "food", "kids"] as PlaceCategory[];
 
   const toggle = <T extends string | number>(key: keyof PlaceFilters, val: T) => {
@@ -220,6 +242,68 @@ export function FilterSheet({
   const toggleNeighborhood = (n: NeighborhoodGivatayim) => toggle<NeighborhoodGivatayim>("neighborhoods", n);
   const toggleKosher = (k: KosherStatus) => toggle<KosherStatus>("kosher", k);
   const togglePrice = (p: 1 | 2 | 3) => toggle<1|2|3>("price_range", p);
+  const toggleBool = (key: keyof PlaceFilters) =>
+    setPending(prev => ({ ...prev, [key]: prev[key] ? null : true }));
+
+  // Per-category groups start collapsed behind "פילטרים נוספים" — except a category
+  // that already has an active filter set on it, so an existing choice stays visible.
+  const [expandedCats, setExpandedCats] = useState<Set<PlaceCategory>>(() => {
+    const s = new Set<PlaceCategory>();
+    if (filters.hmo?.length || filters.doctor_specialty?.length) s.add("doctor");
+    if (filters.cosmetics_specialty?.length) s.add("cosmetics");
+    if (
+      filters.kids_gan_category?.length || filters.kids_age_track != null || filters.kids_max_price_nis != null ||
+      filters.kids_meal_type?.length || filters.kids_friday?.length || filters.kids_outdoor != null ||
+      filters.kids_vacancy?.length || filters.kids_languages?.length || filters.kids_has_mamad != null ||
+      filters.kids_has_cctv != null || filters.kids_first_aid != null || filters.kids_vegan_friendly != null ||
+      filters.kids_vegetarian_friendly != null || filters.kids_meat_served != null || filters.kids_allergy_friendly != null ||
+      filters.kids_chugim?.length
+    ) s.add("kids");
+    if (filters.sport_gender != null) s.add("sport");
+    if (filters.attraction_venue?.length) s.add("attraction");
+    return s;
+  });
+  const toggleCatExpanded = (c: PlaceCategory) =>
+    setExpandedCats(prev => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c); else next.add(c);
+      return next;
+    });
+
+  const kidsChugimOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of places) {
+      if (p.place_category !== "kids") continue;
+      const a = p.attributes as Record<string, unknown>;
+      const chugim = Array.isArray(a.chugim_types) ? (a.chugim_types as string[]) : [];
+      for (const c of chugim) {
+        const t = (c ?? "").trim();
+        if (t) set.add(t);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
+  }, [places]);
+
+  const doctorSpecialtyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of places) {
+      if (p.place_category !== "doctor") continue;
+      const a = p.attributes as Record<string, unknown>;
+      const s = typeof a.specialty === "string" ? a.specialty.trim() : "";
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
+  }, [places]);
+  const cosmeticsSpecialtyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of places) {
+      if (p.place_category !== "cosmetics") continue;
+      const a = p.attributes as Record<string, unknown>;
+      const s = typeof a.specialty === "string" ? a.specialty.trim() : "";
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
+  }, [places]);
 
   const count = useMemo(() => applyPlaceFilters(places, pending).length, [places, pending]);
 
@@ -248,8 +332,8 @@ export function FilterSheet({
               active={pending.neighborhoods ?? []} onToggle={n => toggleNeighborhood(n as NeighborhoodGivatayim)} />
           </Section>
 
-          {/* ── Price — hide when kids is the only category (has its own NIS price filter) */}
-          {!onlyCat("kids") && (
+          {/* ── Price — kids has its own NIS price filter below, shown per-category */}
+          {(showAll || cats.some(c => c !== "kids")) && (
             <Section label="מחיר">
               <Chips items={([1,2,3] as (1|2|3)[]).map(p => ({ id: String(p), label: "₪".repeat(p) }))}
                 active={(pending.price_range ?? []).map(String)} onToggle={p => togglePrice(Number(p) as 1|2|3)} />
@@ -280,6 +364,18 @@ export function FilterSheet({
             </div>
           </Section>
 
+          {/* ── Hours (always) ─────────────────────────────────────────────── */}
+          <Section label="שעות פעילות">
+            <input
+              type="text"
+              value={pending.hours_contains ?? ""}
+              onChange={e => setPending(prev => ({ ...prev, hours_contains: e.target.value.trim() ? e.target.value : null }))}
+              placeholder="לדוגמה: 7:30, 8:00, 16:00..."
+              className="w-full font-hebrew"
+              style={{ border: "1px solid #E5E9F0", borderRadius: 12, padding: "10px 12px", fontSize: 13, outline: "none" }}
+            />
+          </Section>
+
           {/* ── Kosher — food-related categories or no filter ──────────────── */}
           {(showAll || cats.some(c => foodRelated.includes(c))) && (
             <Section label="כשרות">
@@ -288,27 +384,48 @@ export function FilterSheet({
             </Section>
           )}
 
-          {/* ── HMO — doctors only ─────────────────────────────────────────── */}
-          {(showAll || cats.includes("doctor")) && (
-            <Section label="קופת חולים">
-              <div className="grid grid-cols-2 gap-2">
-                {HMO_LIST.map(hmo => {
-                  const active = pending.hmo?.includes(hmo.id) ?? false;
-                  return (
-                    <button key={hmo.id} type="button" onClick={() => toggleHmo(hmo.id)}
-                      className="flex flex-col items-center"
-                      style={{ border: `1.5px solid ${active ? "#0A2B6B" : "#E5E9F0"}`, borderRadius: 14, padding: "10px 8px", background: active ? "#E8F0FB" : "#fff", cursor: "pointer", transition: "all .15s" }}>
-                      <img src={hmo.logo} alt={hmo.label} style={{ width: "100%", height: 36, objectFit: "contain" }} />
-                    </button>
-                  );
-                })}
-              </div>
-            </Section>
+          {/* ── Doctor group ──────────────────────────────────────────────── */}
+          {categoryActive("doctor") && (
+            <CategoryFilterGroup category="doctor" expanded={expandedCats.has("doctor")} onToggle={() => toggleCatExpanded("doctor")}>
+              <Section label="קופת חולים" first>
+                <div className="grid grid-cols-2 gap-2">
+                  {HMO_LIST.map(hmo => {
+                    const active = pending.hmo?.includes(hmo.id) ?? false;
+                    return (
+                      <button key={hmo.id} type="button" onClick={() => toggleHmo(hmo.id)}
+                        className="flex flex-col items-center"
+                        style={{ border: `1.5px solid ${active ? "#0A2B6B" : "#E5E9F0"}`, borderRadius: 14, padding: "10px 8px", background: active ? "#E8F0FB" : "#fff", cursor: "pointer", transition: "all .15s" }}>
+                        <img src={hmo.logo} alt={hmo.label} style={{ width: "100%", height: 36, objectFit: "contain" }} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </Section>
+              {doctorSpecialtyOptions.length > 0 && (
+                <Section label="תחום התמחות">
+                  <Chips items={doctorSpecialtyOptions.map(s => ({ id: s, label: s }))}
+                    active={pending.doctor_specialty ?? []}
+                    onToggle={v => toggle<string>("doctor_specialty", v)} />
+                </Section>
+              )}
+            </CategoryFilterGroup>
           )}
 
-          {/* ── Kids: סוג גן (always — data confirmed) ───────────────────── */}
-          {onlyCat("kids") && (
-            <Section label="סוג גן">
+          {/* ── Cosmetics group ───────────────────────────────────────────── */}
+          {categoryActive("cosmetics") && cosmeticsSpecialtyOptions.length > 0 && (
+            <CategoryFilterGroup category="cosmetics" expanded={expandedCats.has("cosmetics")} onToggle={() => toggleCatExpanded("cosmetics")}>
+              <Section label="תחום התמחות" first>
+                <Chips items={cosmeticsSpecialtyOptions.map(s => ({ id: s, label: s }))}
+                  active={pending.cosmetics_specialty ?? []}
+                  onToggle={v => toggle<string>("cosmetics_specialty", v)} />
+              </Section>
+            </CategoryFilterGroup>
+          )}
+
+          {/* ── Kids group ───────────────────────────────────────────────── */}
+          {categoryActive("kids") && (
+            <CategoryFilterGroup category="kids" expanded={expandedCats.has("kids")} onToggle={() => toggleCatExpanded("kids")}>
+            <Section label="סוג גן" first>
               <Chips items={[
                 { id: "MAON_SYMBOL",                    label: "מעון סמל" },
                 { id: "MISHPACHTON",                    label: "משפחתון" },
@@ -320,10 +437,6 @@ export function FilterSheet({
               ]} active={pending.kids_gan_category ?? []}
                 onToggle={v => toggle<string>("kids_gan_category", v)} />
             </Section>
-          )}
-
-          {/* ── Kids: remaining filters (KIDS_DETAIL_FILTERS flag) ────────── */}
-          {onlyCat("kids") && KIDS_DETAIL_FILTERS && (<>
             <Section label="גיל הילד">
               <Chips items={[{ id: "0-3", label: "עד גיל 3" }, { id: "3+", label: "מגיל 3" }]}
                 active={pending.kids_age_track ? [pending.kids_age_track] : []}
@@ -390,6 +503,33 @@ export function FilterSheet({
                   else if (v === "firstaid") setPending(prev => ({ ...prev, kids_first_aid: prev.kids_first_aid ? null : true }));
                 }} />
             </Section>
+            <Section label="תזונה">
+              <Chips items={[
+                { id: "vegan", label: "טבעוני" },
+                { id: "vegetarian", label: "צמחוני" },
+                { id: "meat", label: "מגיש בשר" },
+                { id: "allergy", label: "ידידותי לאלרגיות" },
+              ]}
+                active={[
+                  ...(pending.kids_vegan_friendly === true ? ["vegan"] : []),
+                  ...(pending.kids_vegetarian_friendly === true ? ["vegetarian"] : []),
+                  ...(pending.kids_meat_served === true ? ["meat"] : []),
+                  ...(pending.kids_allergy_friendly === true ? ["allergy"] : []),
+                ]}
+                onToggle={v => {
+                  if (v === "vegan") toggleBool("kids_vegan_friendly");
+                  else if (v === "vegetarian") toggleBool("kids_vegetarian_friendly");
+                  else if (v === "meat") toggleBool("kids_meat_served");
+                  else if (v === "allergy") toggleBool("kids_allergy_friendly");
+                }} />
+            </Section>
+            {kidsChugimOptions.length > 0 && (
+              <Section label="חוגים">
+                <Chips items={kidsChugimOptions.map(c => ({ id: c, label: c }))}
+                  active={pending.kids_chugim ?? []}
+                  onToggle={v => toggle<string>("kids_chugim", v)} />
+              </Section>
+            )}
             <Section label="מקום פנוי">
               <Chips items={[
                 { id: "Available", label: "יש מקום" },
@@ -398,22 +538,27 @@ export function FilterSheet({
               ]} active={pending.kids_vacancy ?? []}
                 onToggle={v => toggle<string>("kids_vacancy", v)} />
             </Section>
-          </>)}
+            </CategoryFilterGroup>
+          )}
 
-          {/* ── Sport-specific ────────────────────────────────────────────── */}
-          {onlyCat("sport") && (
-            <Section label="קהל יעד">
+          {/* ── Sport-specific — hidden category (VISIBLE_CATEGORIES excludes it), so this
+               only ever renders if explicitly selected, never via the "show all" default. */}
+          {cats.includes("sport") && (
+            <CategoryFilterGroup category="sport" expanded={expandedCats.has("sport")} onToggle={() => toggleCatExpanded("sport")}>
+            <Section label="קהל יעד" first>
               <Chips items={[
                 { id: "women_only", label: "נשים בלבד" },
                 { id: "men_only", label: "גברים בלבד" },
               ]} active={pending.sport_gender ? [pending.sport_gender] : []}
                 onToggle={v => setPending(prev => ({ ...prev, sport_gender: prev.sport_gender === v ? null : v }))} />
             </Section>
+            </CategoryFilterGroup>
           )}
 
-          {/* ── Attraction-specific ────────────────────────────────────────── */}
-          {onlyCat("attraction") && (
-            <Section label="מיקום">
+          {/* ── Attraction-specific — hidden category, same reasoning as sport above. */}
+          {cats.includes("attraction") && (
+            <CategoryFilterGroup category="attraction" expanded={expandedCats.has("attraction")} onToggle={() => toggleCatExpanded("attraction")}>
+            <Section label="מיקום" first>
               <Chips items={[
                 { id: "indoor", label: "פנים" },
                 { id: "outdoor", label: "חוץ" },
@@ -421,6 +566,7 @@ export function FilterSheet({
               ]} active={pending.attraction_venue ?? []}
                 onToggle={v => toggle<string>("attraction_venue", v)} />
             </Section>
+            </CategoryFilterGroup>
           )}
 
           <div style={{ height: 8 }} />

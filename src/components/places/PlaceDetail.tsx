@@ -8,6 +8,7 @@ import {
 } from "@/types/places";
 import { DrumstickIcon, PeanutIcon, getLanguageChar } from "@/components/gan/GanAttributeIcons";
 import { useSession } from "@/lib/useSession";
+import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -172,11 +173,12 @@ export interface PlaceDetailProps {
   onShowToast?: (msg: string) => void;
   userLocation?: { lon: number; lat: number } | null;
   onRequestLocationChange?: (place: Place) => void;
+  onPlaceUpdated?: (place: Place) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onShowToast, userLocation = null, onRequestLocationChange }: PlaceDetailProps) {
+export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onShowToast, userLocation = null, onRequestLocationChange, onPlaceUpdated }: PlaceDetailProps) {
   const { user, session } = useSession();
   const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
   const lightColor = lightenColor(color);
@@ -216,6 +218,9 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
     onShowToast?.("סומן כמועיל");
   };
 
+  // Kids attribute-edit modal (full form — "עזרו לנו למלא" / "ערכו פרטים")
+  const [showAttrEdit, setShowAttrEdit] = useState(false);
+
   // Review form
   const [showForm, setShowForm] = useState(false);
   const [formRating, setFormRating] = useState(0);
@@ -251,10 +256,19 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשליחה");
       setSubmitSuccess(true); setShowForm(false);
       await loadReviews();
+      // The server folds price/vacancy into places.attributes, but `place` is a prop
+      // snapshot — mirror that same merge locally so it shows immediately instead of
+      // waiting for the next viewport refetch.
+      if (place.place_category === "kids" && (priceNis != null || formVacancy)) {
+        const nextAttrs = { ...(place.attributes as Record<string, unknown>) };
+        if (priceNis != null && Number.isFinite(priceNis) && priceNis > 0) nextAttrs.monthly_price_nis = priceNis;
+        if (formVacancy) nextAttrs.vacancy_status = formVacancy;
+        onPlaceUpdated?.({ ...place, attributes: nextAttrs });
+      }
       onShowToast?.("ההמלצה נשלחה! תודה 🙏");
     } catch (e) { setSubmitError(e instanceof Error ? e.message : "שגיאה בשליחה"); }
     finally { setSubmitting(false); }
-  }, [formRating, formText, formAnonymous, formName, formPrice, formVacancy, place.id, place.place_category, user, session, loadReviews, onShowToast]);
+  }, [formRating, formText, formAnonymous, formName, formPrice, formVacancy, place, user, session, loadReviews, onShowToast, onPlaceUpdated]);
 
   // Tags for detail view
   const detailTags: { label: string; style: React.CSSProperties }[] = [
@@ -455,17 +469,20 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
               <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>פרטים נוספים</span>
               {Object.keys(attrs).length > 0 && <KidsAttributeChips attrs={attrs} />}
-              {(() => {
+              {user && (() => {
                 const missing: string[] = [];
                 if (attrs.monthly_price_nis == null) missing.push("מחיר");
                 if (attrs.vacancy_status == null || attrs.vacancy_status === "UNKNOWN") missing.push("מקום פנוי");
                 if (attrs.min_age_months == null) missing.push("טווח גילאים");
-                if (!missing.length) return null;
                 return (
-                  <button type="button" onClick={() => { setShowForm(true); }}
+                  <button type="button" onClick={() => setShowAttrEdit(true)}
                     className="font-hebrew text-start w-full"
                     style={{ marginTop: 8, fontSize: 11.5, color: "#8A95A8", background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
-                    עדיין אין לנו מידע על: {missing.join(", ")} — האפליקציה יודעת לשמור את זה, רק צריך שמישהו יעדכן. <span style={{ color: "#1F5BB5", fontWeight: 700 }}>עזרו לנו למלא ←</span>
+                    {missing.length > 0 ? (
+                      <>עדיין אין לנו מידע על: {missing.join(", ")} — האפליקציה יודעת לשמור את זה, רק צריך שמישהו יעדכן. <span style={{ color: "#1F5BB5", fontWeight: 700 }}>עזרו לנו למלא ←</span></>
+                    ) : (
+                      <span style={{ color: "#1F5BB5", fontWeight: 700 }}>ערכו פרטים ←</span>
+                    )}
                   </button>
                 );
               })()}
@@ -613,6 +630,15 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           </a>
         )}
       </div>
+
+      {showAttrEdit && (
+        <EditKidsAttributesModal
+          place={place}
+          onClose={() => setShowAttrEdit(false)}
+          onSaved={(updated) => onPlaceUpdated?.(updated)}
+          onShowToast={onShowToast}
+        />
+      )}
     </div>
   );
 }

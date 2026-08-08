@@ -103,6 +103,55 @@ export function applyPlaceFilters(
       const a = p.attributes as Record<string, unknown>;
       return Boolean(a.first_aid_trained) === filters.kids_first_aid;
     });
+  if (filters.kids_vegan_friendly != null)
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return Boolean(a.vegan_friendly) === filters.kids_vegan_friendly;
+    });
+  if (filters.kids_vegetarian_friendly != null)
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return Boolean(a.vegetarian_friendly) === filters.kids_vegetarian_friendly;
+    });
+  if (filters.kids_meat_served != null)
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return Boolean(a.meat_served) === filters.kids_meat_served;
+    });
+  if (filters.kids_allergy_friendly != null)
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return Boolean(a.allergy_friendly) === filters.kids_allergy_friendly;
+    });
+  if (filters.kids_chugim?.length)
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      const a = p.attributes as Record<string, unknown>;
+      const chugim = Array.isArray(a.chugim_types) ? (a.chugim_types as string[]) : [];
+      return filters.kids_chugim!.some((c) => chugim.includes(c));
+    });
+  if (filters.hours_contains?.trim()) {
+    const q = filters.hours_contains.trim().toLowerCase();
+    result = result.filter((p) => p.hours?.toLowerCase().includes(q));
+  }
+  // Doctor-specific
+  if (filters.doctor_specialty?.length)
+    result = result.filter((p) => {
+      if (p.place_category !== "doctor") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return filters.doctor_specialty!.includes(String(a.specialty ?? ""));
+    });
+  // Cosmetics-specific
+  if (filters.cosmetics_specialty?.length)
+    result = result.filter((p) => {
+      if (p.place_category !== "cosmetics") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return filters.cosmetics_specialty!.includes(String(a.specialty ?? ""));
+    });
   // Sport-specific
   if (filters.sport_gender)
     result = result.filter((p) => {

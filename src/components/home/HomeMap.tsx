@@ -438,6 +438,12 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     if (updated) setSelectedPlace(updated);
   }, [places, selectedPlace]);
 
+  const handlePlaceUpdated = useCallback((updated: Place) => {
+    addPlace(updated);
+    setSelectedPlace((prev) => (prev?.id === updated.id ? updated : prev));
+    setDetailPlace((prev) => (prev?.id === updated.id ? updated : prev));
+  }, [addPlace]);
+
   useEffect(() => {
     if (!seedPlace) return;
     addPlace(seedPlace);
@@ -609,6 +615,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                     onToggleSave={() => { toggleSave(detailPlace.id); showToast(savedIds.has(detailPlace.id) ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️"); }}
                     onShowToast={showToast}
                     onRequestLocationChange={(p) => setLocationRequestPlace(p)}
+                    onPlaceUpdated={handlePlaceUpdated}
                     userLocation={userLocation}
                   />
                 </div>
@@ -859,6 +866,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               showToast(wasSaved ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️");
             }}
             onShowToast={showToast}
+            onPlaceUpdated={handlePlaceUpdated}
             userLocation={userLocation}
           />
         </div>

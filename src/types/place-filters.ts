@@ -21,6 +21,17 @@ export interface PlaceFilters {
   kids_has_mamad: boolean | null;
   kids_has_cctv: boolean | null;
   kids_first_aid: boolean | null;
+  kids_vegan_friendly: boolean | null;
+  kids_vegetarian_friendly: boolean | null;
+  kids_meat_served: boolean | null;
+  kids_allergy_friendly: boolean | null;
+  kids_chugim: string[] | null;
+  // Doctor-specific
+  doctor_specialty: string[] | null;
+  // Cosmetics-specific
+  cosmetics_specialty: string[] | null;
+  // General — any category with an hours field
+  hours_contains: string | null;
   // Sport-specific
   sport_gender: string | null;
   // Attraction-specific
@@ -47,6 +58,14 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   kids_has_mamad: null,
   kids_has_cctv: null,
   kids_first_aid: null,
+  kids_vegan_friendly: null,
+  kids_vegetarian_friendly: null,
+  kids_meat_served: null,
+  kids_allergy_friendly: null,
+  kids_chugim: null,
+  doctor_specialty: null,
+  cosmetics_specialty: null,
+  hours_contains: null,
   sport_gender: null,
   attraction_venue: null,
 };
@@ -72,6 +91,14 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.kids_has_mamad != null) n++;
   if (f.kids_has_cctv != null) n++;
   if (f.kids_first_aid != null) n++;
+  if (f.kids_vegan_friendly != null) n++;
+  if (f.kids_vegetarian_friendly != null) n++;
+  if (f.kids_meat_served != null) n++;
+  if (f.kids_allergy_friendly != null) n++;
+  if (f.kids_chugim != null && f.kids_chugim.length > 0) n++;
+  if (f.doctor_specialty != null && f.doctor_specialty.length > 0) n++;
+  if (f.cosmetics_specialty != null && f.cosmetics_specialty.length > 0) n++;
+  if (f.hours_contains != null && f.hours_contains.trim() !== "") n++;
   if (f.sport_gender != null) n++;
   if (f.attraction_venue != null && f.attraction_venue.length > 0) n++;
   return n;
