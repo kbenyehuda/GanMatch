@@ -325,13 +325,18 @@ async function geocodeSingleLanguage(placeName, extracted, houseNumber, proximit
     const expanded = expandInstitutionAbbreviations(stripped);
     const bare = stripInstitutionWords(stripped);
     const variants = [...new Set([stripped, expanded, bare].filter(Boolean))];
-    for (const variant of variants) {
+    // Some venues' names incorporate the city ("קאנטרי רמת גן" is the
+    // club's own name). Only appends the REAL detected city, not the
+    // גבעתיים default. Still city-hard-filtered after, same as any variant.
+    const withCity = knownCity && !variants.some(v => v.includes(knownCity)) ? variants.map(v => `${v} ${knownCity}`) : [];
+    const allVariants = [...variants, ...withCity];
+    for (const variant of allVariants) {
       const result = await tryQueries([variant, `${placeName} ${variant}`], proximity, "poi", language, effectiveCity);
       if (result) return result;
     }
-    const nominatimResult = await tryNominatimQueries(variants, effectiveCity);
+    const nominatimResult = await tryNominatimQueries(allVariants, effectiveCity);
     if (nominatimResult) return nominatimResult;
-    const googleResult = await tryGooglePlacesQueries(variants, effectiveCity);
+    const googleResult = await tryGooglePlacesQueries(allVariants, effectiveCity);
     if (googleResult) return googleResult;
   }
   return null;

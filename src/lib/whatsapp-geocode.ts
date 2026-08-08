@@ -508,16 +508,30 @@ async function geocodeSingleLanguage(
     const expanded = expandInstitutionAbbreviations(stripped);
     const bare = stripInstitutionWords(stripped);
     const variants = Array.from(new Set([stripped, expanded, bare].filter(Boolean)));
-    for (const variant of variants) {
+    // Some venues' actual names incorporate the city ("קאנטרי רמת גן" is the
+    // club's own name, not "קאנטרי" + separately "the city Ramat Gan").
+    // Confirmed directly against Nominatim, 2026-08-08: the bare word
+    // "קאנטרי" alone never surfaces this real venue in its top 5 results,
+    // only the full "קאנטרי רמת גן" does. Only appends the REAL detected
+    // city (`knownCity`, not the גבעתיים default) — appending an unproven
+    // guess would risk exactly the free-text-concatenation failure mode
+    // Bug B was about. Still subject to the same city hard-filter after,
+    // so a coincidental cross-city match from this extra text is no less
+    // safe than any other query variant here.
+    const withCity = knownCity && !variants.some(v => v.includes(knownCity))
+      ? variants.map(v => `${v} ${knownCity}`)
+      : [];
+    const allVariants = [...variants, ...withCity];
+    for (const variant of allVariants) {
       const result = await tryQueries([variant, `${placeName} ${variant}`], proximity, "poi", language, effectiveCity);
       if (result) return result;
     }
     // Mapbox's POI index has confirmed gaps for small/local Israeli venues
     // (see nominatimSearch's comment) — only tried once Mapbox found
     // nothing for this landmark, with the same city + POI-only rules.
-    const nominatimResult = await tryNominatimQueries(variants, effectiveCity);
+    const nominatimResult = await tryNominatimQueries(allVariants, effectiveCity);
     if (nominatimResult) return nominatimResult;
-    const googleResult = await tryGooglePlacesQueries(variants, effectiveCity);
+    const googleResult = await tryGooglePlacesQueries(allVariants, effectiveCity);
     if (googleResult) return googleResult;
   }
   return null;
