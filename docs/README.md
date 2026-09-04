@@ -11,6 +11,7 @@
 | [PRODUCT_AUDIT.md](../PRODUCT_AUDIT.md) | Product backlog and risk register (living document). |
 | [GAN_TYPES.md](./GAN_TYPES.md) | Gan `category` enum, icons, colors, gov import mapping, type table for parents. |
 | [V3_PLAN.md](./V3_PLAN.md) | v3 product and engineering plan (north star, features, work order). |
+| [LAUNCH_CHECKLIST.md](./LAUNCH_CHECKLIST.md) | Plain-language pre-launch punch list — what's blocking, what's just embarrassing, what can wait. |
 
 ## Scripts
 
