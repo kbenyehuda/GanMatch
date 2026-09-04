@@ -5,7 +5,15 @@
       "Bash(cp \"c:/Users/kbeny/OneDrive/Desktop/Clalit_Logo_Clean_2020.svg.png\" \"C:/Users/kbeny/Documents/Repos/GanMatch/public/hmo/clalit.png\")",
       "Bash(cp \"c:/Users/kbeny/OneDrive/Desktop/Leumit_New_Logo.svg.png\" \"C:/Users/kbeny/Documents/Repos/GanMatch/public/hmo/leumit.png\")",
       "Bash(cp \"c:/Users/kbeny/OneDrive/Desktop/MeuhedetLogo.svg.png\" \"C:/Users/kbeny/Documents/Repos/GanMatch/public/hmo/meuhedet.png\")",
-      "PowerShell(Copy-Item *)"
+      "PowerShell(Copy-Item *)",
+      "mcp__plugin_supabase_supabase__execute_sql",
+      "Bash(npx tsc *)",
+      "Bash(node scripts/test_whatsapp_geocode.mjs)",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__list_tables",
+      "mcp__plugin_supabase_supabase__apply_migration",
+      "Bash(echo \"EXIT:$?\")",
+      "Skill(claude-in-chrome)"
     ]
   }
 }
