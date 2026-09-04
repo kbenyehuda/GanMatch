@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { X, Send, Loader2 } from "lucide-react";
 import { useSession } from "@/lib/useSession";
 import { publicEnv } from "@/lib/env/public";
 
@@ -14,6 +12,17 @@ function contactEnabledPublic() {
 function isEmailLike(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #E5E9F0",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontSize: 14,
+  color: "#0F1A2E",
+  outline: "none",
+  background: "#fff",
+};
 
 export function ContactReviewerModal({
   targetId,
@@ -42,6 +51,7 @@ export function ContactReviewerModal({
 
   if (!user) return null;
   const accessToken = session?.access_token ?? null;
+  const canSubmit = !sending && enabled && !!accessToken;
 
   const submit = async () => {
     setError(null);
@@ -90,79 +100,114 @@ export function ContactReviewerModal({
     }
   };
 
+  const title = `שלח הודעה לממליץ${placeName ? ` על ${placeName}` : ""}`;
+
+  const body = (
+    <div className="flex-1 overflow-y-auto" style={{ padding: "16px 20px" }}>
+      <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", lineHeight: 1.5, marginBottom: 14 }}>
+        הממליץ יקבל אימייל ויוכל להשיב ישירות לאימייל שתכתבו כאן.
+      </div>
+
+      {!enabled && (
+        <div className="font-hebrew" style={{ fontSize: 12, color: "#9C7A21", background: "#FBF1D8", border: "1px solid #F0DFA8", borderRadius: 12, padding: "8px 12px", marginBottom: 12 }}>
+          אפשרות יצירת קשר אינה זמינה כרגע.
+        </div>
+      )}
+      {!accessToken && (
+        <div className="font-hebrew" style={{ fontSize: 12, color: "#4A5568", background: "#F5F6FA", border: "1px solid #E5E9F0", borderRadius: 12, padding: "8px 12px", marginBottom: 12 }}>
+          טוען נתוני התחברות…
+        </div>
+      )}
+
+      <div style={{ marginBottom: 14 }}>
+        <label className="font-hebrew font-bold" style={{ fontSize: 11, color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+          האימייל שלך (נשלח כ-Reply-To)
+        </label>
+        <input
+          value={senderEmail}
+          onChange={(e) => setSenderEmail(e.target.value)}
+          type="email"
+          className="font-hebrew"
+          style={inputStyle}
+          placeholder="your@email.com"
+        />
+      </div>
+
+      <div style={{ marginBottom: 4 }}>
+        <label className="font-hebrew font-bold" style={{ fontSize: 11, color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+          הודעה
+        </label>
+        <textarea
+          value={messageText}
+          onChange={(e) => setMessageText(e.target.value)}
+          rows={5}
+          className="font-hebrew resize-none"
+          style={{ ...inputStyle, lineHeight: 1.6 }}
+          placeholder="כתבו שאלה / פרטים…"
+        />
+      </div>
+
+      {error && (
+        <p className="font-hebrew text-sm" style={{ color: "#C53030", marginTop: 10 }}>{error}</p>
+      )}
+      {success && (
+        <p className="font-hebrew text-sm" style={{ color: "#1D7F4F", marginTop: 10 }}>ההודעה נשלחה.</p>
+      )}
+    </div>
+  );
+
+  const header = (
+    <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ borderBottom: "1px solid #E5E9F0" }}>
+      <button type="button" onClick={onClose} aria-label="סגור" className="flex items-center justify-center"
+        style={{ width: 32, height: 32, borderRadius: "50%", background: "#F5F6FA", border: "none", cursor: "pointer" }}>
+        <X style={{ width: 16, height: 16, color: "#4A5568" }} />
+      </button>
+      <h2 className="font-hebrew font-bold" style={{ fontSize: 15, color: "#0A2B6B", flex: 1, textAlign: "center", padding: "0 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {title}
+      </h2>
+      <button type="button" onClick={submit} disabled={!canSubmit}
+        className="flex items-center gap-1.5 font-hebrew font-bold"
+        style={{ padding: "8px 16px", borderRadius: 12, fontSize: 13, border: "none", cursor: canSubmit ? "pointer" : "not-allowed", background: canSubmit ? "linear-gradient(135deg, #0A2B6B, #1F5BB5)" : "#C5CDD8", color: "#fff", flexShrink: 0 }}>
+        {sending ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <><Send style={{ width: 13, height: 13 }} />שלח</>}
+      </button>
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 p-3">
-      <Card className="w-full max-w-lg">
-        <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 pb-2">
-          <div className="min-w-0">
-            <CardTitle className="font-hebrew text-base">
-              שלח הודעה לממליץ{placeName ? ` על ${placeName}` : ""}
-            </CardTitle>
-            <div className="mt-1 text-xs text-gray-600 font-hebrew">
-              הממליץ יקבל אימייל ויוכל להשיב ישירות לאימייל שתכתבו כאן.
-            </div>
-            {!enabled ? (
-              <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 font-hebrew">
-                אפשרות יצירת קשר אינה זמינה כרגע.
-              </div>
-            ) : null}
-          {!accessToken ? (
-            <div className="mt-2 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 font-hebrew">
-              טוען נתוני התחברות…
-            </div>
-          ) : null}
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="סגור">
-            <X className="w-5 h-5" />
-          </Button>
-        </CardHeader>
-        <CardContent className="p-4 pt-0 space-y-3">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1 font-hebrew">
-              האימייל שלך (נשלח כ-Reply-To)
-            </label>
-            <input
-              value={senderEmail}
-              onChange={(e) => setSenderEmail(e.target.value)}
-              type="email"
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew focus:outline-none focus:ring-2 focus:ring-gan-primary/40"
-              placeholder="your@email.com"
-            />
-          </div>
+    <div className="fixed inset-0 z-50" dir="rtl">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0"
+        style={{ background: "rgba(15,26,46,.45)", backdropFilter: "blur(2px)" }}
+        onClick={onClose}
+      />
 
-          <div>
-            <label className="block text-xs text-gray-600 mb-1 font-hebrew">הודעה</label>
-            <textarea
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              rows={5}
-              className="w-full rounded-lg border border-gan-accent/50 px-3 py-2 text-sm font-hebrew focus:outline-none focus:ring-2 focus:ring-gan-primary/40"
-              placeholder="כתבו שאלה / פרטים…"
-            />
-          </div>
+      {/* Mobile: bottom sheet */}
+      <div
+        className="md:hidden absolute left-0 right-0 bottom-0 flex flex-col overflow-hidden"
+        style={{ background: "#fff", borderRadius: "20px 20px 0 0", boxShadow: "0 -10px 30px rgba(10,43,107,.2)", maxHeight: "88dvh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-2.5 pb-1 shrink-0">
+          <div style={{ width: 42, height: 5, borderRadius: 99, background: "#E5E9F0" }} />
+        </div>
+        {header}
+        {body}
+        <div className="shrink-0" style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
+      </div>
 
-          {error && (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 font-hebrew">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 font-hebrew">
-              ההודעה נשלחה.
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" onClick={onClose} disabled={sending}>
-              ביטול
-            </Button>
-            <Button onClick={submit} disabled={sending || !enabled || !accessToken}>
-              {sending ? "שולח..." : "שלח"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Desktop: centered card */}
+      <div className="hidden md:flex absolute inset-0 items-center justify-center pointer-events-none">
+        <div
+          className="pointer-events-auto flex flex-col overflow-hidden"
+          style={{ width: "min(480px, 92vw)", maxHeight: "80dvh", background: "#fff", borderRadius: 20, boxShadow: "0 24px 60px rgba(10,43,107,.35)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {header}
+          {body}
+        </div>
+      </div>
     </div>
   );
 }
-

@@ -27,10 +27,23 @@ import { supabase } from "@/lib/supabase";
 import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
-  ChevronRight, Send, Shield, Info,
+  ChevronRight, Send, Shield, Info, Check,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+/** Per-place milestones a user can check off for a saved place — kept in localStorage. */
+export interface PlaceProgress {
+  contacted?: boolean;
+  visited?: boolean;
+  applied?: boolean;
+}
+
+const PROGRESS_STEPS: { key: keyof PlaceProgress; label: string }[] = [
+  { key: "contacted", label: "יצרתי קשר" },
+  { key: "visited", label: "ביקרתי" },
+  { key: "applied", label: "נרשמתי" },
+];
 
 const ALL_CATEGORIES = VISIBLE_CATEGORIES;
 
@@ -428,12 +441,30 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     });
   }, []);
 
+  // ── Saved-place progress (contacted / visited / applied) ────────────────────
+  const [savedProgress, setSavedProgress] = useState<Record<string, PlaceProgress>>(() => {
+    if (typeof window === "undefined") return {};
+    try { const s = window.localStorage.getItem("gmt_saved_progress"); return s ? JSON.parse(s) : {}; }
+    catch { return {}; }
+  });
+  const togglePlaceProgress = useCallback((id: string, key: keyof PlaceProgress) => {
+    setSavedProgress(prev => {
+      const cur = prev[id] ?? {};
+      const next = { ...prev, [id]: { ...cur, [key]: !cur[key] } };
+      try { window.localStorage.setItem("gmt_saved_progress", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   // ── Toast ─────────────────────────────────────────────────────────────────────
   const { text: toastText, visible: toastVisible, showToast } = useToast();
 
   // ── Map overlay state ─────────────────────────────────────────────────────────
   const [mapSearchQuery, setMapSearchQuery] = useState("");
   const [showMapFilterSheet, setShowMapFilterSheet] = useState(false);
+
+  // ── Desktop/tablet feed panel collapse ──────────────────────────────────────
+  const [feedCollapsed, setFeedCollapsed] = useState(false);
 
   const activeFilterCountMap = (filters.categories?.length ?? 0) + (filters.hmo?.length ?? 0) + (filters.neighborhoods?.length ?? 0);
 
@@ -649,21 +680,45 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
 
       {/* ── DESKTOP: side-by-side feed + map ─────────────────────────────────── */}
       <div className="hidden md:flex h-full">
-        {/* Feed panel */}
-        <div className="w-[360px] shrink-0 h-full border-e border-[#E5E9F0]">
-          <PlaceFeedPanel
-            places={filteredPlaces}
-            selectedPlaceId={selectedPlace?.id ?? null}
-            onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); setDetailPlace(p); }}
-            filters={filters}
-            onFiltersChange={setFilters}
-            userLocation={userLocation}
-            isVisible
-            savedIds={savedIds}
-            onToggleSave={(id) => { const wasSaved = savedIds.has(id); toggleSave(id); showToast(wasSaved ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️"); }}
-            searchQuery={mapSearchQuery}
-            onSearchQueryChange={(q) => { setMapSearchQuery(q); setFilters(f => ({ ...f, search_query: q.trim() || null })); }}
-          />
+        {/* Feed panel — collapsible so tablets can reclaim map space */}
+        <div
+          className="shrink-0 h-full border-e border-[#E5E9F0] overflow-hidden"
+          style={{ width: feedCollapsed ? 0 : 360, transition: "width .2s ease" }}
+        >
+          <div style={{ width: 360, height: "100%" }}>
+            <PlaceFeedPanel
+              places={filteredPlaces}
+              selectedPlaceId={selectedPlace?.id ?? null}
+              onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); setDetailPlace(p); }}
+              filters={filters}
+              onFiltersChange={setFilters}
+              userLocation={userLocation}
+              isVisible
+              savedIds={savedIds}
+              onToggleSave={(id) => { const wasSaved = savedIds.has(id); toggleSave(id); showToast(wasSaved ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️"); }}
+              searchQuery={mapSearchQuery}
+              onSearchQueryChange={(q) => { setMapSearchQuery(q); setFilters(f => ({ ...f, search_query: q.trim() || null })); }}
+            />
+          </div>
+        </div>
+
+        {/* Collapse/expand handle — sits on the boundary between panel and map */}
+        <div className="shrink-0 h-full relative" style={{ width: 0 }}>
+          <button
+            type="button"
+            onClick={() => setFeedCollapsed(v => !v)}
+            aria-label={feedCollapsed ? "הצג את רשימת המקומות" : "הסתר את רשימת המקומות"}
+            title={feedCollapsed ? "הצג רשימה" : "הסתר רשימה"}
+            className="absolute flex items-center justify-center"
+            style={{
+              top: "50%", insetInlineStart: -13, transform: "translateY(-50%)",
+              width: 26, height: 52, borderRadius: 8, background: "#fff",
+              border: "1px solid #E5E9F0", boxShadow: "0 2px 8px rgba(10,43,107,.12)",
+              cursor: "pointer", zIndex: 5, color: "#4A5568",
+            }}
+          >
+            {feedCollapsed ? <ChevronLeft style={{ width: 14, height: 14 }} /> : <ChevronRight style={{ width: 14, height: 14 }} />}
+          </button>
         </div>
         {/* Map */}
         <div className="flex-1 relative">
@@ -812,6 +867,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             places={places}
             savedIds={savedIds}
             onToggleSave={(id) => { toggleSave(id); showToast("הוסר מהמועדפים"); }}
+            savedProgress={savedProgress}
+            onToggleProgress={togglePlaceProgress}
             onSelectPlace={(p) => { setSelectedPlace(p); setDetailPlace(p); }}
             userLocation={userLocation}
             onGoProfile={() => setActiveTab("profile")}
@@ -1106,12 +1163,46 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
 
 // ─── SavedScreen ──────────────────────────────────────────────────────────────
 
+function ProgressChips({
+  progress, onToggle,
+}: {
+  progress: PlaceProgress;
+  onToggle: (key: keyof PlaceProgress) => void;
+}) {
+  return (
+    <div className="flex flex-wrap" style={{ gap: 6, marginTop: -4, marginBottom: 14 }}>
+      {PROGRESS_STEPS.map(step => {
+        const active = !!progress[step.key];
+        return (
+          <button
+            key={step.key}
+            type="button"
+            onClick={() => onToggle(step.key)}
+            className="font-hebrew flex items-center"
+            style={{
+              gap: 4, fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 999,
+              border: "1px solid", borderColor: active ? "#1F5BB5" : "#E5E9F0",
+              background: active ? "#E8F0FB" : "#fff", color: active ? "#0A2B6B" : "#8A95A8",
+              cursor: "pointer",
+            }}
+          >
+            {active && <Check style={{ width: 11, height: 11 }} />}
+            {step.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SavedScreen({
-  places, savedIds, onToggleSave, onSelectPlace, userLocation, onGoProfile, userInitial,
+  places, savedIds, onToggleSave, savedProgress, onToggleProgress, onSelectPlace, userLocation, onGoProfile, userInitial,
 }: {
   places: Place[];
   savedIds: Set<string>;
   onToggleSave: (id: string) => void;
+  savedProgress: Record<string, PlaceProgress>;
+  onToggleProgress: (id: string, key: keyof PlaceProgress) => void;
   onSelectPlace: (p: Place) => void;
   userLocation: { lon: number; lat: number } | null;
   onGoProfile: () => void;
@@ -1153,14 +1244,19 @@ function SavedScreen({
               </h3>
             </div>
             {saved.map(place => (
-              <PlaceCard
-                key={place.id}
-                place={place}
-                onSelect={onSelectPlace}
-                userLocation={userLocation}
-                isSaved
-                onToggleSave={onToggleSave}
-              />
+              <div key={place.id}>
+                <PlaceCard
+                  place={place}
+                  onSelect={onSelectPlace}
+                  userLocation={userLocation}
+                  isSaved
+                  onToggleSave={onToggleSave}
+                />
+                <ProgressChips
+                  progress={savedProgress[place.id] ?? {}}
+                  onToggle={(key) => onToggleProgress(place.id, key)}
+                />
+              </div>
             ))}
           </>
         )}
