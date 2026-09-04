@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
@@ -432,13 +432,49 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     error: fetchError,
     onBoundsChange,
     addPlace,
+    refetchViewport,
   } = usePlacesInViewport({ preservePlaceIds });
 
+  // Don't let a background refresh swap `places` out from under someone mid-flow
+  // (filling out a modal, or actively picking a pin on the map).
+  const suppressBackgroundRefreshRef = useRef(false);
   useEffect(() => {
-    if (!selectedPlace || places.length === 0) return;
-    const updated = places.find((p) => p.id === selectedPlace.id);
-    if (updated) setSelectedPlace(updated);
-  }, [places, selectedPlace]);
+    suppressBackgroundRefreshRef.current =
+      showAddModal || !!locationRequestPlace || pickingPin || pickingLocationPin;
+  }, [showAddModal, locationRequestPlace, pickingPin, pickingLocationPin]);
+
+  // Keep pins fresh for tabs left open a while: quietly re-fetch the current
+  // viewport (no spinner) periodically and whenever the tab regains focus,
+  // so background edits (location fixes, price corrections) show up without
+  // a manual reload.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const REFRESH_INTERVAL_MS = 120_000;
+    const trySilentRefetch = () => {
+      if (document.visibilityState === "visible" && !suppressBackgroundRefreshRef.current) {
+        refetchViewport({ silent: true });
+      }
+    };
+    const interval = setInterval(trySilentRefetch, REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", trySilentRefetch);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", trySilentRefetch);
+    };
+  }, [refetchViewport]);
+
+  useEffect(() => {
+    if (places.length === 0) return;
+    if (selectedPlace) {
+      const updated = places.find((p) => p.id === selectedPlace.id);
+      if (updated && updated !== selectedPlace) setSelectedPlace(updated);
+    }
+    if (detailPlace) {
+      const updated = places.find((p) => p.id === detailPlace.id);
+      if (updated && updated !== detailPlace) setDetailPlace(updated);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [places]);
 
   const handlePlaceUpdated = useCallback((updated: Place) => {
     addPlace(updated);

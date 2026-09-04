@@ -58,7 +58,8 @@ export interface UsePlacesInViewportResult {
   error: string | null;
   onBoundsChange: (bounds: Bounds) => void;
   addPlace: (place: Place) => void;
-  refetchViewport: () => void;
+  /** Re-fetches the current viewport, bypassing the cache. `silent: true` skips the loading spinner. */
+  refetchViewport: (options?: { silent?: boolean }) => void;
 }
 
 export function usePlacesInViewport(
@@ -201,16 +202,20 @@ export function usePlacesInViewport(
     });
   }, []);
 
-  const refetchViewport = useCallback(() => {
-    const b = currentBoundsRef.current;
-    if (!b) return;
-    setPending(true);
-    const currentCatKey = categoriesKey(categories);
-    cacheRef.current = cacheRef.current.filter(
-      (e) => !(e.catKey === currentCatKey && boundsContains(e.bounds, b))
-    );
-    fetchForBounds(b, undefined, true);
-  }, [fetchForBounds, categories]);
+  const refetchViewport = useCallback(
+    (options?: { silent?: boolean }) => {
+      const b = currentBoundsRef.current;
+      if (!b) return;
+      const silent = options?.silent ?? false;
+      if (!silent) setPending(true);
+      const currentCatKey = categoriesKey(categories);
+      cacheRef.current = cacheRef.current.filter(
+        (e) => !(e.catKey === currentCatKey && boundsContains(e.bounds, b))
+      );
+      fetchForBounds(b, undefined, !silent);
+    },
+    [fetchForBounds, categories]
+  );
 
   // Refetch when the category filter changes and we already have a viewport
   useEffect(() => {

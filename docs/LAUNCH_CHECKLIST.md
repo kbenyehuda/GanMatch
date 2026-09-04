@@ -48,14 +48,22 @@ When someone clicks "send a message" to a reviewer, the message is written and p
 
 **In progress:** Currently being worked on with help from another AI assistant (see the prompt already handed off). Come back to this doc once that's done.
 
+**Status 2026-09-04:** still stuck — no domain purchased yet, no DNS records set up. Deferred, same as items 1 and 3. Revisit before launch.
+
 ### 6. Key details are missing on most listings
 Price, whether there's space available, age range, and hours are essentially blank on most of the official government-sourced daycare listings. People can now submit these themselves via a review, but almost nothing has been filled in yet.
+
+**Status 2026-09-04:** no separate action — resolves via items 3 (seeding reviews) and 4 (intro nudging people to contribute), not a standalone fix.
 
 ### 7. Doctor and cosmetics listings are much thinner than daycare listings
 Daycare (kids) listings let people fill in a lot of detail — price, hours, safety features, meal type, and more. Doctor and cosmetics listings only have a couple of fields people can add. If you plan to promote those two categories at launch (not just kids), they'll feel noticeably less complete.
 
+**Status 2026-09-04:** noted, no action taken. Revisit if/when doctor and cosmetics categories are pushed as launch-day categories rather than kids-first.
+
 ### 8. The map doesn't always show the latest info
 If something about a place changes in the background (a staff member fixes its location, a price gets corrected), anyone who already has the page open won't see the update unless they reload the whole page. Not data loss — just a stale-looking screen.
+
+**Done 2026-09-04:** open tabs now quietly re-fetch the current map viewport every 2 minutes and whenever the tab regains focus (`usePlacesInViewport.ts` + `HomeMap.tsx`) — no spinner, no jump, pins just refresh in place. Also fixed a related gap found along the way: if someone had a place's full detail panel open (not just the map pin), background edits weren't reaching that view even after a refresh — only the map pin was wired to update. Both now stay in sync.
 
 ### 9. Clicking a cluster of map pins looks rough
 When several places are close together on the map and you tap the cluster, the list that pops up looks visibly less polished than the rest of the app — cramped, no real design applied yet.
