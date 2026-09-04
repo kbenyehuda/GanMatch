@@ -55,6 +55,7 @@ const CATEGORY_ICONS_MAP: Record<string, React.ReactNode> = {
   wellness: <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 18, height: 18 }}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>,
   attraction: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
   food:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="M18 8h1a4 4 0 1 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg>,
+  cosmetics: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></svg>,
 };
 
 // ─── Map peek sheet ───────────────────────────────────────────────────────────
@@ -168,45 +169,70 @@ function PlaceClusterList({
 }) {
   return (
     <div
-      className="absolute z-20 inset-x-3.5 bg-white rounded-[18px] overflow-hidden"
+      className="absolute z-20 inset-x-3.5 bg-white rounded-[20px] overflow-hidden"
       style={{
         bottom: "calc(86px + env(safe-area-inset-bottom))",
         boxShadow: "0 16px 36px rgba(10,43,107,.22)",
       }}
       dir="rtl"
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E9F0]">
-        <span className="font-hebrew font-semibold text-[#0A2B6B] text-sm">
+      <div className="relative flex items-center justify-between px-4" style={{ paddingTop: 14, paddingBottom: 14, background: "linear-gradient(160deg, #0A2B6B 0%, #1F5BB5 100%)" }}>
+        <span className="font-hebrew font-bold text-white" style={{ fontSize: 14 }}>
           {places.length} מקומות באזור
         </span>
-        <button type="button" onClick={onClose}>
-          <X className="w-4 h-4 text-gray-400" />
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex items-center justify-center"
+          style={{ width: 26, height: 26, borderRadius: "50%", background: "rgba(255,255,255,.18)", border: 0, cursor: "pointer" }}
+          aria-label="סגור"
+        >
+          <X className="w-3.5 h-3.5 text-white" />
         </button>
       </div>
-      <ul className="max-h-60 overflow-y-auto divide-y divide-[#E5E9F0]">
-        {places.map((p) => (
-          <li key={p.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(p)}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F6FA] text-start"
-            >
-              <span className="text-base">{CATEGORY_EMOJI[p.place_category] ?? "📍"}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-hebrew font-medium text-[#0A2B6B] text-sm truncate">
-                  {p.name}
-                </p>
-                {p.avg_rating != null && (
-                  <p className="text-[11px] text-[#8A95A8] flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                    {p.avg_rating.toFixed(1)}
+      <ul className="overflow-y-auto divide-y divide-[#EEF1F6]" style={{ maxHeight: "min(46vh, 340px)" }}>
+        {places.map((p) => {
+          const color = PLACE_CATEGORY_COLORS[p.place_category] ?? "#8A95A8";
+          const lightColor = lightenHex(color);
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(p)}
+                className="w-full flex items-center gap-3 px-4 hover:bg-[#F5F6FA] text-start"
+                style={{ paddingTop: 12, paddingBottom: 12 }}
+              >
+                <div
+                  className="flex items-center justify-center shrink-0"
+                  style={{
+                    width: 42, height: 42, borderRadius: 12, color: "#fff",
+                    background: `linear-gradient(135deg, ${color} 0%, ${lightColor} 100%)`,
+                  }}
+                >
+                  {CATEGORY_ICONS_MAP[p.place_category] ?? <span className="text-base">{CATEGORY_EMOJI[p.place_category] ?? "📍"}</span>}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-hebrew font-bold truncate" style={{ fontSize: 14, color: "#0F1A2E" }}>
+                    {p.name}
                   </p>
-                )}
-              </div>
-              <ChevronLeft className="w-4 h-4 text-gray-300 shrink-0" />
-            </button>
-          </li>
-        ))}
+                  <div className="font-hebrew flex items-center gap-1.5" style={{ fontSize: 11.5, color: "#8A95A8", marginTop: 2 }}>
+                    <span>{PLACE_CATEGORY_LABELS[p.place_category]}</span>
+                    {p.avg_rating != null && (
+                      <>
+                        <span style={{ width: 3, height: 3, borderRadius: "50%", background: "#C5CDD8", display: "inline-block" }} />
+                        <span className="flex items-center gap-1">
+                          <svg viewBox="0 0 24 24" fill="#C8A24B" style={{ width: 11, height: 11 }}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>
+                          <span style={{ fontWeight: 700, color: "#0F1A2E" }}>{p.avg_rating.toFixed(1)}</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <ChevronLeft className="w-4 h-4 shrink-0" style={{ color: "#C5CDD8" }} />
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -653,15 +679,23 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             pendingPin={suggestPin ?? locationRequestPin}
             onMapClick={pickingPin || pickingLocationPin ? handleMapPinPicked : undefined}
           />
-          {/* Desktop detail: physical right-side overlay */}
+          {/* Desktop detail: physical right-side overlay.
+              Height is needed even for the compact cards below (MapPeekSheet /
+              PlaceClusterList position themselves via `bottom: ...` relative to
+              this box), but the shadow/rounded-corner chrome is only correct
+              for PlaceDetail, which actually fills the box — the compact cards
+              already carry their own shadow/radius, so applying it here too
+              left a large empty "ghost" rectangle with its own shadow floating
+              over the map whenever a peek sheet or cluster list was open. */}
           {(detailPlace || selectedPlace || selectedClusterPlaces) && !pickingLocationPin && (
             <div
-              className="absolute top-4 w-[360px] z-20 overflow-hidden"
+              className="absolute top-4 w-[360px] z-20"
               style={{
                 right: 16,
                 height: "calc(100dvh - 2rem)",
-                borderRadius: 20,
-                boxShadow: "0 16px 40px rgba(10,43,107,.22)",
+                ...(detailPlace
+                  ? { borderRadius: 20, boxShadow: "0 16px 40px rgba(10,43,107,.22)", overflow: "hidden" as const }
+                  : {}),
               }}
             >
               {detailPlace ? (
@@ -688,21 +722,23 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 <PlaceClusterList
                   places={selectedClusterPlaces}
                   onClose={() => setSelectedClusterPlaces(null)}
-                  onSelect={(p) => { setSelectedPlace(p); setSelectedClusterPlaces(null); }}
+                  onSelect={(p) => { setSelectedPlace(p); setDetailPlace(p); setSelectedClusterPlaces(null); }}
                 />
               ) : null}
             </div>
           )}
-          {/* Desktop add-place FAB */}
-          <button
-            type="button"
-            onClick={startAddFlow}
-            className="absolute bottom-24 z-10 hidden md:flex items-center gap-2 font-hebrew font-bold"
-            style={{ right: 16, padding: "12px 18px", borderRadius: 999, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, boxShadow: "0 8px 20px rgba(10,43,107,.35)" }}
-          >
-            <Plus style={{ width: 18, height: 18 }} />
-            הוסף מקום
-          </button>
+          {/* Desktop add-place FAB — hidden while the right-side panel is open so it can't peek out from behind it */}
+          {!(detailPlace || selectedPlace || selectedClusterPlaces) && (
+            <button
+              type="button"
+              onClick={startAddFlow}
+              className="absolute bottom-24 z-10 hidden md:flex items-center gap-2 font-hebrew font-bold"
+              style={{ right: 16, padding: "12px 18px", borderRadius: 999, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, boxShadow: "0 8px 20px rgba(10,43,107,.35)" }}
+            >
+              <Plus style={{ width: 18, height: 18 }} />
+              הוסף מקום
+            </button>
+          )}
 
           {/* Auth */}
           <div className="absolute top-4 start-4 z-10 flex items-center gap-2">
@@ -912,7 +948,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             <PlaceClusterList
               places={selectedClusterPlaces}
               onClose={() => setSelectedClusterPlaces(null)}
-              onSelect={(p) => { setSelectedPlace(p); setSelectedClusterPlaces(null); }}
+              onSelect={(p) => { setSelectedPlace(p); setDetailPlace(p); setSelectedClusterPlaces(null); }}
             />
           )}
         </div>

@@ -68,6 +68,8 @@ If something about a place changes in the background (a staff member fixes its l
 ### 9. Clicking a cluster of map pins looks rough
 When several places are close together on the map and you tap the cluster, the list that pops up looks visibly less polished than the rest of the app — cramped, no real design applied yet.
 
+**Done 2026-09-04:** redesigned to match the rest of the app's visual language (`PlaceClusterList` in `HomeMap.tsx`) — same navy gradient header as the sign-in/about screens, each row now uses the colored category-icon badge from the place detail peek sheet instead of a bare emoji, plus rating shown consistently. Also fixed a small pre-existing gap found along the way: cosmetics-category places had no icon defined at all (rendered blank) in both the peek sheet and this list — added one.
+
 ---
 
 ## 🟢 Nice to have — polish for after launch
