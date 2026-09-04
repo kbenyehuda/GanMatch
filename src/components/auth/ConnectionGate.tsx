@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 export const SKIP_LOGIN_STORAGE_KEY = "ganmatch_skip_login";
@@ -124,6 +125,12 @@ export function ConnectionGate({
           במצב אורח חלק מהפעולות מוגבלות.
           <br />
           ניתן להתחבר בכל עת.
+          <br />
+          בהתחברות אתם מסכימים ל
+          <Link href="/privacy" style={{ color: "rgba(255,255,255,.75)", textDecoration: "underline" }}>
+            מדיניות הפרטיות ותנאי השימוש
+          </Link>
+          .
         </p>
       </div>
     </div>

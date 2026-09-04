@@ -13,8 +13,12 @@ Plain-language list of what still needs to happen before GanMatch is ready to sh
 ### 1. Confirm the hosting won't go to sleep
 The database (Supabase) is on a free tier that has, in the past, automatically paused itself after a period of no activity — which would take the whole site offline until manually un-paused. This is a five-minute check with a catastrophic downside if skipped ("the link a parent forwards to a friend next week just doesn't work"), so it goes first.
 
+**Checked 2026-09-04:** confirmed — project is still on the `free` plan, which does auto-pause after about a week of inactivity. Two real fixes exist (upgrade to Pro, ~$25/mo, which removes auto-pause entirely; or a scheduled keep-alive ping, free but fragile). **Skipped for now** — revisit before launch.
+
 ### 2. No privacy policy / terms of use
 There's currently no page explaining what happens to a person's data, how the anonymous-contact-a-reviewer feature works (what's logged, who can see it), or basic terms of use. This app touches decisions about people's children and relays people's email addresses to strangers through the contact feature — that's real legal exposure, not just good hygiene.
+
+**Done 2026-09-04 (needs your review):** drafted a combined privacy policy + terms page at `/privacy` (`src/app/privacy/page.tsx`), and linked it from the sign-in screen footer (`ConnectionGate.tsx`). It's plain-language, in Hebrew, and written from the actual current data flows in the code (Google OAuth only, what the contact-reviewer relay logs and exposes, onboarding profile fields, telemetry, third-party processors). It explicitly says it isn't legal advice and recommends a professional pass before scaling. **Read it before launch** — the wording is mine, not a lawyer's.
 
 ### 3. Almost no reviews exist yet
 As of the last count: only ~34 reviews existed across the entire app, and 93% of daycare listings had zero reviews. Even a warm WhatsApp audience will bounce off an empty, review-less page — an empty product feels broken no matter how well it's introduced. Worth pre-seeding a first batch of reviews (from the WhatsApp group history you've been triaging) before sharing the link.

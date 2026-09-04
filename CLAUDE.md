@@ -1,6 +1,6 @@
-# GanMatch — Agent Guide
+# GiveMyTime — Agent Guide
 
-Israeli kindergarten/daycare discovery platform. Parents find and compare ganim (גנים) on an interactive map using government data + community reviews. Hebrew-only UI, RTL layout throughout.
+Local places discovery platform for Giv'atayim (גבעתיים), Israel. Started as an Israeli kindergarten/daycare (ganim) discovery tool and has grown into a broader map-based directory of places, services, and businesses. Parents/residents find and compare places on an interactive map using government data + community reviews. Hebrew-only UI, RTL layout throughout.
 
 **Human README:** [README.md](README.md) · **Docs index:** [docs/README.md](docs/README.md)
 

@@ -1,6 +1,6 @@
-# GanMatch | גן מתאים
+# GiveMyTime | גבעתיים
 
-A map-centric discovery platform for Israeli daycares (ages 0–3). Find licensed daycares based on government data and community "Give-to-Get" reviews.
+A map-centric discovery platform for places, services, and businesses in Giv'atayim, Israel — including licensed daycares (ages 0–3), doctors, cosmetics, and more — based on government data and community "Give-to-Get" reviews.
 
 **Docs:** [docs/README.md](docs/README.md) · **Supabase schema, migrations, ingestion:** [docs/database.md](docs/database.md) · **Access model:** [GIVE_TO_GET_ACCESS_MODEL.md](GIVE_TO_GET_ACCESS_MODEL.md)
 
@@ -37,7 +37,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 # Server-side only (do NOT expose to the browser)
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 RESEND_API_KEY=re_your_resend_key
-RESEND_FROM_EMAIL="GanMatch <noreply@yourdomain.com>"
+RESEND_FROM_EMAIL="GiveMyTime <noreply@yourdomain.com>"
 ADMIN_EMAILS="admin1@example.com,admin2@example.com"
 MODERATION_BLACKLIST_TERMS="competitor_name,bad_word"
 MODERATION_PRICE_CHANGE_THRESHOLD_PCT=35
