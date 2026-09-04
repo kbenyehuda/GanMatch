@@ -23,6 +23,8 @@ There's currently no page explaining what happens to a person's data, how the an
 ### 3. Almost no reviews exist yet
 As of the last count: only ~34 reviews existed across the entire app, and 93% of daycare listings had zero reviews. Even a warm WhatsApp audience will bounce off an empty, review-less page — an empty product feels broken no matter how well it's introduced. Worth pre-seeding a first batch of reviews (from the WhatsApp group history you've been triaging) before sharing the link.
 
+**Status 2026-09-04:** deferred — you're doing the WhatsApp triage yourself later. Revisit before launch.
+
 ---
 
 ## 🟡 Should fix soon — wanted before/soon after sharing, less urgent given a warm audience
@@ -31,6 +33,8 @@ As of the last count: only ~34 reviews existed across the entire app, and 93% of
 Right now, opening the website takes you straight to the map with zero explanation. Confirmed: you still want this built before launch, even though a WhatsApp-group audience needs less convincing than cold strangers would.
 
 **What's needed:** A simple welcome page (or a short overlay) explaining what GanMatch is, where the data comes from, and how "help us and we help you" review access works — before the person is dropped onto a bare map.
+
+**Done 2026-09-04 (needs your review):** added a one-time full-screen intro overlay shown before the map on a visitor's very first visit (`src/components/home/IntroOverlay.tsx`, wired into `HomeMap.tsx`) — three short points: what GiveMyTime is, where the data comes from, and a nudge to contribute a review. It never reappears after the first "בואו נתחיל" click (tracked in localStorage). Also added a persistent `/about` page (`src/app/about/page.tsx`) reachable via an "אודות" button (desktop, top-start corner) and a profile-screen card (mobile), for anyone who wants the explanation again later. Note: the overlay/about copy deliberately does **not** describe reviews as gated behind contributing — that give-to-get mechanic isn't actually wired up for the current `places` schema (only the legacy `ganim_v2` path has it), so the copy just encourages contributing rather than promising a hard unlock. **Please click through it locally before launch.**
 
 ### 5. Emails to reviewers don't actually deliver yet
 When someone clicks "send a message" to a reviewer, the message is written and prepared correctly, but the email fails to actually arrive — unless the recipient happens to be your own email address. Downgraded from blocking: with only ~34 reviews total (most of them yours), almost nobody will hit this button in the first weeks.

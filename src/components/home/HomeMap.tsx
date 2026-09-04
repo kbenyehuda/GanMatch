@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
+import { IntroOverlay, INTRO_SEEN_STORAGE_KEY } from "@/components/home/IntroOverlay";
 import { PlaceFeedPanel, FilterSheet } from "@/components/places/PlaceFeedPanel";
 import { PlaceDetail } from "@/components/places/PlaceDetail";
 import { PlaceCard } from "@/components/places/PlaceCard";
@@ -26,7 +27,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
-  ChevronRight, Send, Shield,
+  ChevronRight, Send, Shield, Info,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -365,6 +366,7 @@ export interface HomeMapProps {
 export function HomeMap({ seedPlace = null }: HomeMapProps) {
   const { user, loading } = useSession();
   const [skipLogin, setSkipLogin] = useState<boolean | null>(null);
+  const [seenIntro, setSeenIntro] = useState<boolean | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(() => seedPlace ?? null);
@@ -464,6 +466,15 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      setSeenIntro(window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === "1");
+    } catch {
+      setSeenIntro(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!supabase || !user) { setIsAdmin(false); return; }
     let cancelled = false;
     (async () => {
@@ -531,6 +542,17 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
 
   // ─── Auth gate ──────────────────────────────────────────────────────────────
 
+  if (seenIntro === null) return <ConnectionGate loading />;
+  if (!seenIntro) {
+    return (
+      <IntroOverlay
+        onContinue={() => {
+          try { window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1"); }
+          finally { setSeenIntro(true); }
+        }}
+      />
+    );
+  }
   if (loading || skipLogin === null) return <ConnectionGate loading />;
   if (!user && !skipLogin) {
     return (
@@ -668,6 +690,14 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 </button>
               </>
             )}
+            <button
+              type="button"
+              onClick={() => (window.location.href = "/about")}
+              className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+              style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
+            >
+              אודות
+            </button>
             <AuthButton />
           </div>
         </div>
@@ -1144,6 +1174,17 @@ function ProfileScreen({
             <ProfileListCard icon={<MapPin style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות שינוי מיקום" sub="אישור עדכוני מיקום ממשתמשים" onClick={() => (window.location.href = "/admin/place-location-requests")} />
           </>
         )}
+
+        <div className="font-hebrew flex items-center justify-between" style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E", margin: "18px 0 10px" }}>
+          כללי
+        </div>
+        <ProfileListCard
+          icon={<Info style={{ width: 18, height: 18 }} />}
+          iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)"
+          title="אודות GiveMyTime"
+          sub="מה זה, מאיפה המידע, ופרטיות"
+          onClick={() => (window.location.href = "/about")}
+        />
 
         <button
           type="button"
