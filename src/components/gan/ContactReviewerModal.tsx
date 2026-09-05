@@ -151,7 +151,10 @@ export function ContactReviewerModal({
         <p className="font-hebrew text-sm" style={{ color: "#C53030", marginTop: 10 }}>{error}</p>
       )}
       {success && (
-        <p className="font-hebrew text-sm" style={{ color: "#1D7F4F", marginTop: 10 }}>ההודעה נשלחה.</p>
+        <p className="font-hebrew text-sm" style={{ color: "#1D7F4F", marginTop: 10, lineHeight: 1.5 }}>
+          ההודעה נשלחה. אם האדם יגיב, התשובה תגיע ישירות למייל שלך —{" "}
+          <span dir="ltr" style={{ unicodeBidi: "isolate" }}>{senderEmail.trim()}</span>
+        </p>
       )}
     </div>
   );
