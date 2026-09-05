@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail } from "lucide-react";
+import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail, HelpCircle } from "lucide-react";
 import type { Place, PlaceReview, SpokenLanguage } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS, HMO_LABELS,
@@ -10,6 +10,7 @@ import { DrumstickIcon, PeanutIcon, getLanguageChar } from "@/components/gan/Gan
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import { useSession } from "@/lib/useSession";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
+import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -229,6 +230,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
   // Kids attribute-edit modal (full form — "עזרו לנו למלא" / "ערכו פרטים")
   const [showAttrEdit, setShowAttrEdit] = useState(false);
+  const [showIconLegend, setShowIconLegend] = useState(false);
 
   // Review form
   const [showForm, setShowForm] = useState(false);
@@ -476,7 +478,15 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {/* Kids attrs */}
           {place.place_category === "kids" && (
             <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
-              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>פרטים נוספים</span>
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="font-hebrew" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>פרטים נוספים</span>
+                {Object.keys(attrs).length > 0 && (
+                  <button type="button" onClick={() => setShowIconLegend(true)} aria-label="מה הסמלים אומרים"
+                    className="flex items-center justify-center" style={{ background: "none", border: 0, padding: 0, cursor: "pointer", color: "#8A95A8" }}>
+                    <HelpCircle style={{ width: 13, height: 13 }} />
+                  </button>
+                )}
+              </div>
               {Object.keys(attrs).length > 0 && <KidsAttributeChips attrs={attrs} />}
               {user && (() => {
                 const missing: string[] = [];
@@ -648,6 +658,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           onShowToast={onShowToast}
         />
       )}
+
+      {showIconLegend && <AttributeIconsLegendModal onClose={() => setShowIconLegend(false)} />}
 
       {contactReviewId && (
         <ContactReviewerModal
