@@ -37,7 +37,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 # Server-side only (do NOT expose to the browser)
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 RESEND_API_KEY=re_your_resend_key
-RESEND_FROM_EMAIL="GiveMyTime <noreply@yourdomain.com>"
+# Sending domain: givemytimeapp.com (bought 2026-09-05, used only for outbound mail — not hosting)
+RESEND_FROM_EMAIL="GiveMyTime <noreply@givemytimeapp.com>"
 ADMIN_EMAILS="admin1@example.com,admin2@example.com"
 MODERATION_BLACKLIST_TERMS="competitor_name,bad_word"
 MODERATION_PRICE_CHANGE_THRESHOLD_PCT=35

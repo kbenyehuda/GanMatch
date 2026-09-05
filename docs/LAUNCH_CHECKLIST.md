@@ -50,6 +50,8 @@ When someone clicks "send a message" to a reviewer, the message is written and p
 
 **Status 2026-09-04:** still stuck — no domain purchased yet, no DNS records set up. Deferred, same as items 1 and 3. Revisit before launch.
 
+**Status 2026-09-05:** domain bought — **`givemytimeapp.com`** (used only for sending mail, not hosting; the site keeps living on Vercel). DNS records added via Resend's one-click Cloudflare authorization, domain verified, `RESEND_FROM_EMAIL` updated to `"GiveMyTime <noreply@givemytimeapp.com>"` in both `.env.local` and Vercel, redeployed, and tested by sending a contact-reviewer message to a non-owner reviewer account — **delivered successfully. RESOLVED.**
+
 ### 6. Key details are missing on most listings
 Price, whether there's space available, age range, and hours are essentially blank on most of the official government-sourced daycare listings. People can now submit these themselves via a review, but almost nothing has been filled in yet.
 
@@ -74,10 +76,11 @@ When several places are close together on the map and you tap the cluster, the l
 
 ## 🟢 Nice to have — polish for after launch
 
-- The "message a reviewer" popup isn't great on phones/tablets yet — it can feel cramped or get partially cut off.
-- The search results panel doesn't yet have a way to collapse it to see more of the map, especially on tablets.
-- The little icons that describe a place's features (meals, languages, safety, etc.) only explain themselves on hover with a mouse — which means they explain nothing at all on a phone or tablet, since there's no mouse to hover with.
-- No way yet for a shortlist/favorites list, or to track "I contacted them / I visited / I applied" for a place you're considering.
+**Done 2026-09-04:**
+- The "message a reviewer" popup now uses a proper bottom sheet on phones/tablets (rounded top, scrollable, safe-area-aware) instead of a card that could get cut off with the keyboard open (`ContactReviewerModal.tsx`).
+- The desktop/tablet search results panel now has a collapse/expand handle on the boundary with the map, so you can reclaim map space (`HomeMap.tsx`).
+- Shortlist/favorites already existed (heart icon → localStorage → "מועדפים" tab). Added progress chips per saved place — "יצרתי קשר" / "ביקרתי" / "נרשמתי" — localStorage-backed, shown in the saved tab (`HomeMap.tsx`).
+- Checked the "attribute icons only explain on hover" item: turned out to already be resolved in the live app — `PlaceDetail.tsx`'s attribute chips always show icon *and* text label. The hover-only version only existed in legacy `gan/` components the live app no longer renders. No change needed.
 
 ---
 
