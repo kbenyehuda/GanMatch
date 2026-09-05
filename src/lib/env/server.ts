@@ -50,8 +50,9 @@ export const serverEnv = {
   // file, not env vars, so limits can be tuned without a redeploy. See
   // src/lib/api-usage.ts.
   ADMIN_EMAILS: csvLowerSet(process.env.ADMIN_EMAILS),
-  // Local-dev-only: absolute path to the raw WhatsApp .txt export, used by the
-  // triage "open chat context" feature. Not set in production.
+  // Local-dev-only override: absolute path to the raw WhatsApp .txt export, used
+  // by the triage "open chat context" feature. When unset (e.g. in production),
+  // that feature falls back to Supabase Storage — see chat-context/route.ts.
   WHATSAPP_CHAT_FILE_PATH: getTrimmed("WHATSAPP_CHAT_FILE_PATH"),
   MODERATION_BLACKLIST_TERMS: csvLowerSet(process.env.MODERATION_BLACKLIST_TERMS),
   MODERATION_PRICE_CHANGE_THRESHOLD_PCT: numberOr(process.env.MODERATION_PRICE_CHANGE_THRESHOLD_PCT, 35),

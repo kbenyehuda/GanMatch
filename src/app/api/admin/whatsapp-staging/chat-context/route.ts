@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
-import { getChatMessages, findMessageIndex } from "@/lib/whatsapp-chat-cache";
+import { getChatMessages, getChatMessagesFromStorage, findMessageIndex } from "@/lib/whatsapp-chat-cache";
+
+// Where the raw chat export lives in Supabase Storage — used whenever
+// WHATSAPP_CHAT_FILE_PATH isn't set (i.e. everywhere except local dev).
+const WHATSAPP_STORAGE_BUCKET = "whatsapp-exports";
+const WHATSAPP_STORAGE_PATH = "chat-export.txt";
 
 function adminAuth(req: Request) {
   const h = req.headers.get("authorization") ?? "";
@@ -32,13 +37,6 @@ export async function GET(req: Request) {
   if (ue || !ud?.user || !email) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   if (!serverEnv.ADMIN_EMAILS.has(email)) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
 
-  if (!serverEnv.WHATSAPP_CHAT_FILE_PATH) {
-    return NextResponse.json(
-      { error: "WHATSAPP_CHAT_FILE_PATH is not set — this feature only works in local dev with the chat export on disk." },
-      { status: 500 }
-    );
-  }
-
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id") ?? "";
   const before = Math.min(500, Math.max(0, parseInt(searchParams.get("before") ?? "30", 10) || 30));
@@ -54,7 +52,13 @@ export async function GET(req: Request) {
 
   let messages;
   try {
-    messages = getChatMessages(serverEnv.WHATSAPP_CHAT_FILE_PATH);
+    messages = serverEnv.WHATSAPP_CHAT_FILE_PATH
+      ? getChatMessages(serverEnv.WHATSAPP_CHAT_FILE_PATH)
+      : await getChatMessagesFromStorage(async () => {
+          const { data, error } = await admin.storage.from(WHATSAPP_STORAGE_BUCKET).download(WHATSAPP_STORAGE_PATH);
+          if (error || !data) throw new Error(error?.message ?? "Chat export not found in storage");
+          return await data.text();
+        });
   } catch (e: any) {
     return NextResponse.json({ error: `Could not read chat file: ${e.message}` }, { status: 500 });
   }

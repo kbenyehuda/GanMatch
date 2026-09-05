@@ -28,8 +28,7 @@ const SKIP_PATTERNS: RegExp[] = [
 
 const EDITED_SUFFIX = /\s*<This message was edited>\s*$/i;
 
-function parseChat(path: string): ChatMessage[] {
-  const raw = fs.readFileSync(path, "utf-8");
+function parseChatText(raw: string): ChatMessage[] {
   const messages: ChatMessage[] = [];
   let current: { name: string; text: string; timestamp: string } | null = null;
 
@@ -59,8 +58,20 @@ let cache: { path: string; mtimeMs: number; messages: ChatMessage[] } | null = n
 export function getChatMessages(path: string): ChatMessage[] {
   const stat = fs.statSync(path);
   if (cache && cache.path === path && cache.mtimeMs === stat.mtimeMs) return cache.messages;
-  const messages = parseChat(path);
+  const messages = parseChatText(fs.readFileSync(path, "utf-8"));
   cache = { path, mtimeMs: stat.mtimeMs, messages };
+  return messages;
+}
+
+// Production fallback: the raw export lives in Supabase Storage rather than on
+// disk. Caller supplies the download so this module stays free of the Supabase
+// SDK; cached per warm serverless instance since the file essentially never changes.
+let storageCache: ChatMessage[] | null = null;
+
+export async function getChatMessagesFromStorage(fetchText: () => Promise<string>): Promise<ChatMessage[]> {
+  if (storageCache) return storageCache;
+  const messages = parseChatText(await fetchText());
+  storageCache = messages;
   return messages;
 }
 
