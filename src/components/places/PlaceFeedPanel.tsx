@@ -252,7 +252,7 @@ export function FilterSheet({
     if (filters.hmo?.length || filters.doctor_specialty?.length) s.add("doctor");
     if (filters.cosmetics_specialty?.length) s.add("cosmetics");
     if (
-      filters.kids_gan_category?.length || filters.kids_age_track != null || filters.kids_max_price_nis != null ||
+      filters.kids_specialty?.length || filters.kids_gan_category?.length || filters.kids_age_track != null || filters.kids_max_price_nis != null ||
       filters.kids_meal_type?.length || filters.kids_friday?.length || filters.kids_outdoor != null ||
       filters.kids_vacancy?.length || filters.kids_languages?.length || filters.kids_has_mamad != null ||
       filters.kids_has_cctv != null || filters.kids_first_aid != null || filters.kids_vegan_friendly != null ||
@@ -284,6 +284,16 @@ export function FilterSheet({
     return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
   }, [places]);
 
+  const kidsSpecialtyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of places) {
+      if (p.place_category !== "kids") continue;
+      const a = p.attributes as Record<string, unknown>;
+      const s = typeof a.specialty === "string" ? a.specialty.trim() : "";
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
+  }, [places]);
   const doctorSpecialtyOptions = useMemo(() => {
     const set = new Set<string>();
     for (const p of places) {
@@ -425,7 +435,14 @@ export function FilterSheet({
           {/* ── Kids group ───────────────────────────────────────────────── */}
           {categoryActive("kids") && (
             <CategoryFilterGroup category="kids" expanded={expandedCats.has("kids")} onToggle={() => toggleCatExpanded("kids")}>
-            <Section label="סוג גן" first>
+            {kidsSpecialtyOptions.length > 0 && (
+              <Section label="סוג" first>
+                <Chips items={kidsSpecialtyOptions.map(s => ({ id: s, label: s }))}
+                  active={pending.kids_specialty ?? []}
+                  onToggle={v => toggle<string>("kids_specialty", v)} />
+              </Section>
+            )}
+            <Section label="סוג גן" first={kidsSpecialtyOptions.length === 0}>
               <Chips items={[
                 { id: "MAON_SYMBOL",                    label: "מעון סמל" },
                 { id: "MISHPACHTON",                    label: "משפחתון" },

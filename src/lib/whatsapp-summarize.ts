@@ -42,6 +42,12 @@ const SYSTEM_PROMPT = `אתה כותב סיכומים קצרים של המלצו
 
 החזר רק את הערכים המבוקשים בכלי. בלי מירכאות, בלי הקדמות, בלי הערות.`;
 
+// Fixed list so the map's chugim filter doesn't fragment into "חוג ציור" / "חוג ציור לילדים"…
+// Keeps the values already on places (מוזיקה, ספורט).
+export const CHUGIM_TYPES = [
+  "התעמלות", "כדורגל", "ספורט", "נינג'ה", "קפוארה", "ג'ודו ואומנויות לחימה", "שחייה", "ריקוד ובלט",
+  "דרמה ותיאטרון", "מוזיקה", "יצירה ואומנות", "אנגלית", "מדע ורובוטיקה", "שחמט", "בישול", "הורה וילד",
+];
 // Kids-category recommendations can also state structured facts (kosher, hours,
 // fridays, mamad, cameras) that have a fixed slot instead of a freeform tag.
 const KIDS_FIELDS_PROMPT = `
@@ -50,10 +56,67 @@ const KIDS_FIELDS_PROMPT = `
 - hours: שעות פעילות כפי שנאמרו (טקסט חופשי, למשל "7:30–16:30").
 - friday_schedule: "NONE" אם נאמר שסגור בימי שישי, "EVERY_FRIDAY" אם פתוח כל שישי, "EVERY_OTHER_FRIDAY" אם פתוח שישי שני.
 - has_mamad: true/false אם נאמר במפורש אם יש או אין ממ"ד/מיקלט.
-- has_cctv: true/false אם נאמר במפורש אם יש או אין מצלמות אבטחה.`;
+- has_cctv: true/false אם נאמר במפורש אם יש או אין מצלמות אבטחה.
+- gan_category: סוג המסגרת, רק אם ברור מהדיאלוג: "MISHPACHTON" (משפחתון), "PRIVATE_GAN" (גן פרטי), "MUNICIPAL_GAN" (גן עירוני/ציבורי), "MAON_SYMBOL" (מעון סמל / מעון של ויצו, נעמת וכו'), "TZAHARON_MUNICIPAL" (צהרון עירוני), "TZAHARON_PRIVATE_SUPERVISED" (צהרון פרטי מפוקח), "TZAHARON_PRIVATE_UNSUPERVISED" (צהרון פרטי לא מפוקח).
+- has_outdoor_space: true/false אם נאמר במפורש אם יש או אין חצר/שטח חוץ.
+- meal_type: "IN_HOUSE_COOK" (אוכל מבושל במקום), "EXTERNAL_CATERING" (קייטרינג), "PARENTS_BRING" (ההורים מביאים אוכל), "MIXED" (שילוב).
+- monthly_price_nis: מחיר חודשי בשקלים כמספר, רק אם נאמר סכום חודשי מפורש (לא לשנה, לא ליום).
+- min_age_months / max_age_months: גילאי הקבלה בחודשים, רק אם נאמרו במפורש (למשל "מגיל שנה ו-3" = 15).
+- staff_child_ratio: מספר הילדים לכל אשת צוות, רק אם נאמר במפורש או ניתן לחישוב ישיר (למשל "18 ילדים על 3 נשות צוות" = 6).
+- first_aid_trained: true אם נאמר שהצוות עבר הכשרת עזרה ראשונה.
+- vegetarian_friendly / vegan_friendly / allergy_friendly / meat_served: true/false רק אם נאמר במפורש.
+- chugim_types: סוגי החוגים שהמקום מציע (חוג, סטודיו, או גן שיש בו חוגים), מתוך הרשימה בלבד: ${CHUGIM_TYPES.join(", ")}. מותר להסיק מההקשר ומהודעת המקור (למשל "סטודיו מובה" בתשובה ל"חוג קפוארה לילד בן 4" = קפוארה). אם לא ברור — השאר ריק.`;
 
-function buildSystemPrompt(category: string): string {
-  return category === "kids" ? SYSTEM_PROMPT + KIDS_FIELDS_PROMPT : SYSTEM_PROMPT;
+// The kids "type" (גן / בייביסיטר / חוג / שחייה…). Unlike the facts above it is usually implied,
+// not stated: "סטודיו מובה" is only recognisably a חוג from the question it answered.
+function kidsSpecialtyPrompt(specialtyOptions: string[]): string {
+  if (specialtyOptions.length === 0) return "";
+  return `
+- specialty: סוג המקום/נותן השירות, אחד מהרשימה בלבד: ${specialtyOptions.join(", ")}. כאן מותר להסיק מההקשר, במיוחד מ"הודעת המקור" (למשל תשובה לשאלה "חוג קפוארה לילד בן 4?" היא חוג, ותשובה ל"מחפשת מטפלת" היא בייביסיטר). גן, מעון, משפחתון וצהרון הם "גני ילדים". אם עדיין לא ברור — השאר ריק.`;
+}
+
+// Other categories: the facts their map filters use (places.attributes / hmo / kosher / price_range).
+function categoryFieldsPrompt(category: string, specialtyOptions: string[]): string {
+  const intro = `\nבנוסף, אם הדיאלוג מציין במפורש אחד מהפרטים הבאים — מלא אותו. אל תמלא שדה שלא הוזכר במפורש, ואל תמציא ניחושים.`;
+  const specialty = specialtyOptions.length > 0
+    ? `\n- specialty: סוג נותן השירות, אחד מהרשימה בלבד: ${specialtyOptions.join(", ")}. אם אף אחד לא מתאים או שזה לא ברור — השאר ריק.`
+    : "";
+  switch (category) {
+    case "doctor":
+      return intro + specialty
+        + `\n- for_children: true אם נותן השירות מטפל בילדים (רופא/ת ילדים, התמחות לילדים), false אם נאמר שמטפל רק במבוגרים.`
+        + `\n- hmo: הקופות שנותן השירות עובד איתן, רק אם נאמר במפורש (למשל "מקבל מכבי", "דרך כללית"). מתוך: "מכבי", "כללית", "מאוחדת", "לאומית".`;
+    case "cosmetics":
+      return specialty ? intro + specialty : "";
+    case "cafe":
+    case "food":
+      return intro
+        + `\n- kosher: "CERTIFIED" אם נאמר שיש כשרות/הכשר, "NOT_CERTIFIED" אם נאמר במפורש שאין.`
+        + `\n- price_range: 1 (זול), 2 (בינוני), 3 (יקר), רק אם נאמר משהו מפורש על המחיר.`;
+    case "sport":
+      return intro + specialty
+        + `\n- gender_restriction: "women_only" אם נאמר שזה לנשים בלבד, "men_only" אם לגברים בלבד.`;
+    case "attraction":
+      return intro + `\n- indoor_outdoor: "indoor" (מקורה), "outdoor" (בחוץ), "both" (גם וגם), רק אם ברור מהדיאלוג.`;
+    default:
+      return "";
+  }
+}
+
+function buildSystemPrompt(category: string, specialtyOptions: string[]): string {
+  return SYSTEM_PROMPT + (category === "kids"
+    ? KIDS_FIELDS_PROMPT + kidsSpecialtyPrompt(specialtyOptions)
+    : categoryFieldsPrompt(category, specialtyOptions));
+}
+
+const HMO_CODES: Record<string, string> = { "מכבי": "maccabi", "כללית": "clalit", "מאוחדת": "meuhedet", "לאומית": "leumit" };
+const HMO_CODE_VALUES = new Set(Object.values(HMO_CODES));
+
+/** places.hmo holds codes ("maccabi"); triage and the LLM speak Hebrew ("מכבי"). Accepts either. */
+export function toHmoCodes(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const out = values.map(v => (typeof v === "string" ? (HMO_CODES[v.trim()] ?? v.trim()) : "")).filter(v => HMO_CODE_VALUES.has(v));
+  return Array.from(new Set(out));
 }
 
 const BASE_PROPERTIES = {
@@ -62,15 +125,53 @@ const BASE_PROPERTIES = {
   tags: { type: "array", items: { type: "string" } },
 };
 
+const GAN_CATEGORIES = ["MAON_SYMBOL", "MISHPACHTON", "PRIVATE_GAN", "MUNICIPAL_GAN", "TZAHARON_MUNICIPAL", "TZAHARON_PRIVATE_SUPERVISED", "TZAHARON_PRIVATE_UNSUPERVISED"];
+const MEAL_TYPES = ["IN_HOUSE_COOK", "EXTERNAL_CATERING", "PARENTS_BRING", "MIXED"];
+const KIDS_BOOLEAN_ATTRS = ["has_outdoor_space", "first_aid_trained", "vegetarian_friendly", "vegan_friendly", "allergy_friendly", "meat_served"] as const;
+
 const KIDS_PROPERTIES = {
   kosher: { type: "string", enum: ["CERTIFIED", "NOT_CERTIFIED"] },
   hours: { type: "string" },
   friday_schedule: { type: "string", enum: ["NONE", "EVERY_FRIDAY", "EVERY_OTHER_FRIDAY"] },
   has_mamad: { type: "boolean" },
   has_cctv: { type: "boolean" },
+  gan_category: { type: "string", enum: GAN_CATEGORIES },
+  has_outdoor_space: { type: "boolean" },
+  meal_type: { type: "string", enum: MEAL_TYPES },
+  monthly_price_nis: { type: "number" },
+  min_age_months: { type: "integer" },
+  max_age_months: { type: "integer" },
+  staff_child_ratio: { type: "number" },
+  first_aid_trained: { type: "boolean" },
+  vegetarian_friendly: { type: "boolean" },
+  vegan_friendly: { type: "boolean" },
+  allergy_friendly: { type: "boolean" },
+  meat_served: { type: "boolean" },
+  chugim_types: { type: "array", items: { type: "string", enum: CHUGIM_TYPES } },
 };
 
-function buildTool(category: string) {
+function categoryProperties(category: string, specialtyOptions: string[]): Record<string, unknown> {
+  const specialty = specialtyOptions.length > 0 ? { specialty: { type: "string", enum: specialtyOptions } } : {};
+  switch (category) {
+    case "kids": return { ...KIDS_PROPERTIES, ...specialty };
+    case "doctor": return {
+      ...specialty,
+      for_children: { type: "boolean" },
+      hmo: { type: "array", items: { type: "string", enum: Object.keys(HMO_CODES) } },
+    };
+    case "cosmetics": return specialty;
+    case "cafe":
+    case "food": return {
+      kosher: { type: "string", enum: ["CERTIFIED", "NOT_CERTIFIED"] },
+      price_range: { type: "integer", enum: [1, 2, 3] },
+    };
+    case "sport": return { ...specialty, gender_restriction: { type: "string", enum: ["women_only", "men_only"] } };
+    case "attraction": return { indoor_outdoor: { type: "string", enum: ["indoor", "outdoor", "both"] } };
+    default: return {};
+  }
+}
+
+function buildTool(category: string, specialtyOptions: string[]) {
   return {
     type: "function" as const,
     function: {
@@ -78,7 +179,7 @@ function buildTool(category: string) {
       description: "Summarize, rate, and tag a place recommendation.",
       parameters: {
         type: "object",
-        properties: category === "kids" ? { ...BASE_PROPERTIES, ...KIDS_PROPERTIES } : BASE_PROPERTIES,
+        properties: { ...BASE_PROPERTIES, ...categoryProperties(category, specialtyOptions) },
         required: ["summary", "rating", "tags"],
       },
     },
@@ -92,6 +193,8 @@ export interface SummarizeInput {
   enthusiasm: string;
   existingTags: string[];
   category: string;
+  /** Allowed specialty values for this category (specialty_taxonomy); the LLM may only pick from these. */
+  specialtyOptions?: string[];
 }
 
 export interface SummarizeResult {
@@ -103,6 +206,16 @@ export interface SummarizeResult {
   friday_schedule?: "NONE" | "EVERY_FRIDAY" | "EVERY_OTHER_FRIDAY";
   has_mamad?: boolean;
   has_cctv?: boolean;
+  // Further facts the map filters on, for any category. Not stored on the staging row; applied
+  // to the place at approval time, and only where the place has no value yet (applyPlaceExtras).
+  place_extras?: PlaceExtras;
+}
+
+export interface PlaceExtras {
+  attributes?: Record<string, unknown>;   // places.attributes keys (specialty, has_outdoor_space, …)
+  hmo?: string[];                         // codes: maccabi | clalit | meuhedet | leumit
+  kosher?: "CERTIFIED" | "NOT_CERTIFIED"; // places.kosher (cafe/food)
+  price_range?: 1 | 2 | 3;                // places.price_range (cafe/food)
 }
 
 export async function summarizeRecommendation(input: SummarizeInput, apiKey: string): Promise<SummarizeResult> {
@@ -126,10 +239,10 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
       model: "gpt-4o-mini",
       temperature: 0.3,
       messages: [
-        { role: "system", content: buildSystemPrompt(input.category) },
+        { role: "system", content: buildSystemPrompt(input.category, input.specialtyOptions ?? []) },
         { role: "user", content: userContent },
       ],
-      tools: [buildTool(input.category)],
+      tools: [buildTool(input.category, input.specialtyOptions ?? [])],
       tool_choice: { type: "function", function: { name: "classify_recommendation" } },
     }),
   });
@@ -155,6 +268,39 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
     if (["NONE", "EVERY_FRIDAY", "EVERY_OTHER_FRIDAY"].includes(args?.friday_schedule)) result.friday_schedule = args.friday_schedule;
     if (typeof args?.has_mamad === "boolean") result.has_mamad = args.has_mamad;
     if (typeof args?.has_cctv === "boolean") result.has_cctv = args.has_cctv;
+    const attrs: Record<string, unknown> = {};
+    if (GAN_CATEGORIES.includes(args?.gan_category)) attrs.gan_category = args.gan_category;
+    if (MEAL_TYPES.includes(args?.meal_type)) attrs.meal_type = args.meal_type;
+    for (const k of KIDS_BOOLEAN_ATTRS) if (typeof args?.[k] === "boolean") attrs[k] = args[k];
+    const price = Number(args?.monthly_price_nis);
+    if (Number.isFinite(price) && price >= 300 && price <= 20000) attrs.monthly_price_nis = Math.round(price);
+    for (const k of ["min_age_months", "max_age_months"]) {
+      const m = Number(args?.[k]);
+      if (Number.isInteger(m) && m >= 0 && m <= 144) attrs[k] = m;
+    }
+    const ratio = Number(args?.staff_child_ratio);
+    if (Number.isFinite(ratio) && ratio > 0 && ratio <= 30) attrs.staff_child_ratio = Math.round(ratio * 10) / 10;
+    if (typeof args?.specialty === "string" && (input.specialtyOptions ?? []).includes(args.specialty)) attrs.specialty = args.specialty;
+    const chugim = Array.isArray(args?.chugim_types)
+      ? Array.from(new Set((args.chugim_types as unknown[]).filter((c): c is string => typeof c === "string" && CHUGIM_TYPES.includes(c))))
+      : [];
+    if (chugim.length > 0) attrs.chugim_types = chugim;
+    if (Object.keys(attrs).length > 0) result.place_extras = { attributes: attrs };
+  } else {
+    const extras: PlaceExtras = {};
+    const attrs: Record<string, unknown> = {};
+    if (typeof args?.specialty === "string" && (input.specialtyOptions ?? []).includes(args.specialty)) attrs.specialty = args.specialty;
+    if (input.category === "doctor" && typeof args?.for_children === "boolean") attrs.for_children = args.for_children;
+    if (input.category === "sport" && ["women_only", "men_only"].includes(args?.gender_restriction)) attrs.gender_restriction = args.gender_restriction;
+    if (input.category === "attraction" && ["indoor", "outdoor", "both"].includes(args?.indoor_outdoor)) attrs.indoor_outdoor = args.indoor_outdoor;
+    if (Object.keys(attrs).length > 0) extras.attributes = attrs;
+    const hmo = input.category === "doctor" ? toHmoCodes(args?.hmo) : [];
+    if (hmo.length > 0) extras.hmo = hmo;
+    if (["cafe", "food"].includes(input.category)) {
+      if (args?.kosher === "CERTIFIED" || args?.kosher === "NOT_CERTIFIED") extras.kosher = args.kosher;
+      if ([1, 2, 3].includes(Number(args?.price_range))) extras.price_range = Number(args.price_range) as 1 | 2 | 3;
+    }
+    if (Object.keys(extras).length > 0) result.place_extras = extras;
   }
   return result;
 }
@@ -163,6 +309,11 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
 
 export async function getCategoryTags(admin: any, category: string): Promise<string[]> {
   const { data } = await admin.from("tag_taxonomy").select("name").eq("category", category).order("name");
+  return (data ?? []).map((r: any) => r.name as string);
+}
+
+export async function getCategorySpecialties(admin: any, category: string): Promise<string[]> {
+  const { data } = await admin.from("specialty_taxonomy").select("name").eq("category", category).order("name");
   return (data ?? []).map((r: any) => r.name as string);
 }
 
@@ -203,6 +354,36 @@ export async function applyKidsFieldsToPlace(admin: any, placeId: string, fields
     update.attributes = attrs;
   }
 
+  if (Object.keys(update).length > 0) await admin.from("places").update(update).eq("id", placeId);
+}
+
+/**
+ * Fills facts from a WhatsApp review into the place, only where the place has no value yet,
+ * so anything a parent or admin entered (or an earlier review set) is never overwritten.
+ * Lists are the exception (HMO, chugim_types): new values are added to what's there.
+ */
+export async function applyPlaceExtras(admin: any, placeId: string, extras: PlaceExtras | undefined): Promise<void> {
+  if (!extras) return;
+  const { data: place } = await admin.from("places").select("attributes, hmo, kosher, price_range").eq("id", placeId).single();
+  if (!place) return;
+  const update: Record<string, unknown> = {};
+  const attrs = { ...((place.attributes as Record<string, unknown>) ?? {}) };
+  let attrsChanged = false;
+  for (const [k, v] of Object.entries(extras.attributes ?? {})) {
+    if (Array.isArray(v)) {
+      const current = Array.isArray(attrs[k]) ? (attrs[k] as unknown[]) : [];
+      const merged = Array.from(new Set([...current, ...v]));
+      if (merged.length !== current.length) { attrs[k] = merged; attrsChanged = true; }
+    } else if (v != null && attrs[k] == null) { attrs[k] = v; attrsChanged = true; }
+  }
+  if (attrsChanged) update.attributes = attrs;
+  if (extras.hmo?.length) {
+    const current = toHmoCodes(place.hmo);
+    const merged = Array.from(new Set([...current, ...extras.hmo]));
+    if (merged.length !== current.length) update.hmo = merged;
+  }
+  if (extras.kosher && place.kosher == null) update.kosher = extras.kosher;
+  if (extras.price_range && place.price_range == null) update.price_range = extras.price_range;
   if (Object.keys(update).length > 0) await admin.from("places").update(update).eq("id", placeId);
 }
 

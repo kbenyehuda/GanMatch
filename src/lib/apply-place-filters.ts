@@ -30,6 +30,12 @@ export function applyPlaceFilters(
     );
   }
   // Kids-specific
+  if (filters.kids_specialty?.length)
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return filters.kids_specialty!.includes(String(a.specialty ?? ""));
+    });
   if (filters.kids_gan_category?.length)
     result = result.filter((p) => {
       if (p.place_category !== "kids") return true;

@@ -10,6 +10,7 @@ export interface PlaceFilters {
   min_rating: number | null;
   search_query: string | null;
   // Kids-specific (place.attributes.*)
+  kids_specialty: string[] | null; // type of kids place: גני ילדים, בייביסיטר, חוגים, שחייה…
   kids_gan_category: string[] | null;
   kids_age_track: ("0-3" | "3+") | null;
   kids_max_price_nis: number | null;
@@ -47,6 +48,7 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   rated_only: false,
   min_rating: null,
   search_query: null,
+  kids_specialty: null,
   kids_gan_category: null,
   kids_age_track: null,
   kids_max_price_nis: null,
@@ -96,6 +98,7 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.kids_meat_served != null) n++;
   if (f.kids_allergy_friendly != null) n++;
   if (f.kids_chugim != null && f.kids_chugim.length > 0) n++;
+  if (f.kids_specialty != null && f.kids_specialty.length > 0) n++;
   if (f.doctor_specialty != null && f.doctor_specialty.length > 0) n++;
   if (f.cosmetics_specialty != null && f.cosmetics_specialty.length > 0) n++;
   if (f.hours_contains != null && f.hours_contains.trim() !== "") n++;

@@ -63,7 +63,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: `Could not read chat file: ${e.message}` }, { status: 500 });
   }
 
-  const match = findMessageIndex(messages, row.reviewer_name, row.recommendation_text);
+  let match = findMessageIndex(messages, row.reviewer_name, row.recommendation_text);
+  // Rows from Claude's chat review hold several verbatim quotes joined by newlines, each a
+  // substring of a different message, so the joined text matches nothing. Anchor on the
+  // first quote that is found exactly instead.
+  if (match.index === null || match.score < 1) {
+    for (const quote of String(row.recommendation_text ?? "").split("\n").map(s => s.trim()).filter(s => s.length >= 8)) {
+      const m = findMessageIndex(messages, row.reviewer_name, quote);
+      if (m.index !== null && m.score === 1) { match = m; break; }
+    }
+  }
 
   if (match.index === null) {
     return NextResponse.json({

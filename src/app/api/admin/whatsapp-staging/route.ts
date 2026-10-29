@@ -41,6 +41,7 @@ export async function GET(req: Request) {
   const hasContext = searchParams.get("has_context") === "true";
   const missingSummary = searchParams.get("missing_summary") === "true";
   const search = (searchParams.get("search") ?? "").trim();
+  const sourceFile = (searchParams.get("source_file") ?? "").trim();
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
   if (hasContext) q = q.not("source_messages", "is", null).not("source_messages", "eq", "[]");
   if (missingSummary) q = q.eq("is_summarized", false);
   if (search) q = q.ilike("place_name", `%${search}%`);
+  if (sourceFile) q = q.eq("source_file", sourceFile);
   const { data, count, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

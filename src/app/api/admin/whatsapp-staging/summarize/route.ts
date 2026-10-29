@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
-import { summarizeRecommendation, getCategoryTags, recordNewTags, syncSummaryToPlaceReview, applyKidsFieldsToPlace, pickKidsStructuredFields } from "@/lib/whatsapp-summarize";
+import { summarizeRecommendation, getCategoryTags, getCategorySpecialties, recordNewTags, syncSummaryToPlaceReview, applyKidsFieldsToPlace, applyPlaceExtras, pickKidsStructuredFields } from "@/lib/whatsapp-summarize";
 
 function adminAuth(req: Request) {
   const h = req.headers.get("authorization") ?? "";
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       enthusiasm: row.enthusiasm,
       existingTags,
       category: row.category,
+      specialtyOptions: await getCategorySpecialties(admin, row.category),
     }, openaiKey);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Summarize failed" }, { status: 500 });
@@ -79,6 +80,7 @@ export async function POST(req: Request) {
       tags: result.tags,
     });
     if (row.category === "kids") await applyKidsFieldsToPlace(admin, row.created_place_id, kidsFields);
+    await applyPlaceExtras(admin, row.created_place_id, result.place_extras);
   }
 
   return NextResponse.json({ ...result, syncedToReview });

@@ -137,7 +137,7 @@ export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   doctor: "רופאים",
   clinic: "מרפאות",
   cafe: "קפה",
-  kids: "גני ילדים",
+  kids: "ילדים",
   sport: "ספורט",
   attraction: "אטרקציות",
   food: "אוכל",

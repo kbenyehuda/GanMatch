@@ -41,6 +41,9 @@ const HMO_CATEGORIES = new Set(["doctor", "clinic"]);
 
 type StagingStatus = "pending" | "approved" | "rejected";
 
+// source_file marker on rows inserted from Claude's chat review (docs/WHATSAPP_REVIEW_PLAN.md)
+const CLAUDE_REVIEW_BATCH = "claude-review-2026-10";
+
 // URL helpers — read/write filter state from the address bar
 function readUrlParam(key: string): string {
   if (typeof window === "undefined") return "";
@@ -131,14 +134,11 @@ function formatMessageDate(date: string | null) {
   return new Date(date).toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function formatAge(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return "הרגע";
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `לפני ${mins} דק׳`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `לפני ${hours} שע׳`;
-  return `לפני ${Math.floor(hours / 24)} ימים`;
+// Shows when the message was written (if known) and when the row was added to triage.
+function formatRowDates(messageDate: string | null, createdAt: string) {
+  const written = formatMessageDate(messageDate);
+  const added = new Date(createdAt).toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
+  return written ? `נכתב ${written} · נוסף ${added}` : `נוסף ${added}`;
 }
 
 // Custom dropdown — native <select> ignores dir="rtl" in Windows popup, so
@@ -237,11 +237,14 @@ export default function WhatsAppStagingPage() {
   const [includeTextById, setIncludeTextById] = useState<Record<string, boolean>>({});
   const [onlyWithContext, setOnlyWithContext] = useState(false);
   const [missingSummaryOnly, setMissingSummaryOnly] = useState(false);
+  const [claudeBatchOnly, setClaudeBatchOnly] = useState(false);
   const [summaryById, setSummaryById] = useState<Record<string, string>>({});
   const [summarizingById, setSummarizingById] = useState<Record<string, boolean>>({});
   const [summaryErrorById, setSummaryErrorById] = useState<Record<string, string>>({});
   const [batchSummarizing, setBatchSummarizing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
+  const [extrasBackfilling, setExtrasBackfilling] = useState(false);
+  const [extrasProgress, setExtrasProgress] = useState(0);
   const [retroGeocoding, setRetroGeocoding] = useState(false);
   const [retroProgress, setRetroProgress] = useState<{ processed: number; total: number } | null>(null);
   const [retroSummary, setRetroSummary] = useState<{
@@ -313,6 +316,10 @@ export default function WhatsAppStagingPage() {
     setMissingSummaryOnly(v); setPage(1); syncUrl(status, categoryFilter, 1);
   }, [status, categoryFilter]);
 
+  const changeClaudeBatchOnly = useCallback((v: boolean) => {
+    setClaudeBatchOnly(v); setPage(1); syncUrl(status, categoryFilter, 1);
+  }, [status, categoryFilter]);
+
   const toggleExpanded = useCallback((id: string) => {
     setExpandedItems(prev => {
       const next = new Set(prev);
@@ -353,8 +360,9 @@ export default function WhatsAppStagingPage() {
       const ctxParam = onlyWithContext ? "&has_context=true" : "";
       const summaryParam = missingSummaryOnly ? "&missing_summary=true" : "";
       const searchParam = debouncedSearch ? `&search=${encodeURIComponent(debouncedSearch)}` : "";
+      const batchParam = claudeBatchOnly ? `&source_file=${encodeURIComponent(CLAUDE_REVIEW_BATCH)}` : "";
       const res = await fetch(
-        `/api/admin/whatsapp-staging?status=${status}&limit=${PAGE_SIZE}&offset=${offset}${catParam}${ctxParam}${summaryParam}${searchParam}`,
+        `/api/admin/whatsapp-staging?status=${status}&limit=${PAGE_SIZE}&offset=${offset}${catParam}${ctxParam}${summaryParam}${searchParam}${batchParam}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       const data = await res.json().catch(() => ({}));
@@ -367,7 +375,7 @@ export default function WhatsAppStagingPage() {
     } finally {
       setReloading(false);
     }
-  }, [status, user, categoryFilter, page, onlyWithContext, missingSummaryOnly, debouncedSearch, getToken]);
+  }, [status, user, categoryFilter, page, onlyWithContext, missingSummaryOnly, claudeBatchOnly, debouncedSearch, getToken]);
 
   useEffect(() => { if (user) { loadItems(); loadTaxonomy(); } }, [user, loadItems, loadTaxonomy]);
 
@@ -589,6 +597,38 @@ export default function WhatsAppStagingPage() {
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
 
+  // Fills the filterable place facts (gan type, outdoor space, specialty, kupa…) for rows approved
+  // before approval extracted them. Only empty fields; summaries are untouched.
+  const backfillExtras = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    setExtrasBackfilling(true);
+    setExtrasProgress(0);
+    setError(null);
+    try {
+      let offset = 0;
+      let done = 0;
+      while (true) {
+        const res = await fetch("/api/admin/whatsapp-staging/backfill-extras", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ offset }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error ?? "Backfill failed");
+        done += data.processed ?? 0;
+        setExtrasProgress(done);
+        offset = data.next_offset ?? offset;
+        if (data.done) break;
+      }
+      showToast(`✓ הושלמו פרטים מ-${done} המלצות שאושרו`);
+    } catch (e: any) {
+      setError(e?.message ?? "Backfill failed");
+    } finally {
+      setExtrasBackfilling(false);
+    }
+  }, [getToken, showToast]);
+
   const [dupCandidateById, setDupCandidateById] = useState<Record<string, { id: string; name: string; address: string | null }>>({});
 
   const decide = useCallback(async (id: string, action: "approve" | "reject", overrides?: { link_to_place_id?: string; force_new?: boolean }) => {
@@ -621,7 +661,8 @@ export default function WhatsAppStagingPage() {
       setItems(prev => prev.filter(i => i.id !== id));
       setTotal(prev => Math.max(0, prev - 1));
       if (action === "approve") {
-        showToast(summary ? `✓ אושר — סיכום: "${summary}"` : "✓ אושר — כוכבים בלבד, ללא סיכום");
+        const replacedNote = data?.replaced ? ` · הוחלפה ביקורת ישנה זהה (${data.replaced})` : "";
+        showToast((summary ? `✓ אושר — סיכום: "${summary}"` : "✓ אושר — כוכבים בלבד, ללא סיכום") + replacedNote);
       }
     } catch (e: any) {
       setError(e?.message ?? "Decision failed");
@@ -629,6 +670,66 @@ export default function WhatsAppStagingPage() {
       setBusyId(null);
     }
   }, [reasonById, user, getToken, includeTextById, items, summaryById, showToast]);
+
+  // "Approve all" for a merge group (one provider, many recommenders). Rows marked skip are left
+  // pending; rows already rejected are gone from `items`. The group leaves the list at once and
+  // the approvals run in the background (several groups can run side by side). The first approval
+  // resolves the place; every later row links to that same place so the group never gets a second
+  // pin. On a possible-duplicate prompt or an error, the rows not yet approved come back.
+  const [skipInGroup, setSkipInGroup] = useState<Set<string>>(new Set());
+  const [groupJobs, setGroupJobs] = useState<Record<string, { name: string; done: number; total: number }>>({});
+  // A group whose first approval hit "possible duplicate": the admin answers once on the group header.
+  const [groupDupById, setGroupDupById] = useState<Record<string, { id: string; name: string; address: string | null }>>({});
+  const approveGroup = useCallback(async (
+    groupId: string, rows: StagingItem[], answer?: { link_to_place_id?: string; force_new?: boolean }
+  ) => {
+    if (!supabase || !user) return;
+    const queue = rows.filter(r => !skipInGroup.has(r.id));
+    if (queue.length === 0) return;
+    setError(null);
+    const queueIds = new Set(queue.map(r => r.id));
+    setItems(prev => prev.filter(i => !queueIds.has(i.id)));
+    setGroupJobs(prev => ({ ...prev, [groupId]: { name: queue[0].place_name, done: 0, total: queue.length } }));
+    setGroupDupById(prev => { const next = { ...prev }; delete next[groupId]; return next; });
+    let placeId: string | null = answer?.link_to_place_id ?? queue.find(r => r.existing_place_id)?.existing_place_id ?? null;
+    let forceNew = answer?.force_new === true;
+    const approved = new Set<string>();
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Missing token");
+      for (const row of queue) {
+        const res = await fetch("/api/admin/whatsapp-staging/decision", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: row.id,
+            action: "approve",
+            moderation_reason: (reasonById[row.id] ?? "").trim() || null,
+            include_text: includeTextById[row.id] !== false,
+            ...(placeId ? { link_to_place_id: placeId } : forceNew ? { force_new: true } : {}),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data?.possible_duplicate && data?.candidate) {
+          setGroupDupById(prev => ({ ...prev, [groupId]: data.candidate }));
+          throw new Error(`"${row.place_name}" אולי כבר קיים במפה — בחרי בראש הקבוצה אם לקשר אליו`);
+        }
+        forceNew = false;
+        if (!res.ok && res.status !== 409) throw new Error(data?.error ?? "Decision failed");
+        if (data?.place_id) placeId = data.place_id;
+        approved.add(row.id);
+        setGroupJobs(prev => ({ ...prev, [groupId]: { name: row.place_name, done: approved.size, total: queue.length } }));
+      }
+      showToast(`✓ ${queue[0].place_name}: אושרו ${approved.size} המלצות`);
+    } catch (e: any) {
+      setError(e?.message ?? "Decision failed");
+      const back = queue.filter(r => !approved.has(r.id));
+      setItems(prev => [...back, ...prev.filter(i => !back.some(b => b.id === i.id))]);
+    } finally {
+      setTotal(prev => Math.max(0, prev - approved.size));
+      setGroupJobs(prev => { const next = { ...prev }; delete next[groupId]; return next; });
+    }
+  }, [user, getToken, skipInGroup, reasonById, includeTextById, showToast]);
 
   const runMerge = useCallback(async () => {
     if (!supabase || !user) return;
@@ -730,6 +831,11 @@ export default function WhatsAppStagingPage() {
               title="מסכם רק רשומות שאושרו ועוד אין להן סיכום — לא נוגע ברשומות שמחכות לאישור">
               {batchSummarizing ? `✨ מסכם... (${batchProgress})` : "✨ סכם הכל (מאושרות ללא סיכום)"}
             </button>
+            <button onClick={backfillExtras} disabled={extrasBackfilling}
+              className="px-3 py-1.5 rounded border text-sm bg-amber-50 border-amber-300 text-amber-800 disabled:opacity-50"
+              title="קורא מחדש כל המלצה שאושרה וממלא פרטים שחסרים במקום (סוג, חצר, ממ״ד, התמחות, קופה…) — לא משנה סיכומים ולא דורס פרטים קיימים">
+              {extrasBackfilling ? `🏷️ משלים פרטים... (${extrasProgress})` : "🏷️ השלם פרטים למאושרות"}
+            </button>
             <button onClick={runRetroGeocode} disabled={retroGeocoding}
               className="px-3 py-1.5 rounded border text-sm bg-emerald-50 border-emerald-300 text-emerald-800 disabled:opacity-50"
               title="מוצא כתובות מטקסט ההמלצות שאושרו ומגדיר מיקום נכון — מסמן 'אין מיקום' כשלא נמצאה כתובת">
@@ -800,6 +906,11 @@ export default function WhatsAppStagingPage() {
             onChange={e => changeMissingSummaryOnly(e.target.checked)} className="w-3.5 h-3.5" />
           רק ללא סיכום
         </label>
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+          <input type="checkbox" checked={claudeBatchOnly}
+            onChange={e => changeClaudeBatchOnly(e.target.checked)} className="w-3.5 h-3.5" />
+          רק הסקירה החדשה
+        </label>
       </div>
 
       {/* Free text search */}
@@ -838,12 +949,42 @@ export default function WhatsAppStagingPage() {
           <div className="text-center text-gray-400 py-12 text-sm">אין רשומות בסטטוס זה</div>
         )}
 
-        {sections.map(({ groupId, items: sectionItems }) => (
-          <div key={groupId ?? sectionItems[0].id}
+        {sections.map(({ groupId: rawGroupId, items: sectionItems }) => {
+          // Ranked one-row "groups" (single-recommender providers) render as plain rows.
+          const groupId = sectionItems.length > 1 ? rawGroupId : null;
+          return (
+          <div key={rawGroupId ?? sectionItems[0].id}
             className={groupId ? "rounded-xl border-2 border-amber-300 bg-amber-50 p-3 space-y-3" : ""}>
             {groupId && (
-              <div className="text-xs font-semibold text-amber-700 mb-1">
-                ⚠️ קבוצת מיזוג אפשרית — {sectionItems.length} רשומות עשויות להתייחס לאותו מקום
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <div className="text-xs font-semibold text-amber-700">
+                  ⚠️ קבוצת מיזוג אפשרית — {sectionItems.length} רשומות עשויות להתייחס לאותו מקום
+                </div>
+                {status === "pending" && groupDupById[groupId] && (
+                  <div className="w-full rounded border border-amber-300 bg-white p-2 text-sm text-amber-900">
+                    נמצא מקום דומה במסד: <strong>{groupDupById[groupId].name}</strong>
+                    {groupDupById[groupId].address && <span> · {groupDupById[groupId].address}</span>}
+                    <div className="flex gap-2 mt-1.5">
+                      <button onClick={() => approveGroup(groupId, sectionItems, { link_to_place_id: groupDupById[groupId].id })}
+                        className="px-3 py-1 rounded bg-amber-600 text-white text-xs font-semibold">
+                        זה אותו מקום — קשרי ואשרי את כולן
+                      </button>
+                      <button onClick={() => approveGroup(groupId, sectionItems, { force_new: true })}
+                        className="px-3 py-1 rounded bg-white border border-amber-400 text-amber-800 text-xs font-semibold">
+                        מקום אחר — צרי חדש ואשרי את כולן
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {status === "pending" && (() => {
+                  const toApprove = sectionItems.filter(i => !skipInGroup.has(i.id)).length;
+                  return (
+                    <button disabled={toApprove === 0} onClick={() => approveGroup(groupId, sectionItems)}
+                      className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50">
+                      ✓ אשרי את כולן ({toApprove})
+                    </button>
+                  );
+                })()}
               </div>
             )}
 
@@ -873,13 +1014,25 @@ export default function WhatsAppStagingPage() {
               const isExpanded = expandedItems.has(item.id);
 
               return (
-                <section key={item.id} className="rounded-xl border bg-white shadow-sm overflow-hidden">
+                <section key={item.id} className={`rounded-xl border bg-white shadow-sm overflow-hidden ${skipInGroup.has(item.id) ? "opacity-50" : ""}`}>
+                  {groupId && isPending && (
+                    <label className="flex items-center gap-1.5 px-4 pt-2 text-xs text-gray-500 cursor-pointer select-none">
+                      <input type="checkbox" checked={skipInGroup.has(item.id)} className="w-3.5 h-3.5"
+                        onChange={e => setSkipInGroup(prev => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(item.id); else next.delete(item.id);
+                          return next;
+                        })} />
+                      דלגי עליה באישור הקבוצה (נשארת בהמתנה)
+                    </label>
+                  )}
                   {/* Summary row — always visible, click to expand */}
                   <button
                     type="button"
                     onClick={() => toggleExpanded(item.id)}
                     className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 text-start"
                   >
+                    <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <span className="text-sm font-bold truncate">{item.place_name}</span>
                       <span
@@ -888,10 +1041,19 @@ export default function WhatsAppStagingPage() {
                       >
                         {TRIAGE_CATEGORY_LABELS[effectiveCat] ?? effectiveCat}
                       </span>
+                      {effectiveSpecialty && (
+                        <span className="text-xs px-2 py-0.5 rounded-full border shrink-0" style={{ borderColor: catColor, color: catColor }}>
+                          {effectiveSpecialty}
+                        </span>
+                      )}
                       <span className="text-sm shrink-0">{ENTHUSIASM_STARS[item.enthusiasm]}</span>
                       <span className="text-xs text-gray-400 shrink-0">
-                        {formatMessageDate(item.message_date) ?? `יובא ${formatAge(item.created_at)}`}
+                        {formatRowDates(item.message_date, item.created_at)}
                       </span>
+                    </div>
+                    {!isExpanded && (
+                      <p className="text-sm text-gray-600 line-clamp-2 whitespace-pre-line">{item.recommendation_text}</p>
+                    )}
                     </div>
                     <span className="text-gray-400 text-xs shrink-0">{isExpanded ? "▲ סגור" : "▼ פתח"}</span>
                   </button>
@@ -914,7 +1076,7 @@ export default function WhatsAppStagingPage() {
                         <span className="text-base">{ENTHUSIASM_STARS[item.enthusiasm]}</span>
                       </div>
                       <div className="text-xs text-gray-400">
-                        {formatMessageDate(item.message_date) ?? `יובא ${formatAge(item.created_at)}`} · {item.source_file ?? "—"}
+                        {formatRowDates(item.message_date, item.created_at)} · {item.source_file ?? "—"}
                         {formatAddressHintDisplay(item.address_hint) && <span> · {formatAddressHintDisplay(item.address_hint)}</span>}
                       </div>
                     </div>
@@ -931,7 +1093,7 @@ export default function WhatsAppStagingPage() {
                   <div className="space-y-2">
                     {/* Specialty */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-gray-500 w-14 shrink-0">התמחות:</span>
+                      <span className="text-xs text-gray-500 w-14 shrink-0">{effectiveCat === "kids" ? "סוג:" : "התמחות:"}</span>
                       {isPending ? (
                         <>
                           <HebrewSelect
@@ -1259,8 +1421,20 @@ export default function WhatsAppStagingPage() {
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Background "approve all" progress */}
+      {Object.keys(groupJobs).length > 0 && (
+        <div className="fixed bottom-20 start-4 z-50 space-y-1">
+          {Object.entries(groupJobs).map(([gid, job]) => (
+            <div key={gid} className="bg-emerald-700 text-white text-xs rounded-lg px-3 py-2 shadow-lg">
+              מאשרת ברקע: {job.name} · {job.done}/{job.total}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
