@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, SlidersHorizontal, ChevronDown, Loader2 } from "lucide-react";
+import { Search, X, SlidersHorizontal, ChevronDown, Loader2, LogOut, LogIn } from "lucide-react";
 import type { Place, PlaceCategory, NeighborhoodGivatayim, KosherStatus } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS, VISIBLE_CATEGORIES,
@@ -12,6 +12,7 @@ import { applyPlaceFilters } from "@/lib/apply-place-filters";
 import { searchPlaces } from "@/lib/places-api";
 import { PlaceCard } from "./PlaceCard";
 import { useSession } from "@/lib/useSession";
+import { supabase } from "@/lib/supabase";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -635,10 +636,24 @@ export function PlaceFeedPanel({
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
   const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const greeting = useMemo(() => getGreeting(), []);
   const userInitial = user?.email?.[0]?.toUpperCase() ?? "א";
+
+  const handleSignIn = async () => {
+    if (!supabase) return;
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: typeof window !== "undefined" ? window.location.origin : undefined },
+    });
+  };
+  const handleSignOut = async () => {
+    setShowProfileMenu(false);
+    if (!supabase) return;
+    await supabase.auth.signOut();
+  };
 
   // Search
   useEffect(() => {
@@ -691,14 +706,54 @@ export function PlaceFeedPanel({
           <img src="/app-icon.png" alt="GiveMyTime" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.12)" }} />
           <div className="font-hebrew" style={{ fontSize: 17, fontWeight: 800, color: "#0A2B6B" }}>{greeting}</div>
         </div>
-        <button
-          type="button"
-          onClick={onGoProfile}
-          className="flex items-center justify-center font-hebrew font-bold shrink-0"
-          style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: onGoProfile ? "pointer" : "default" }}
-        >
-          {userInitial}
-        </button>
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => (onGoProfile ? onGoProfile() : setShowProfileMenu(v => !v))}
+            className="flex items-center justify-center font-hebrew font-bold shrink-0"
+            style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "pointer" }}
+          >
+            {userInitial}
+          </button>
+
+          {/* Desktop profile menu (mobile navigates to a full ProfileScreen via onGoProfile instead) */}
+          {!onGoProfile && showProfileMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
+              <div
+                className="absolute z-50 font-hebrew"
+                style={{ insetInlineEnd: 0, top: "calc(100% + 8px)", width: 230, background: "#fff", borderRadius: 16, boxShadow: "0 12px 30px rgba(10,43,107,.18)", border: "1px solid #E5E9F0", overflow: "hidden" }}
+              >
+                <div style={{ padding: "14px 16px", borderBottom: "1px solid #E5E9F0" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0F1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {user?.email ?? "מצב אורח"}
+                  </div>
+                </div>
+                {user ? (
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="w-full flex items-center"
+                    style={{ gap: 8, padding: "12px 16px", fontSize: 13, fontWeight: 700, color: "#E53E3E", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    <LogOut style={{ width: 16, height: 16 }} />
+                    התנתקות
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSignIn}
+                    className="w-full flex items-center"
+                    style={{ gap: 8, padding: "12px 16px", fontSize: 13, fontWeight: 700, color: "#0A2B6B", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    <LogIn style={{ width: 16, height: 16 }} />
+                    התחברות עם Google
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Search + filter ──────────────────────────────────────────────────── */}
