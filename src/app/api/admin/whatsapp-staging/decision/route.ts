@@ -13,27 +13,42 @@ function contactEmail(reviewerName: string): string {
 }
 
 async function getOrCreateContactUser(admin: any, reviewerName: string): Promise<string> {
-  const email = contactEmail(reviewerName);
-  const res = await admin.auth.admin.createUser({
-    email,
-    password: `WA!${email}`,
-    email_confirm: true,
-    user_metadata: { whatsapp_name: reviewerName },
-  });
-  if (res?.data?.user?.id) return String(res.data.user.id);
+  // 1. Reuse: a reviewer who already has a published review already has an account. This is a
+  //    plain DB read, so it doesn't depend on the auth admin API (slow and timeout-prone under load).
+  const { data: prior } = await admin.from("place_reviews")
+    .select("user_id").eq("whatsapp_reviewer_name", reviewerName).limit(1).maybeSingle();
+  if (prior?.user_id) return String(prior.user_id);
 
-  // Already exists (same reviewer on another place, or a retry) — look them up. listUsers is
-  // paginated (50 per page by default), so a single call misses anyone past the first page.
-  const perPage = 1000;
-  for (let page = 1; ; page++) {
+  const email = contactEmail(reviewerName);
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+  // 2. Create, retrying timeouts (they surface as an error whose message is just "{}").
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await admin.auth.admin.createUser({
+      email,
+      password: `WA!${email}`,
+      email_confirm: true,
+      user_metadata: { whatsapp_name: reviewerName },
+    });
+    if (res?.data?.user?.id) return String(res.data.user.id);
+    lastError = String(res?.error?.message ?? "");
+    // Already registered (e.g. an earlier approval created it but failed before saving the review).
+    if (/already|registered|exists/i.test(lastError)) break;
+    await sleep(800 * (attempt + 1));
+  }
+
+  // 3. Look it up. Pages of 100: 1000 per page times out (504) on this project.
+  const perPage = 100;
+  for (let page = 1; page <= 50; page++) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) break;
+    if (error) { lastError = String(error.message ?? lastError); break; }
     const users = data?.users ?? [];
     const found = users.find((u: any) => u.email === email);
     if (found) return String(found.id);
     if (users.length < perPage) break;
   }
-  throw new Error(`Could not create or find user for reviewer '${reviewerName}': ${res?.error?.message ?? "not found"}`);
+  throw new Error(`Could not create or find user for reviewer '${reviewerName}': ${lastError || "not found"}`);
 }
 
 export async function POST(req: Request) {

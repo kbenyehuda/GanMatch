@@ -297,10 +297,12 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F6F9FE", borderRadius: "inherit" }} dir="rtl">
 
       {/* ── Hero ──────────────────────────────────────────────────────────────── */}
+      {/* No place photos yet, so this is a slim category-colored bar holding the back/share/save
+          buttons. Give it back its height (and a pager) once places have real photos. */}
       <div
         className="relative shrink-0"
         style={{
-          height: 280,
+          height: "calc(var(--safe-top, 0px) + 96px)",
           background: `linear-gradient(135deg, ${color} 0%, ${lightColor} 100%)`,
           overflow: "hidden",
         }}
@@ -347,12 +349,6 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           )}
         </div>
 
-        {/* Image pager dots */}
-        <div className="absolute flex gap-1.5" style={{ bottom: 18, left: "50%", transform: "translateX(-50%)", zIndex: 3 }}>
-          {[0,1,2,3].map(i => (
-            <span key={i} style={{ height: 3, borderRadius: 2, background: i === 0 ? "#fff" : "rgba(255,255,255,.5)", width: i === 0 ? 28 : 22, transition: "all .2s" }} />
-          ))}
-        </div>
       </div>
 
       {/* ── Scrollable body ───────────────────────────────────────────────────── */}

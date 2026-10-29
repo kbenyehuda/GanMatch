@@ -680,6 +680,9 @@ export default function WhatsAppStagingPage() {
   const [groupJobs, setGroupJobs] = useState<Record<string, { name: string; done: number; total: number }>>({});
   // A group whose first approval hit "possible duplicate": the admin answers once on the group header.
   const [groupDupById, setGroupDupById] = useState<Record<string, { id: string; name: string; address: string | null }>>({});
+  // Groups queue up and run one at a time: parallel runs overload the auth API that creates
+  // each reviewer's account (createUser timeouts → "Could not create or find user").
+  const groupQueueRef = useRef<Promise<void>>(Promise.resolve());
   const approveGroup = useCallback(async (
     groupId: string, rows: StagingItem[], answer?: { link_to_place_id?: string; force_new?: boolean }
   ) => {
@@ -690,6 +693,10 @@ export default function WhatsAppStagingPage() {
     const queueIds = new Set(queue.map(r => r.id));
     setItems(prev => prev.filter(i => !queueIds.has(i.id)));
     setGroupJobs(prev => ({ ...prev, [groupId]: { name: queue[0].place_name, done: 0, total: queue.length } }));
+    const previous = groupQueueRef.current;
+    let release: () => void = () => {};
+    groupQueueRef.current = new Promise<void>(r => { release = r; });
+    await previous;
     setGroupDupById(prev => { const next = { ...prev }; delete next[groupId]; return next; });
     let placeId: string | null = answer?.link_to_place_id ?? queue.find(r => r.existing_place_id)?.existing_place_id ?? null;
     let forceNew = answer?.force_new === true;
@@ -728,6 +735,7 @@ export default function WhatsAppStagingPage() {
     } finally {
       setTotal(prev => Math.max(0, prev - approved.size));
       setGroupJobs(prev => { const next = { ...prev }; delete next[groupId]; return next; });
+      release();
     }
   }, [user, getToken, skipInGroup, reasonById, includeTextById, showToast]);
 
@@ -1430,7 +1438,7 @@ export default function WhatsAppStagingPage() {
         <div className="fixed bottom-20 start-4 z-50 space-y-1">
           {Object.entries(groupJobs).map(([gid, job]) => (
             <div key={gid} className="bg-emerald-700 text-white text-xs rounded-lg px-3 py-2 shadow-lg">
-              מאשרת ברקע: {job.name} · {job.done}/{job.total}
+              {job.done === 0 ? "בתור" : "מאשרת ברקע"}: {job.name} · {job.done}/{job.total}
             </div>
           ))}
         </div>
