@@ -65,7 +65,7 @@ function yearsStrToMonths(s: string): number | null {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="font-hebrew block mb-1" style={{ fontSize: 11.5, color: "#8A95A8", fontWeight: 600 }}>{label}</label>
+      <label className="font-hebrew block mb-1" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 600 }}>{label}</label>
       {children}
     </div>
   );

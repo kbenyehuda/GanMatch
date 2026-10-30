@@ -117,7 +117,7 @@ export function ConnectionGate({
         </div>
 
         {/* Footer note */}
-        <p className="font-hebrew" style={{ fontSize: 11, color: "rgba(255,255,255,.45)", marginTop: 24, textAlign: "center", lineHeight: 1.6 }}>
+        <p className="font-hebrew" style={{ fontSize: 12, color: "rgba(255,255,255,.45)", marginTop: 24, textAlign: "center", lineHeight: 1.6 }}>
           במצב אורח חלק מהפעולות מוגבלות.
           <br />
           ניתן להתחבר בכל עת.

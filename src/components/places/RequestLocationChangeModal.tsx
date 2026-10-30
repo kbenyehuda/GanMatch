@@ -142,13 +142,13 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
 
         {place.address && (
           <div className="mb-4 rounded-xl p-3" style={{ background: "#F6F9FE", border: "1px solid #E5E9F0" }}>
-            <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700, marginBottom: 3 }}>מיקום נוכחי</span>
+            <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 3 }}>מיקום נוכחי</span>
             <span className="font-hebrew" style={{ fontSize: 13, color: "#0F1A2E" }}>{place.address}</span>
           </div>
         )}
 
         <div className="mb-4">
-          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase" }}>
+          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8" }}>
             מיקום חדש <span style={{ color: "#C53030" }}>*</span>
           </label>
 
@@ -205,7 +205,7 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
         </div>
 
         <div className="mb-4">
-          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase" }}>
+          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8" }}>
             הערה למנהל (אופציונלי)
           </label>
           <textarea value={note} onChange={(e) => setNote(e.target.value)}

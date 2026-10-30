@@ -84,7 +84,7 @@ export function AttributeIconsLegendModal({ onClose }: { onClose: () => void }) 
                   <span
                     key={lang}
                     className="font-hebrew inline-flex items-center gap-1"
-                    style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 7, background: "#F0F4FA", color: "#4A6A9E" }}
+                    style={{ fontSize: 12, fontWeight: 600, padding: "3px 8px", borderRadius: 7, background: "#F0F4FA", color: "#4A6A9E" }}
                   >
                     <span lang={langAttr} className={`text-xs font-bold leading-none ${fontClass}`} aria-hidden>{char}</span>
                     {label}

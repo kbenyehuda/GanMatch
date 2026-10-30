@@ -8,6 +8,7 @@ import {
   NEIGHBORHOOD_LABELS,
 } from "@/types/places";
 import { factLabel, placeFacts } from "@/lib/place-facts";
+import { placeTypeLabel } from "@/lib/place-type";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,9 +71,11 @@ export function PlaceCard({
   const dist = distanceLabel(place, userLocation);
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
 
-  // Meta: category · neighborhood · distance (health funds are chips below — all of them)
+  // Meta: type (משפחתון, רופא עור · לילדים…) or category · neighborhood · distance
+  // (health funds are chips below — all of them). The type is shown in the category color.
+  const typeLabel = placeTypeLabel(place);
   const metaParts = [
-    PLACE_CATEGORY_LABELS[place.place_category],
+    typeLabel ?? PLACE_CATEGORY_LABELS[place.place_category],
     neighborhood,
     dist,
     hasPin(place) ? null : NO_PIN_LABEL,
@@ -129,13 +132,12 @@ export function PlaceCard({
       >
         {/* Category pill */}
         <span
-          className="absolute font-hebrew uppercase"
+          className="absolute font-hebrew"
           style={{
-            top: 6, insetInlineStart: 6,
+            top: 5, insetInlineStart: 4,
             background: "rgba(255,255,255,.95)", color: "#0A2B6B",
-            fontSize: 9, fontWeight: 800, padding: "2px 6px",
-            borderRadius: 6, letterSpacing: ".04em",
-          }}
+            fontSize: 12, fontWeight: 700, padding: "1px 4px", whiteSpace: "nowrap",
+            borderRadius: 6, }}
         >
           {PLACE_CATEGORY_LABELS[place.place_category]}
         </span>
@@ -156,9 +158,10 @@ export function PlaceCard({
         </div>
 
         {/* Meta */}
-        <div className="flex items-center flex-wrap font-hebrew mb-1.5" style={{ fontSize: 11, color: "#8A95A8", gap: 4 }}>
+        <div className="flex items-center flex-wrap font-hebrew mb-1.5" style={{ fontSize: 12, color: "#8A95A8", gap: 4 }}>
           {metaParts.map((item, i) => (
-            <span key={i} className="flex items-center gap-1">
+            <span key={i} className="flex items-center gap-1"
+              style={i === 0 && typeLabel ? { color, fontWeight: 700 } : undefined}>
               {item}
               {i < metaParts.length - 1 && (
                 <span style={{ width: 3, height: 3, borderRadius: "50%", background: "#8A95A8", display: "inline-block" }} />
@@ -176,21 +179,21 @@ export function PlaceCard({
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
                 </svg>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#0F1A2E" }}>{place.avg_rating.toFixed(1)}</span>
-                <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8", fontWeight: 500 }}>· {place.rec_count}</span>
+                <span className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 500 }}>· {place.rec_count}</span>
               </>
             ) : (
-              <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>אין דירוג</span>
+              <span className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>אין דירוג</span>
             )}
           </div>
           {tags.length > 0 && (
             <div className="flex gap-1 flex-wrap justify-end">
               {tags.slice(0, 2).map((tag, i) => (
-                <span key={i} className="font-hebrew" style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 6, letterSpacing: ".01em", ...TAG_STYLES[tag.variant] }}>
+                <span key={i} className="font-hebrew" style={{ fontSize: 12, fontWeight: 700, padding: "3px 7px", borderRadius: 6, ...TAG_STYLES[tag.variant] }}>
                   {tag.label}
                 </span>
               ))}
               {moreFacts > 0 && (
-                <span className="font-hebrew" style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 6, background: "#F0F3F8", color: "#4A5568" }}
+                <span className="font-hebrew" style={{ fontSize: 12, fontWeight: 700, padding: "3px 7px", borderRadius: 6, background: "#F0F3F8", color: "#4A5568" }}
                   aria-label={`ועוד ${moreFacts} פרטים`}>
                   +{moreFacts}
                 </span>

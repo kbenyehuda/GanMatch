@@ -10,6 +10,7 @@ import { DrumstickIcon, PeanutIcon, getLanguageChar } from "@/components/gan/Gan
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import { useSession } from "@/lib/useSession";
 import { signInWithGoogle } from "@/lib/sign-in";
+import { placeTypeLabel } from "@/lib/place-type";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 import { GAN_APPROACH_LABELS, factLabel, reviewFactCounts, tagToFact, type GanApproach } from "@/lib/place-facts";
@@ -78,9 +79,9 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
           <div className="flex items-center gap-1.5">
             <span className="font-hebrew font-bold" style={{ fontSize: 13, color: "#0F1A2E" }}>{name}</span>
           </div>
-          <div className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>{date}</div>
+          <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{date}</div>
         </div>
-        <span className="flex items-center gap-1" style={{ background: "#E8F0FB", color: "#0A2B6B", padding: "2px 6px", borderRadius: 5, fontSize: 9, fontWeight: 700 }}>
+        <span className="flex items-center gap-1" style={{ background: "#E8F0FB", color: "#0A2B6B", padding: "2px 6px", borderRadius: 5, fontSize: 12, fontWeight: 700 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 9, height: 9 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
           מאומת
         </span>
@@ -104,9 +105,9 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
         </div>
       )}
       {/* Footer */}
-      <div className="flex items-center gap-3.5 mt-2.5" style={{ fontSize: 11, color: "#8A95A8", fontWeight: 600 }}>
+      <div className="flex items-center gap-3.5 mt-2.5" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 600 }}>
         <button type="button" onClick={() => onHelpful(review.id)}
-          className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: isHelpful ? "#1F5BB5" : "#8A95A8", fontWeight: 600, fontSize: 11 }}>
+          className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: isHelpful ? "#1F5BB5" : "#8A95A8", fontWeight: 600, fontSize: 12 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 13, height: 13 }}>
             <path d="M14 9V5a3 3 0 0 0-6 0v4H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-3z"/>
           </svg>
@@ -114,7 +115,7 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
         </button>
         {currentUserId && review.user_id !== currentUserId && review.allow_contact && (
           <button type="button" onClick={() => onContact(review.id)}
-            className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", fontWeight: 600, fontSize: 11 }}>
+            className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", fontWeight: 600, fontSize: 12 }}>
             <Mail style={{ width: 13, height: 13 }} />
             שליחת הודעה
           </button>
@@ -180,7 +181,7 @@ function KidsAttributeChips({ attrs }: { attrs: Record<string, unknown> }) {
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">
       {chips.map(c => (
-        <span key={c.key} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>
+        <span key={c.key} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 12, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>
           {c.icon}
           {c.text}
         </span>
@@ -375,7 +376,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {/* Tags */}
           <div className="flex gap-1.5 flex-wrap mb-2.5">
             {detailTags.map(t => (
-              <span key={t.label} className="font-hebrew" style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, ...t.style }}>
+              <span key={t.label} className="font-hebrew" style={{ fontSize: 12, fontWeight: 700, padding: "3px 8px", borderRadius: 6, ...t.style }}>
                 {t.label}
               </span>
             ))}
@@ -402,14 +403,14 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               <div style={{ fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
                 {liveAvgRating != null ? liveAvgRating.toFixed(1) : "—"}
               </div>
-              <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>דירוג</div>
+              <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 700, marginTop: 5 }}>דירוג</div>
             </div>
             <div style={{ width: 1, background: "rgba(31,91,181,.15)", margin: "4px 0" }} />
             <div className="flex-1 text-center">
               <div style={{ fontSize: 20, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
                 {liveRecCount}
               </div>
-              <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 5 }}>המלצות</div>
+              <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 700, marginTop: 5 }}>המלצות</div>
             </div>
           </div>
 
@@ -418,7 +419,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             <div className="flex items-start gap-3" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
               <Clock style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div>
-                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700, marginBottom: 2 }}>שעות פעילות</span>
+                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>שעות פעילות</span>
                 <strong className="font-hebrew" style={{ fontSize: 13, fontWeight: 600, color: "#0F1A2E" }}>{place.hours}</strong>
               </div>
             </div>
@@ -427,7 +428,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             <a key={p} href={`tel:${p}`} className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
               <Phone style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div>
-                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700, marginBottom: 2 }}>טלפון</span>
+                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>טלפון</span>
                 <strong style={{ fontSize: 13, fontWeight: 600, color: "#0A2B6B" }}>{p}</strong>
               </div>
             </a>
@@ -436,7 +437,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             <div className="flex items-start gap-3" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
               <MapPin style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div className="flex-1">
-                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700, marginBottom: 2 }}>כתובת</span>
+                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>כתובת</span>
                 {place.address ? (
                   <strong className="font-hebrew" style={{ fontSize: 13, fontWeight: 600, color: "#0F1A2E" }}>{place.address}</strong>
                 ) : (
@@ -449,7 +450,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 {user && onRequestLocationChange && (
                   <button type="button" onClick={() => onRequestLocationChange(place)}
                     className="font-hebrew font-semibold block"
-                    style={{ marginTop: 4, fontSize: 11.5, color: "#1F5BB5", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+                    style={{ marginTop: 4, fontSize: 12, color: "#1F5BB5", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
                     המיקום לא מדויק? בקשו עדכון ←
                   </button>
                 )}
@@ -460,7 +461,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             <a href={/^https?:\/\//i.test(place.website) ? place.website : `https://${place.website}`} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
               <Globe style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div>
-                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700, marginBottom: 2 }}>אתר</span>
+                <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>אתר</span>
                 <strong style={{ fontSize: 13, fontWeight: 600, color: "#0A2B6B" }}>{place.website.replace(/^https?:\/\//, "")}</strong>
               </div>
             </a>
@@ -469,7 +470,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {/* HMO */}
           {place.place_category === "doctor" && !!place.hmo?.length && (
             <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
-              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>קופות חולים</span>
+              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700 }}>קופות חולים</span>
               <div className="flex flex-wrap gap-1.5">
                 {place.hmo.map(h => (
                   <span key={h} className="font-hebrew font-semibold" style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>{HMO_LABELS[h] ?? h}</span>
@@ -478,14 +479,14 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             </div>
           )}
 
-          {/* Specialty (doctor / cosmetics) */}
-          {(place.place_category === "doctor" || place.place_category === "cosmetics") && (
+          {/* Type: gan type / kids type, doctor specialty (+ לילדים), cosmetics type */}
+          {(place.place_category === "doctor" || place.place_category === "cosmetics" || (place.place_category === "kids" && placeTypeLabel(place))) && (
             <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
-              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>תחום התמחות</span>
-              {attrs.specialty ? (
-                <span className="font-hebrew font-semibold" style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>{String(attrs.specialty)}</span>
+              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700 }}>{place.place_category === "kids" ? "סוג" : "תחום התמחות"}</span>
+              {placeTypeLabel(place) ? (
+                <span className="font-hebrew font-semibold" style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>{placeTypeLabel(place)}</span>
               ) : (
-                <p className="font-hebrew" style={{ fontSize: 11.5, color: "#8A95A8", lineHeight: 1.5 }}>
+                <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", lineHeight: 1.5 }}>
                   עדיין אין לנו מידע על תחום ההתמחות — ספרו לנו בביקורת.
                 </p>
               )}
@@ -496,7 +497,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {place.place_category === "kids" && (
             <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
               <div className="flex items-center gap-1.5 mb-2">
-                <span className="font-hebrew" style={{ color: "#8A95A8", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>פרטים נוספים</span>
+                <span className="font-hebrew" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700 }}>פרטים נוספים</span>
                 {Object.keys(attrs).length > 0 && (
                   <button type="button" onClick={() => setShowIconLegend(true)} aria-label="מה הסמלים אומרים"
                     className="flex items-center justify-center" style={{ background: "none", border: 0, padding: 0, cursor: "pointer", color: "#8A95A8" }}>
@@ -513,7 +514,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 return (
                   <button type="button" onClick={() => setShowAttrEdit(true)}
                     className="font-hebrew text-start w-full"
-                    style={{ marginTop: 8, fontSize: 11.5, color: "#8A95A8", background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
+                    style={{ marginTop: 8, fontSize: 12, color: "#8A95A8", background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
                     {missing.length > 0 ? (
                       <>עדיין אין לנו מידע על: {missing.join(", ")} — האפליקציה יודעת לשמור את זה, רק צריך שמישהו יעדכן. <span style={{ color: "#1F5BB5", fontWeight: 700 }}>עזרו לנו למלא ←</span></>
                     ) : (
@@ -564,7 +565,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               <div className="text-center py-8">
                 <span style={{ fontSize: 32 }}>💬</span>
                 <p className="font-hebrew text-sm mt-2" style={{ color: "#8A95A8" }}>אין המלצות עדיין</p>
-                <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>היה/י הראשון/ה להמליץ!</p>
+                <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>היו הראשונים להמליץ!</p>
               </div>
             ) : (
               reviews.map(r => <ReviewCard key={r.id} review={r} place={place} helpfulIds={helpfulIds} onHelpful={handleHelpful} currentUserId={user?.id ?? null} onContact={setContactReviewId} />)
@@ -583,7 +584,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15 }}>
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
                 </svg>
-                כתוב/י המלצה
+                כתבו המלצה
               </button>
             )}
 
@@ -600,12 +601,12 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 <h5 className="font-hebrew font-bold text-sm mb-3" style={{ color: "#0A2B6B" }}>ההמלצה שלך</h5>
                 <StarInput value={formRating} onChange={(v) => { setFormRating(v); setSubmitError(null); }} />
                 <textarea value={formText} onChange={e => setFormText(e.target.value)}
-                  placeholder="שתף/י את הניסיון שלך..." rows={3} className="w-full font-hebrew text-sm resize-none"
+                  placeholder="שתפו את הניסיון שלכם..." rows={3} className="w-full font-hebrew text-sm resize-none"
                   style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 12, padding: "10px 12px", outline: "none", color: "#0F1A2E", lineHeight: 1.6, width: "100%", boxSizing: "border-box" }} />
                 {place.place_category === "kids" && (
                   <div className="mt-2 p-2.5 rounded-xl" style={{ background: "#fff", border: "1px dashed #C5CDD8" }}>
                     <p className="font-hebrew text-xs mb-2" style={{ color: "#8A95A8", fontWeight: 600 }}>
-                      יודע/ת מחיר או האם יש מקום פנוי? עוזר לכולם — לגמרי אופציונלי:
+                      יודעים מה המחיר או האם יש מקום פנוי? עוזר לכולם — לגמרי אופציונלי:
                     </p>
                     <div className="flex gap-2">
                       <input type="number" inputMode="numeric" min={0} value={formPrice} onChange={e => setFormPrice(e.target.value)}
@@ -623,7 +624,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 )}
                 <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
                   <input type="checkbox" checked={formAnonymous} onChange={e => setFormAnonymous(e.target.checked)} style={{ accentColor: "#0A2B6B" }} />
-                  <span className="font-hebrew text-xs" style={{ color: "#4A5568" }}>שלח/י באנונימיות</span>
+                  <span className="font-hebrew text-xs" style={{ color: "#4A5568" }}>שליחה אנונימית</span>
                 </label>
                 {!formAnonymous && (
                   <input type="text" value={formName} onChange={e => setFormName(e.target.value)}

@@ -136,7 +136,7 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
               </div>
               <div className="flex-1">
                 <strong className="font-hebrew block" style={{ fontWeight: 700, fontSize: 14, color: "#0F1A2E" }}>{opt.label}</strong>
-                <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>{opt.sub}</span>
+                <span className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{opt.sub}</span>
               </div>
               <div style={{ width: 22, height: 22, borderRadius: "50%", border: sort === opt.id ? "none" : "2px solid #E5E9F0", background: sort === opt.id ? "#0A2B6B" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 {sort === opt.id && (
@@ -329,7 +329,7 @@ export function PlaceFeedPanel({
         {/* Section head */}
         <div style={{ margin: "6px 0 12px" }}>
           <div className="flex items-center justify-between">
-            <h3 className="font-hebrew flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 800, color: "#0F1A2E", letterSpacing: ".02em" }}>
+            <h3 className="font-hebrew flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 800, color: "#0F1A2E" }}>
               {apiSearchResults !== null ? "תוצאות חיפוש" : "המלצות קרוב אליך"}
               {searchLoading ? (
                 <Loader2 style={{ width: 12, height: 12, color: "#8A95A8" }} className="animate-spin" />

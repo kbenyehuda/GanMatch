@@ -3,6 +3,7 @@ import { HMO_LABELS, NEIGHBORHOOD_LABELS } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
 import { applyPlaceFilters, kidsTypeOf, mergedGanCategory, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
 import { factById, factsFor, placeHasFact } from "@/lib/place-facts";
+import { GAN_CATEGORY_LABELS } from "@/lib/place-type";
 
 /**
  * Filter "facets": the pills shown under the category tabs. Each facet belongs to
@@ -56,14 +57,6 @@ const attrs = (p: Place) => p.attributes as Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 const arrayOrNull = <T,>(v: T[]) => (v.length ? v : null);
 const toggleValue = (v: string[]) => (v.length ? true : null);
-
-const GAN_CATEGORY_LABELS: Record<string, string> = {
-  TZAHARON: "צהרון",
-  PRIVATE_GAN: "גן פרטי",
-  MUNICIPAL_GAN: "גן עירוני",
-  MAON_SYMBOL: "מעון סמל",
-  MISHPACHTON: "משפחתון",
-};
 
 const KIDS_PRICE_BRACKETS = [1500, 2500, 4000, 6000, 8000];
 

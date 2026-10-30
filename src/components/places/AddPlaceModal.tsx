@@ -203,7 +203,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
 
         {/* ── Location ─────────────────────────────────────────────────────── */}
         <div className="mb-4">
-          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase" }}>
+          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8" }}>
             מיקום <span style={{ color: "#C53030" }}>*</span>
           </label>
 
@@ -265,7 +265,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
 
         {/* ── Name ─────────────────────────────────────────────────────────── */}
         <div className="mb-4">
-          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase" }}>
+          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8" }}>
             שם המקום <span style={{ color: "#C53030" }}>*</span>
           </label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)}
@@ -277,7 +277,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
 
         {/* ── Category ─────────────────────────────────────────────────────── */}
         <div className="mb-4">
-          <label className="font-hebrew font-bold text-xs mb-2 block" style={{ color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase" }}>
+          <label className="font-hebrew font-bold text-xs mb-2 block" style={{ color: "#8A95A8" }}>
             קטגוריה <span style={{ color: "#C53030" }}>*</span>
           </label>
           <div className="flex flex-wrap gap-2">
@@ -347,19 +347,19 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
               <Star style={{ width: 14, height: 14, fill: showReview ? "#C8A24B" : "none", color: showReview ? "#C8A24B" : "#0A2B6B" }} />
               הוסף המלצה ראשונה (אופציונלי)
             </span>
-            <span style={{ fontSize: 11, color: "#8A95A8", fontWeight: 500 }}>{showReview ? "▲" : "▼"}</span>
+            <span style={{ fontSize: 12, color: "#8A95A8", fontWeight: 500 }}>{showReview ? "▲" : "▼"}</span>
           </button>
 
           {showReview && (
             <div className="px-4 py-3 space-y-3">
               <StarInput value={reviewRating} onChange={setReviewRating} />
               <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)}
-                placeholder="שתף/י את הניסיון שלך..." rows={2}
+                placeholder="שתפו את הניסיון שלכם..." rows={2}
                 className="w-full font-hebrew resize-none"
                 style={{ ...inputStyle, lineHeight: 1.6 }} />
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={reviewAnonymous} onChange={(e) => setReviewAnonymous(e.target.checked)} style={{ accentColor: "#0A2B6B" }} />
-                <span className="font-hebrew text-xs" style={{ color: "#4A5568" }}>שלח/י באנונימיות</span>
+                <span className="font-hebrew text-xs" style={{ color: "#4A5568" }}>שליחה אנונימית</span>
               </label>
               {!reviewAnonymous && (
                 <input type="text" value={reviewerName} onChange={(e) => setReviewerName(e.target.value)}

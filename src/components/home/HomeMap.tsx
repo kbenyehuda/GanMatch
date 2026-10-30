@@ -137,7 +137,7 @@ function MapPeekSheet({
           }}
         >
           {/* Category pill */}
-          <span className="absolute font-hebrew uppercase" style={{ top: 5, insetInlineStart: 5, background: "rgba(255,255,255,.95)", color: "#0A2B6B", fontSize: 8, fontWeight: 800, padding: "1px 5px", borderRadius: 5, letterSpacing: ".04em" }}>
+          <span className="absolute font-hebrew" style={{ top: 5, insetInlineStart: 5, background: "rgba(255,255,255,.95)", color: "#0A2B6B", fontSize: 8, fontWeight: 800, padding: "1px 5px", borderRadius: 5 }}>
             {PLACE_CATEGORY_LABELS[place.place_category]}
           </span>
           {CATEGORY_ICONS_MAP[place.place_category]}
@@ -148,7 +148,7 @@ function MapPeekSheet({
           <h5 className="font-hebrew" style={{ fontSize: 15, fontWeight: 700, color: "#0F1A2E", marginBottom: 2, lineHeight: 1.25 }}>
             {place.name}
           </h5>
-          <div className="font-hebrew flex flex-wrap items-center gap-1" style={{ fontSize: 11, color: "#8A95A8", margin: "3px 0" }}>
+          <div className="font-hebrew flex flex-wrap items-center gap-1" style={{ fontSize: 12, color: "#8A95A8", margin: "3px 0" }}>
             {[PLACE_CATEGORY_LABELS[place.place_category], dist, hmoLabel].filter(Boolean).map((t, i, arr) => (
               <span key={i} className="flex items-center gap-1">{t}{i < arr.length - 1 && <span style={{ width: 3, height: 3, borderRadius: "50%", background: "#C5CDD8", display: "inline-block" }} />}</span>
             ))}
@@ -157,7 +157,7 @@ function MapPeekSheet({
             <div className="flex items-center gap-1 mt-1">
               <svg viewBox="0 0 24 24" fill="#C8A24B" style={{ width: 12, height: 12 }}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>
               <span style={{ fontSize: 12, fontWeight: 700, color: "#0F1A2E" }}>{place.avg_rating.toFixed(1)}</span>
-              <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>· {place.rec_count}</span>
+              <span className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>· {place.rec_count}</span>
             </div>
           )}
         </div>
@@ -238,7 +238,7 @@ function PlaceClusterList({
                   <p className="font-hebrew font-bold truncate" style={{ fontSize: 14, color: "#0F1A2E" }}>
                     {p.name}
                   </p>
-                  <div className="font-hebrew flex items-center gap-1.5" style={{ fontSize: 11.5, color: "#8A95A8", marginTop: 2 }}>
+                  <div className="font-hebrew flex items-center gap-1.5" style={{ fontSize: 12, color: "#8A95A8", marginTop: 2 }}>
                     <span>{PLACE_CATEGORY_LABELS[p.place_category]}</span>
                     {p.avg_rating != null && (
                       <>
@@ -300,12 +300,13 @@ function BottomTabBar({
             key={id}
             type="button"
             onClick={() => onChange(id)}
+            aria-label={isAdd ? "הוספת מקום" : undefined}
             className="flex flex-col items-center justify-center"
             style={{
               flex: 1, gap: isAdd ? 0 : 3, padding: "6px 0",
               background: "none", border: 0, cursor: "pointer",
               color: isActive ? "#0A2B6B" : "#8A95A8",
-              fontSize: 10, fontWeight: 600,
+              fontSize: 12, fontWeight: 600,
               transition: "color .15s",
             }}
           >
@@ -1223,7 +1224,7 @@ function ProgressChips({
             onClick={() => onToggle(step.key)}
             className="font-hebrew flex items-center"
             style={{
-              gap: 4, fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 999,
+              gap: 4, fontSize: 12, fontWeight: 700, padding: "5px 10px", borderRadius: 999,
               border: "1px solid", borderColor: active ? "#1F5BB5" : "#E5E9F0",
               background: active ? "#E8F0FB" : "#fff", color: active ? "#0A2B6B" : "#8A95A8",
               cursor: "pointer",
@@ -1344,12 +1345,12 @@ function ProfileScreen({
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span style={{ color: "#fff", fontSize: 19, fontWeight: 800 }}>{displayName}</span>
-              <span className="flex items-center gap-1" style={{ background: "rgba(200,162,75,.25)", color: "#FCE7B2", fontSize: 10, padding: "3px 7px", borderRadius: 6, fontWeight: 700 }}>
+              <span className="flex items-center gap-1" style={{ background: "rgba(200,162,75,.25)", color: "#FCE7B2", fontSize: 12, padding: "3px 7px", borderRadius: 6, fontWeight: 700 }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 10, height: 10 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
-                תושב/ת מאומת/ת
+                חשבון מאומת
               </span>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.7, color: "#fff", marginTop: 2 }} className="font-hebrew">גבעתיים · חבר/ה מאז 2024</div>
+            <div style={{ fontSize: 12, opacity: 0.7, color: "#fff", marginTop: 2 }} className="font-hebrew">גבעתיים · באפליקציה מאז 2024</div>
           </div>
         </div>
         {/* Floating stats card */}
@@ -1358,12 +1359,12 @@ function ProfileScreen({
             <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>
               {recCount ?? "—"}
             </div>
-            <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginTop: 4 }}>המלצות</div>
+            <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 700, marginTop: 4 }}>המלצות</div>
           </div>
           <div style={{ width: 1, background: "#E5E9F0", margin: "6px 0" }} />
           <div className="flex-1 text-center">
             <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>{savedIds.size}</div>
-            <div className="font-hebrew" style={{ fontSize: 10, color: "#8A95A8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginTop: 4 }}>שמור</div>
+            <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 700, marginTop: 4 }}>שמור</div>
           </div>
         </div>
       </div>
@@ -1423,7 +1424,7 @@ function ProfileListCard({ icon, iconBg, title, sub, onClick }: { icon: React.Re
       <div className="flex items-center justify-center shrink-0" style={{ width: 42, height: 42, borderRadius: 12, background: iconBg, color: "#fff" }}>{icon}</div>
       <div className="flex-1">
         <h6 className="font-hebrew font-bold" style={{ fontSize: 14, color: "#0F1A2E", margin: "0 0 2px" }}>{title}</h6>
-        {sub && <div className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>{sub}</div>}
+        {sub && <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{sub}</div>}
       </div>
       <ChevronRight style={{ width: 18, height: 18, color: "#8A95A8" }} />
     </button>
