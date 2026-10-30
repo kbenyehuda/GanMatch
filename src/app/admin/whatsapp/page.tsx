@@ -599,7 +599,9 @@ export default function WhatsAppStagingPage() {
 
   // Fills the filterable place facts (gan type, outdoor space, specialty, kupa…) for rows approved
   // before approval extracted them. Only empty fields; summaries are untouched.
-  const backfillExtras = useCallback(async () => {
+  // opts.category + refresh_tags: re-read one category's recommendations and also add the
+  // fact tags (חצר, טבעוני…) to their published reviews — used for ganim.
+  const backfillExtras = useCallback(async (opts: { category?: string; refresh_tags?: boolean } = {}) => {
     const token = await getToken();
     if (!token) return;
     setExtrasBackfilling(true);
@@ -612,7 +614,7 @@ export default function WhatsAppStagingPage() {
         const res = await fetch("/api/admin/whatsapp-staging/backfill-extras", {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ offset }),
+          body: JSON.stringify({ offset, ...opts }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error ?? "Backfill failed");
@@ -839,10 +841,15 @@ export default function WhatsAppStagingPage() {
               title="מסכם רק רשומות שאושרו ועוד אין להן סיכום — לא נוגע ברשומות שמחכות לאישור">
               {batchSummarizing ? `✨ מסכם... (${batchProgress})` : "✨ סכם הכל (מאושרות ללא סיכום)"}
             </button>
-            <button onClick={backfillExtras} disabled={extrasBackfilling}
+            <button onClick={() => backfillExtras()} disabled={extrasBackfilling}
               className="px-3 py-1.5 rounded border text-sm bg-amber-50 border-amber-300 text-amber-800 disabled:opacity-50"
               title="קורא מחדש כל המלצה שאושרה וממלא פרטים שחסרים במקום (סוג, חצר, ממ״ד, התמחות, קופה…) — לא משנה סיכומים ולא דורס פרטים קיימים">
               {extrasBackfilling ? `🏷️ משלים פרטים... (${extrasProgress})` : "🏷️ השלם פרטים למאושרות"}
+            </button>
+            <button onClick={() => backfillExtras({ category: "kids", refresh_tags: true })} disabled={extrasBackfilling}
+              className="px-3 py-1.5 rounded border text-sm bg-amber-50 border-amber-300 text-amber-800 disabled:opacity-50"
+              title="קורא מחדש רק המלצות בקטגוריית ילדים, ממלא עובדות (חצר, טבעוני, יחס אישי…) בשדות שחסרים ומוסיף אותן כתגיות להמלצה — לא משנה סיכום ודירוג">
+              🏷️ עובדות לגנים
             </button>
             <button onClick={runRetroGeocode} disabled={retroGeocoding}
               className="px-3 py-1.5 rounded border text-sm bg-emerald-50 border-emerald-300 text-emerald-800 disabled:opacity-50"

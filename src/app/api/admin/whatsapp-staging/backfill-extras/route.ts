@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { summarizeRecommendation, getCategorySpecialties, applyPlaceExtras } from "@/lib/whatsapp-summarize";
+import { factsFor } from "@/lib/place-facts";
+import type { PlaceCategory } from "@/types/places";
 
 function adminAuth(req: Request) {
   const h = req.headers.get("authorization") ?? "";
@@ -15,7 +17,11 @@ const BATCH_SIZE = 15;
 const CONCURRENCY = 5;
 
 // POST /api/admin/whatsapp-staging/backfill-extras
-// body: { offset?: number }
+// body: { offset?: number, category?: string, refresh_tags?: boolean }
+//
+// category limits the run to one category (e.g. "kids" to re-read only gan recommendations).
+// refresh_tags adds the new fact tags to the published review's tags (kids/doctor/cosmetics only;
+// existing tags are kept, the summary text and rating are not touched).
 //
 // For rows approved before approval learned to extract the facts the map filters on (gan type,
 // outdoor space, price, doctor specialty/kupa…): re-reads each approved recommendation and fills
@@ -41,13 +47,17 @@ export async function POST(req: Request) {
   let body: any;
   try { body = await req.json(); } catch { body = {}; }
   const offset = Math.max(0, Number(body?.offset) || 0);
+  const category = typeof body?.category === "string" && body.category ? body.category : null;
+  const refreshTags = body?.refresh_tags === true;
 
   const admin = createClient(url, svc, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
-  const { data: rows, error: rowsErr } = await admin.from("whatsapp_import_staging")
-    .select("id, category, place_name, recommendation_text, source_messages, enthusiasm, created_place_id")
+  let query = admin.from("whatsapp_import_staging")
+    .select("id, category, place_name, recommendation_text, source_messages, enthusiasm, created_place_id, reviewer_name")
     .eq("status", "approved")
-    .not("created_place_id", "is", null)
+    .not("created_place_id", "is", null);
+  if (category) query = query.eq("category", category);
+  const { data: rows, error: rowsErr } = await query
     .order("id", { ascending: true })
     .range(offset, offset + BATCH_SIZE - 1);
   if (rowsErr) return NextResponse.json({ error: rowsErr.message }, { status: 500 });
@@ -73,6 +83,15 @@ export async function POST(req: Request) {
           specialtyOptions: specialtiesByCategory.get(row.category) ?? [],
         }, openaiKey);
         await applyPlaceExtras(admin, row.created_place_id, result.place_extras);
+        if (refreshTags && result.tags.length > 0 && factsFor(row.category as PlaceCategory).length > 0) {
+          const { data: review } = await admin.from("place_reviews").select("id, tags")
+            .eq("place_id", row.created_place_id).eq("whatsapp_reviewer_name", row.reviewer_name).maybeSingle();
+          if (review) {
+            const current: string[] = Array.isArray(review.tags) ? review.tags : [];
+            const merged = Array.from(new Set([...current, ...result.tags]));
+            if (merged.length !== current.length) await admin.from("place_reviews").update({ tags: merged }).eq("id", review.id);
+          }
+        }
         processed += 1;
       } catch {
         failed += 1;
