@@ -42,9 +42,11 @@ export async function GET(request: NextRequest) {
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+  // The RPC orders by rating, so a low cap silently drops every unrated place
+  // (i.e. everything newly approved). The whole city is a few hundred rows.
   const rpcParams: Record<string, unknown> = {
     min_lon: minLon, min_lat: minLat, max_lon: maxLon, max_lat: maxLat,
-    p_limit: 200,
+    p_limit: 2000,
   };
   if (categories) rpcParams.p_categories = categories;
 
