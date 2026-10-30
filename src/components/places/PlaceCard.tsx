@@ -9,6 +9,7 @@ import {
 } from "@/types/places";
 import { factLabel, placeFacts } from "@/lib/place-facts";
 import { placeTypeLabel } from "@/lib/place-type";
+import { APPROXIMATE_LOCATION_LABEL, isApproximateLocation } from "@/lib/place-location";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ export function PlaceCard({
     typeLabel ?? PLACE_CATEGORY_LABELS[place.place_category],
     neighborhood,
     dist,
-    hasPin(place) ? null : NO_PIN_LABEL,
+    !hasPin(place) ? NO_PIN_LABEL : isApproximateLocation(place) ? APPROXIMATE_LOCATION_LABEL : null,
   ].filter(Boolean) as string[];
 
   // Tags: two chips plus "+N" for the rest. Kids lead with facts (חצר, טבעוני…); other

@@ -11,6 +11,7 @@ import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import { useSession } from "@/lib/useSession";
 import { signInWithGoogle } from "@/lib/sign-in";
 import { placeTypeLabel } from "@/lib/place-type";
+import { isApproximateLocation } from "@/lib/place-location";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 import { GAN_APPROACH_LABELS, displayTags, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
@@ -444,6 +445,9 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 {/* Phone equivalent of the desktop hover note: this place isn't on the map */}
                 {(place.lat == null || place.lon == null) && (
                   <span className="font-hebrew block" style={{ marginTop: 2, fontSize: 12, color: "#8A95A8" }}>ללא מיקום מדויק על המפה</span>
+                )}
+                {place.lat != null && place.lon != null && isApproximateLocation(place) && (
+                  <span className="font-hebrew block" style={{ marginTop: 2, fontSize: 12, color: "#8A95A8" }}>מיקום משוער: הרחוב ידוע, מספר הבית לא</span>
                 )}
                 {user && onRequestLocationChange && (
                   <button type="button" onClick={() => onRequestLocationChange(place)}

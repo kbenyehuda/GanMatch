@@ -12,6 +12,7 @@ import { MapPin } from "lucide-react";
 import type { Place, PlaceCategory } from "@/types/places";
 import { PLACE_CATEGORY_COLORS } from "@/types/places";
 import { publicEnv } from "@/lib/env/public";
+import { APPROXIMATE_LOCATION_LABEL, isApproximateLocation } from "@/lib/place-location";
 
 // ─── Pin appearance ──────────────────────────────────────────────────────────
 
@@ -586,6 +587,8 @@ export function MapContainer({
         if (!place) return null;
         const { color, emoji } = getPlacePinConfig(place);
         const isSelected = selectedPlaceId === place.id;
+        // Street known, house number not: hollow pin with a dashed ring
+        const approximate = isApproximateLocation(place);
 
         return (
           <Marker
@@ -600,10 +603,11 @@ export function MapContainer({
             className="cursor-pointer"
           >
             <div
-              title={place.name}
-              className={`flex items-center justify-center rounded-full text-base border-2 border-white shadow-md transition-all duration-150 hover:scale-110 ${isSelected ? "scale-125 shadow-lg" : ""}`}
+              title={approximate ? `${place.name} (${APPROXIMATE_LOCATION_LABEL})` : place.name}
+              className={`flex items-center justify-center rounded-full text-base border-2 shadow-md transition-all duration-150 hover:scale-110 ${approximate ? "border-dashed" : "border-white"} ${isSelected ? "scale-125 shadow-lg" : ""}`}
               style={{
-                backgroundColor: color,
+                backgroundColor: approximate ? "#FFFFFF" : color,
+                borderColor: approximate ? color : undefined,
                 width: "2rem",
                 height: "2rem",
                 outline: isSelected ? `3px solid ${color}60` : undefined,

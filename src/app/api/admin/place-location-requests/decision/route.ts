@@ -87,6 +87,14 @@ export async function POST(req: Request) {
     await admin.from("places").update({ address: existing.requested_address }).eq("id", existing.place_id);
   }
 
+  // A dropped pin is exact, so drop the "approximate" (middle of the street) mark.
+  const { data: placeRow } = await admin.from("places").select("attributes").eq("id", existing.place_id).single();
+  const attrs = (placeRow?.attributes ?? {}) as Record<string, unknown>;
+  if ("location_precision" in attrs) {
+    const { location_precision: _dropped, ...rest } = attrs;
+    await admin.from("places").update({ attributes: rest }).eq("id", existing.place_id);
+  }
+
   const { error: updateErr } = await admin
     .from("place_location_requests")
     .update({ status: "approved", moderation_reason: moderationReason, reviewed_at: now, reviewed_by: userData.user.id })
