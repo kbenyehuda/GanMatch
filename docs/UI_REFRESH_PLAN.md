@@ -37,6 +37,19 @@ Deployed to production: everything up to `ada3139`. After that, the user asked C
 - The profile screen shows a hard-coded "באפליקציה מאז 2024".
 - `neighborhood` is still null everywhere (filling it is a data task); possible duplicate `גן "שקד"` / `גן שקד`.
 
+### Live as of 2026-10-30 evening (`19b6f3c`)
+
+Since the list above, also deployed: open tags with merged meanings (user: "tags should be quite open… a few different tags that mean the same thing is bad"; `canonicalTag`/`displayTags` in `place-facts.ts`); gan facts written for 26 recommendations (kids places with a fact: 5 → 16); colored category squares removed; a place opened in one category no longer shows in another; "ערכו פרטים" edits are pending requests (`place_detail_requests`) that the user approves, **every change for now** (trust rules maybe later); every request (details and location) emails `ADMIN_EMAILS` with a link to `/admin/<page>?id=<id>`; approval pages have דילוג (hide). Local pre-deploy builds: `NEXT_DIST_DIR=.next-build npm run build`.
+
+### Backlog (user, 2026-10-30)
+
+1. **Test the approval email.** One real "ערכו פרטים" request: email arrives, its link opens that request.
+2. **Run the other WhatsApp waves.** Recommendations about a place we already have must attach to it, not create a new place. Check the matching (name variants like `גן "שקד"` / `גן שקד` / `פעוטון שקד`, the same person under different names) before running them, and dedupe the existing duplicates.
+3. **Find locations** for places without a pin in the 3 visible categories (181 of 460; doctors 120 of 159).
+4. **Domain.** `givemytimeapp.com` (bought 2026-09-05) is used only for sending email (`RESEND_FROM_EMAIL`, README lines 40–41, `docs/LAUNCH_CHECKLIST.md` line 53). The site is `gan-match.vercel.app`. Serving the site on the domain takes: add it in Vercel, DNS at the registrar, Supabase auth redirect URLs, Google OAuth origins, and optionally `NEXT_PUBLIC_SITE_URL`. No code has the domain hard-coded.
+5. **Legal check before sharing.** Privacy and terms page (`/privacy`), publishing WhatsApp-group recommendations (consent, anonymity: summaries are anonymized, reviewer names stored as `whatsapp_reviewer_name`), personal data of babysitters and caregivers (names, phone numbers), Israeli privacy law and database registration, government data licence.
+6. **Neighborhoods** are null everywhere (the filter is hidden); fill them from coordinates.
+
 ### Done earlier (deployed in `ada3139`)
 
 - `5d1ade2` **Cap fix (ship to production soon, independent of the UI work).** `/api/places` capped `get_places_in_bbox` at 200 rows ordered by rating, so every unrated (newly approved) place disappeared once the city passed 200 pinned places. Cap is now 2000.
