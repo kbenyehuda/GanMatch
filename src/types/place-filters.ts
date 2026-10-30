@@ -27,6 +27,8 @@ export interface PlaceFilters {
   kids_meat_served: boolean | null;
   kids_allergy_friendly: boolean | null;
   kids_chugim: string[] | null;
+  /** Fact ids from src/lib/place-facts.ts; a place must have all of them (field or review tag). */
+  kids_facts: string[] | null;
   // Doctor-specific
   doctor_specialty: string[] | null;
   doctor_for_children: boolean | null; // "known to see children" — attributes.for_children === true
@@ -69,6 +71,7 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   kids_meat_served: null,
   kids_allergy_friendly: null,
   kids_chugim: null,
+  kids_facts: null,
   doctor_specialty: null,
   doctor_for_children: null,
   cosmetics_specialty: null,
@@ -107,6 +110,7 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.kids_meat_served != null) n++;
   if (f.kids_allergy_friendly != null) n++;
   if (f.kids_chugim != null && f.kids_chugim.length > 0) n++;
+  if (f.kids_facts != null && f.kids_facts.length > 0) n++;
   if (f.kids_specialty != null && f.kids_specialty.length > 0) n++;
   if (f.doctor_specialty != null && f.doctor_specialty.length > 0) n++;
   if (f.doctor_for_children != null) n++;

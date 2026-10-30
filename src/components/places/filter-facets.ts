@@ -2,6 +2,7 @@ import type { Place, PlaceCategory } from "@/types/places";
 import { HMO_LABELS, NEIGHBORHOOD_LABELS } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
 import { applyPlaceFilters, kidsTypeOf, mergedGanCategory, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
+import { factById, factsFor, placeHasFact } from "@/lib/place-facts";
 
 /**
  * Filter "facets": the pills shown under the category tabs. Each facet belongs to
@@ -47,6 +48,8 @@ interface FacetDef {
   set: (f: PlaceFilters, values: string[]) => PlaceFilters;
   /** Shown only in some contexts, e.g. gan type only once "גני ילדים" is picked. */
   visible?: (f: PlaceFilters) => boolean;
+  /** Options combine with AND, so an option's count includes the ones already picked. */
+  matchAll?: boolean;
 }
 
 const attrs = (p: Place) => p.attributes as Record<string, unknown>;
@@ -73,7 +76,7 @@ const FACET_DEFS: FacetDef[] = [
     valuesOf: (p) => { const t = kidsTypeOf(p); return t ? [t] : []; },
     get: (f) => f.kids_specialty ?? [],
     // Changing type drops the sub-filters that belonged to the previous type.
-    set: (f, v) => ({ ...f, kids_specialty: arrayOrNull(v), kids_gan_category: null, kids_age_track: null, kids_max_price_nis: null, kids_chugim: null }),
+    set: (f, v) => ({ ...f, kids_specialty: arrayOrNull(v), kids_gan_category: null, kids_age_track: null, kids_max_price_nis: null, kids_chugim: null, kids_facts: null }),
   },
   {
     key: "kids_gan_category", category: "kids", label: "סוג גן", mode: "multi", primary: true,
@@ -120,6 +123,14 @@ const FACET_DEFS: FacetDef[] = [
     },
     get: (f) => f.kids_chugim ?? [],
     set: (f, v) => ({ ...f, kids_chugim: arrayOrNull(v) }),
+  },
+  {
+    key: "kids_facts", category: "kids", label: "מה חשוב לכם", mode: "multi", primary: true, matchAll: true,
+    visible: (f) => kidsTypeIs(f, KIDS_GAN_TYPE),
+    valuesOf: (p) => factsFor("kids").filter((fact) => placeHasFact(p, fact)).map((fact) => fact.id),
+    optionLabel: (id) => factById(id)?.label ?? id,
+    get: (f) => f.kids_facts ?? [],
+    set: (f, v) => ({ ...f, kids_facts: arrayOrNull(v) }),
   },
   {
     key: "kids_neighborhood", category: "kids", label: "שכונה", mode: "multi", primary: true,
@@ -229,7 +240,7 @@ export function buildFacets(
     const options = ids.map((id) => ({
       id,
       label: def.optionLabel?.(id) ?? id,
-      count: applyPlaceFilters(loaded, def.set(filters, [id])).length,
+      count: applyPlaceFilters(loaded, def.set(filters, def.matchAll ? Array.from(new Set([...selected, id])) : [id])).length,
     }));
 
     facets.push({ key: def.key, label: def.label, mode: def.mode, primary: def.primary, options, selected });

@@ -1,5 +1,6 @@
 import type { Place } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
+import { factById, placeHasFact, type PlaceFact } from "@/lib/place-facts";
 
 export const KIDS_GAN_TYPE = "גני ילדים";
 
@@ -159,6 +160,13 @@ export function applyPlaceFilters(
       const chugim = Array.isArray(a.chugim_types) ? (a.chugim_types as string[]) : [];
       return filters.kids_chugim!.some((c) => chugim.includes(c));
     });
+  if (filters.kids_facts?.length) {
+    const facts = filters.kids_facts.map(factById).filter((f): f is PlaceFact => f != null);
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      return facts.every((f) => placeHasFact(p, f));
+    });
+  }
   if (filters.hours_contains?.trim()) {
     const q = filters.hours_contains.trim().toLowerCase();
     result = result.filter((p) => p.hours?.toLowerCase().includes(q));

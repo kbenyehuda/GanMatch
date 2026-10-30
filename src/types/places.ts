@@ -54,6 +54,14 @@ export interface KidsAttributes {
   meat_served?: boolean;
   allergy_friendly?: boolean;
   chugim_types?: string[];
+  // Gan facts added 2026-10-30 (see src/lib/place-facts.ts)
+  approach?: ("ANTHROPOSOPHIC" | "NATURE" | "MONTESSORI" | "BILINGUAL")[];
+  is_home_gan?: boolean;
+  small_group?: boolean;
+  stable_staff?: boolean;
+  has_chugim_in_gan?: boolean;
+  has_holiday_camp?: boolean;
+  flexible_hours?: boolean;
 }
 
 export interface DoctorAttributes {
@@ -103,6 +111,8 @@ export interface Place {
   source: "community" | "migrated_ganmatch";
   lat: number | null;
   lon: number | null;
+  /** Distinct tags from this place's reviews, merged in client-side (useAllPlaces). */
+  review_tags?: string[];
 }
 
 // =============================================================================

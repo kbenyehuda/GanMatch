@@ -54,6 +54,18 @@ export async function fetchAllPlaces(): Promise<Place[]> {
   return (await res.json()) as Place[];
 }
 
+/** Distinct review tags per place id. Facts still work from fields if this fails, so it never throws. */
+export async function fetchReviewTags(): Promise<Record<string, string[]>> {
+  try {
+    const res = await fetch(`/api/places/review-tags`);
+    if (!res.ok) return {};
+    const data = (await res.json()) as { tags?: Record<string, string[]> };
+    return data.tags ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export async function searchPlaces(
   q: string,
   options?: { limit?: number; categories?: string[] }

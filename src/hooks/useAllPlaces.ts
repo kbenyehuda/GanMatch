@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchAllPlaces } from "@/lib/places-api";
+import { fetchAllPlaces, fetchReviewTags } from "@/lib/places-api";
 import type { Place } from "@/types/places";
 
 export interface UseAllPlacesResult {
@@ -28,10 +28,10 @@ export function useAllPlaces(): UseAllPlacesResult {
   const load = useCallback(async (silent: boolean) => {
     if (!silent) setLoading(true);
     try {
-      const all = await fetchAllPlaces();
+      const [all, reviewTags] = await Promise.all([fetchAllPlaces(), fetchReviewTags()]);
       // Keep locally-added places that the server doesn't return yet.
       setPlaces((prev) => {
-        const byId = new Map(all.map((p) => [p.id, p]));
+        const byId = new Map(all.map((p) => [p.id, reviewTags[p.id] ? { ...p, review_tags: reviewTags[p.id] } : p]));
         for (const p of prev) if (!byId.has(p.id)) byId.set(p.id, p);
         return Array.from(byId.values());
       });

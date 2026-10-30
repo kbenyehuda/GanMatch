@@ -8,6 +8,7 @@ const FRIDAY_SCHEDULES = ["NONE", "EVERY_FRIDAY", "EVERY_OTHER_FRIDAY"];
 const VACANCY_STATUSES = ["Available", "Limited", "Full"];
 const LANGUAGES: SpokenLanguage[] = ["HEBREW", "ENGLISH", "RUSSIAN", "ARABIC"];
 const KOSHER_STATUSES: KosherStatus[] = ["CERTIFIED", "NOT_CERTIFIED", "UNKNOWN"];
+const APPROACHES = ["ANTHROPOSOPHIC", "NATURE", "MONTESSORI", "BILINGUAL"];
 const GAN_CATEGORIES = [
   "MAON_SYMBOL", "MISHPACHTON", "PRIVATE_GAN", "MUNICIPAL_GAN",
   "TZAHARON_MUNICIPAL", "TZAHARON_PRIVATE_SUPERVISED", "TZAHARON_PRIVATE_UNSUPERVISED",
@@ -113,6 +114,15 @@ export async function POST(req: NextRequest) {
       ? (body.languages_spoken as unknown[]).filter((l): l is SpokenLanguage => LANGUAGES.includes(l as SpokenLanguage))
       : [];
     attrs.languages_spoken = arr.length ? arr : null;
+  }
+  if (has(body, "approach")) {
+    const arr = Array.isArray(body.approach)
+      ? Array.from(new Set((body.approach as unknown[]).filter((v): v is string => typeof v === "string" && APPROACHES.includes(v))))
+      : [];
+    attrs.approach = arr.length ? arr : null;
+  }
+  for (const key of ["is_home_gan", "small_group", "stable_staff", "has_chugim_in_gan", "has_holiday_camp", "flexible_hours"]) {
+    if (has(body, key)) attrs[key] = bool(body[key]);
   }
   if (has(body, "chugim_types")) {
     const arr = Array.isArray(body.chugim_types)

@@ -1,6 +1,6 @@
 # UI/UX Refresh — Plan
 
-Handoff for the UI session (prepared 2026-10-29). Work in this worktree (`GanMatch-ui`, branch `ui-ux-refresh`, based on `whatsapp-review-triage`). Another Claude session keeps working on the WhatsApp triage in the main `GanMatch` folder at the same time, so stay inside the files listed under **Your area**.
+Handoff for the UI session (prepared 2026-10-29). **One folder only (user, 2026-10-30):** the `GanMatch-ui` worktree was merged back and deleted. Work in `GanMatch` on branch `whatsapp-review-triage`. Don't create worktrees or extra folders. The "Your area" split below still says which files the triage work owns.
 
 Read `CLAUDE.md` first. It describes the older `ganim_v2` app; the live app is the `places` app (`src/components/places/*`, `src/components/home/HomeMap.tsx`, `src/types/places.ts`, `src/types/place-filters.ts`, `src/lib/apply-place-filters.ts`). Its rules still hold: Hebrew-only UI, RTL with `start`/`end` (never `left`/`right`), ask before any state-changing action (DB writes, migrations, git push, deploys).
 
@@ -8,7 +8,7 @@ Read `CLAUDE.md` first. It describes the older `ganim_v2` app; the live app is t
 
 **Ganim come first** (user, 2026-10-30; also in `CLAUDE.md`). They are the most important part of the app. Prioritize gan data and gan UX.
 
-### Done (branch `ui-ux-refresh`, not pushed)
+### Done (now on `whatsapp-review-triage`, not pushed)
 
 - `5d1ade2` **Cap fix (ship to production soon, independent of the UI work).** `/api/places` capped `get_places_in_bbox` at 200 rows ordered by rating, so every unrated (newly approved) place disappeared once the city passed 200 pinned places. Cap is now 2000.
 - `3737588` **Items 1, 2 and 4 plus Google-Maps-style map:**
@@ -35,21 +35,22 @@ User's definition: **a tag is useful extra information that helps you choose** (
 
 Today the summarizer writes free-text tags (`place_reviews.tags`, 140 distinct, collected in `tag_taxonomy`) separately from structured fields. Of 2,857 tag uses, only ~830 are real tags; type 998, generic 794, HMO 235. Doctors and cosmetics have useful ones. **Ganim have almost none** (13 uses). The prompt is tuned for services, so gan facts (מגיל חצי שנה, אנתרופוסופי, טבעוני, יחס אישי) stayed in the summary text. Tags currently render only as tiny 10px chips under each review in `PlaceDetail`.
 
-Draft gan facts (confirm with the user before building):
-- Facilities: חצר / שטח חוץ, ממ"ד, מצלמות
-- Food: בישול במקום, טבעוני, צמחוני
-- Approach: אנתרופוסופי, טבע, מונטסורי, דו-לשוני
-- Staff and atmosphere: יחס אישי / קבוצה קטנה, גננת ותיקה / צוות יציב
-- Logistics: פתוח בשישי, שעות ארוכות, יש מקום פנוי
+**Gan facts — approved by the user 2026-10-30, built in `src/lib/place-facts.ts`** (that file is the source of truth for labels, fields and synonyms):
+- Facilities: חצר (`has_outdoor_space`), ממ"ד (`has_mamad`), מצלמות (`has_cctv`; one chip that becomes "מצלמות עם צפייה להורים" when `cctv_streamed_online`), גן ביתי (new `is_home_gan`)
+- Food: בישול במקום (`meal_type=IN_HOUSE_COOK`), טבעוני, צמחוני, מתאים לאלרגיות
+- Approach: new multi-value field `approach` = ANTHROPOSOPHIC / NATURE / MONTESSORI / BILINGUAL (דו-לשוני is also true when `languages_spoken` has 2+)
+- Staff and atmosphere: קבוצה קטנה / יחס אישי (new `small_group`), צוות יציב (new `stable_staff`), עזרה ראשונה, חוגים בגן (new `has_chugim_in_gan`)
+- Hours and availability: פתוח בשישי (`friday_schedule`), שעות ארוכות (derived: `hours` closes at **16:30 or later**), גמישות בשעות (new `flexible_hours`), קייטנה בחופשים (new `has_holiday_camp`), יש מקום פנוי (`vacancy_status` Available/Limited)
 
-Ages, price and gan type are fields shown in their own spots, not tags.
+User decisions: every fact is a real field (filterable and editable in "ערכו פרטים"), not tag-only. New fields live in the `attributes` JSON, so no migration. Synonym lists were drafted, not checked against review text (the user asked to save tokens). Ages, price and gan type are fields shown in their own spots, not tags.
 
 Other categories (drafts):
 - Doctors: מקבל ילדים, מתאים להריון, זמינות / תור קצר, קשוב / סבלני / עדין, מגיע לבית, פרטי, זמינות אונליין
 - Cosmetics: service types (לק ג'ל, טיפול פנים, חורים באוזניים, תלתלים, צבע), הגעה לבית, ללא תור, מתאים לילדים
 
 Steps:
-1. **This branch, no DB writes:** `src/lib/place-facts.ts` with the vocabulary per category. Each fact has a label, its field if any, and tag synonyms. Map the existing tags onto it: merge synonyms (מקבל/מקבלת/מתאים לילדים/קידס פרנדלי → for_children), keep negatives (לא מומלץ, תור ארוך, חסר רגישות) out of the positive chips, and treat locations (קניון גבעתיים, בורוכוב) as location. Show a "מה ההורים אומרים" fact summary in the place window plus 1–2 facts on the card. Let filter facets count facts from tags as well as fields.
+1. **Done for ganim (2026-10-30, no DB writes):** `src/lib/place-facts.ts` with the vocabulary per category. Each fact has a label, its field if any, and tag synonyms. Map the existing tags onto it: merge synonyms (מקבל/מקבלת/מתאים לילדים/קידס פרנדלי → for_children), keep negatives (לא מומלץ, תור ארוך, חסר רגישות) out of the positive chips, and treat locations (קניון גבעתיים, בורוכוב) as location. Show a "מה ההורים אומרים" fact summary in the place window plus 1–2 facts on the card. Let filter facets count facts from tags as well as fields.
+   Built: `place-facts.ts`; `/api/places/review-tags` (distinct tags per place, merged into `Place.review_tags` by `useAllPlaces`); facet "מה חשוב לכם" (AND, shown once גני ילדים is picked); 2 facts on kids cards; "מה ההורים אומרים" block in `PlaceDetail`; kids review chips show only fact labels; the 7 new fields in `EditKidsAttributesModal` + `/api/places/kids-attributes`; the phone "ללא מיקום מדויק על המפה" note in the address row. Doctors and cosmetics vocabularies are not built yet.
 2. **Triage session (owns `src/lib/whatsapp-summarize.ts`):** the summarizer picks from the vocabulary instead of free text. Re-run it on the gan reviews. Then run a one-time backfill of mapped values into real fields, only with the user's OK.
 3. **Later:** owners and parents confirm or add facts through "ערכו פרטים".
 
@@ -68,7 +69,7 @@ Items 5–9 below: shared `/place/[id]` links skip the intro and sign-in screens
 
 - **Yours:** `src/components/places/*`, `src/components/home/*`, `src/components/auth/*`, `src/app/place/*`, `src/app/layout.tsx`, `src/types/place-filters.ts`, `src/lib/apply-place-filters.ts`, `src/types/places.ts` (labels only).
 - **Leave alone** (the triage session edits these): `src/app/admin/whatsapp/*`, `src/app/api/admin/whatsapp-staging/*`, `src/lib/whatsapp-summarize.ts`, `src/lib/whatsapp-geocode.ts`.
-- Commit on `ui-ux-refresh`. Don't merge into `main` or push without asking.
+- Commit on `whatsapp-review-triage`. Don't merge into `main` or push without asking.
 
 ## Data you're designing for (2026-10-29)
 

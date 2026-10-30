@@ -11,6 +11,7 @@ import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import { useSession } from "@/lib/useSession";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
+import { GAN_APPROACH_LABELS, factLabel, reviewFactCounts, tagToFact, type GanApproach } from "@/lib/place-facts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,11 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
 
 const AVA_COLORS = ["#1F5BB5","#E59A2C","#2EA86B","#D86B7D","#9C5BBD"];
 
-function ReviewCard({ review, helpfulIds, onHelpful, currentUserId, onContact }: { review: PlaceReview; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void }) {
+function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onContact }: { review: PlaceReview; place: Place; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void }) {
+  // Kids reviews show only the tags that are facts (חצר, טבעוני…), not type words or praise.
+  const tags = place.place_category === "kids"
+    ? Array.from(new Set((review.tags ?? []).map((t) => tagToFact(t, "kids")).filter((f) => f != null).map((f) => factLabel(f, place))))
+    : (review.tags ?? []);
   const name = review.reviewer_public_name ?? (review.is_anonymous ? "אנונימי" : "משתמש");
   const initials = name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
   const avaColor = AVA_COLORS[name.charCodeAt(0) % AVA_COLORS.length];
@@ -90,10 +95,10 @@ function ReviewCard({ review, helpfulIds, onHelpful, currentUserId, onContact }:
       {/* Text */}
       {review.text && <p className="font-hebrew" style={{ fontSize: 13, lineHeight: 1.5, color: "#4A5568" }}>&ldquo;{review.text}&rdquo;</p>}
       {/* Tags */}
-      {review.tags && review.tags.length > 0 && (
+      {tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1.5">
-          {review.tags.map(tag => (
-            <span key={tag} className="font-hebrew" style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 5, background: "#F0F4FA", color: "#4A6A9E" }}>{tag}</span>
+          {tags.map(tag => (
+            <span key={tag} className="font-hebrew" style={{ fontSize: 12, fontWeight: 600, padding: "2px 7px", borderRadius: 5, background: "#F0F4FA", color: "#4A6A9E" }}>{tag}</span>
           ))}
         </div>
       )}
@@ -137,8 +142,19 @@ function KidsAttributeChips({ attrs }: { attrs: Record<string, unknown> }) {
   if (attrs.has_mamad) chips.push({ key: "mamad", icon: <Shield className="w-3.5 h-3.5" />, text: 'ממ"ד / מיקלט' });
   if (attrs.has_cctv) {
     const online = attrs.cctv_streamed_online === true;
-    chips.push({ key: "cctv", icon: <Camera className="w-3.5 h-3.5" />, text: online ? "מצלמות (צפייה מרחוק)" : "מצלמות" });
+    chips.push({ key: "cctv", icon: <Camera className="w-3.5 h-3.5" />, text: online ? "מצלמות עם צפייה להורים" : "מצלמות" });
   }
+  if (Array.isArray(attrs.approach)) {
+    for (const a of attrs.approach as GanApproach[]) {
+      if (GAN_APPROACH_LABELS[a]) chips.push({ key: `approach-${a}`, text: GAN_APPROACH_LABELS[a] });
+    }
+  }
+  if (attrs.is_home_gan) chips.push({ key: "home", text: "גן ביתי" });
+  if (attrs.small_group) chips.push({ key: "small", text: "קבוצה קטנה / יחס אישי" });
+  if (attrs.stable_staff) chips.push({ key: "staff", text: "צוות יציב" });
+  if (attrs.has_chugim_in_gan) chips.push({ key: "chugim-in-gan", text: "חוגים בגן" });
+  if (attrs.has_holiday_camp) chips.push({ key: "camp", text: "קייטנה בחופשים" });
+  if (attrs.flexible_hours) chips.push({ key: "flex", text: "גמישות בשעות" });
   if (attrs.first_aid_trained) chips.push({ key: "firstaid", icon: <Medal className="w-3.5 h-3.5" />, text: "עזרה ראשונה" });
   if (attrs.kosher_certifier) chips.push({ key: "certifier", text: `בהכשר ${String(attrs.kosher_certifier)}` });
   if (attrs.staff_child_ratio) chips.push({ key: "ratio", text: `יחס מטפלת:ילד 1:${Number(attrs.staff_child_ratio)}` });
@@ -415,7 +431,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               </div>
             </a>
           ))}
-          {(place.address || (user && onRequestLocationChange)) && (
+          {(place.address || (user && onRequestLocationChange) || place.lat == null || place.lon == null) && (
             <div className="flex items-start gap-3" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
               <MapPin style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div className="flex-1">
@@ -424,6 +440,10 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                   <strong className="font-hebrew" style={{ fontSize: 13, fontWeight: 600, color: "#0F1A2E" }}>{place.address}</strong>
                 ) : (
                   <span className="font-hebrew" style={{ fontSize: 13, color: "#8A95A8" }}>אין כתובת רשומה</span>
+                )}
+                {/* Phone equivalent of the desktop hover note: this place isn't on the map */}
+                {(place.lat == null || place.lon == null) && (
+                  <span className="font-hebrew block" style={{ marginTop: 2, fontSize: 12, color: "#8A95A8" }}>ללא מיקום מדויק על המפה</span>
                 )}
                 {user && onRequestLocationChange && (
                   <button type="button" onClick={() => onRequestLocationChange(place)}
@@ -504,6 +524,25 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             </div>
           )}
 
+          {/* What parents say: facts from review tags, most mentioned first */}
+          {place.place_category === "kids" && (() => {
+            const said = reviewFactCounts(reviews, "kids");
+            if (!said.length) return null;
+            return (
+              <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
+                <h4 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>מה ההורים אומרים</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {said.map(({ fact, count }) => (
+                    <span key={fact.id} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 8, background: "#DCF3E6", color: "#1D7F4F" }}>
+                      {factLabel(fact, place)}
+                      {count > 1 && <span style={{ fontWeight: 500, opacity: 0.8 }}>· {count} הורים</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* About */}
           {place.description && (
             <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
@@ -527,7 +566,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>היה/י הראשון/ה להמליץ!</p>
               </div>
             ) : (
-              reviews.map(r => <ReviewCard key={r.id} review={r} helpfulIds={helpfulIds} onHelpful={handleHelpful} currentUserId={user?.id ?? null} onContact={setContactReviewId} />)
+              reviews.map(r => <ReviewCard key={r.id} review={r} place={place} helpfulIds={helpfulIds} onHelpful={handleHelpful} currentUserId={user?.id ?? null} onContact={setContactReviewId} />)
             )}
 
             {submitSuccess && (

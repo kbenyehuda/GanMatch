@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import type { Place, KidsAttributes, SpokenLanguage, KosherStatus } from "@/types/places";
 import { useSession } from "@/lib/useSession";
+import { GAN_APPROACH_LABELS, type GanApproach } from "@/lib/place-facts";
 
 const GAN_CATEGORY_OPTS: { value: string; label: string }[] = [
   { value: "", label: "לא ידוע" },
@@ -117,12 +118,23 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
   const [languages, setLanguages] = useState<SpokenLanguage[]>(a.languages_spoken ?? []);
   const [chugim, setChugim] = useState((a.chugim_types ?? []).join(", "));
   const [hours, setHours] = useState(place.hours ?? "");
+  const [approach, setApproach] = useState<GanApproach[]>(a.approach ?? []);
+  const [homeGan, setHomeGan] = useState<TriState>(boolToTri(a.is_home_gan));
+  const [smallGroup, setSmallGroup] = useState<TriState>(boolToTri(a.small_group));
+  const [stableStaff, setStableStaff] = useState<TriState>(boolToTri(a.stable_staff));
+  const [chugimInGan, setChugimInGan] = useState<TriState>(boolToTri(a.has_chugim_in_gan));
+  const [holidayCamp, setHolidayCamp] = useState<TriState>(boolToTri(a.has_holiday_camp));
+  const [flexibleHours, setFlexibleHours] = useState<TriState>(boolToTri(a.flexible_hours));
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const toggleLang = (lang: SpokenLanguage) => {
     setLanguages((prev) => (prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]));
+  };
+
+  const toggleApproach = (v: GanApproach) => {
+    setApproach((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
   };
 
   const submit = async () => {
@@ -157,6 +169,13 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
         languages_spoken: languages,
         chugim_types: chugim.split(/[,;]/).map((s) => s.trim()).filter(Boolean),
         hours: hours.trim() || null,
+        approach,
+        is_home_gan: triToBool(homeGan),
+        small_group: triToBool(smallGroup),
+        stable_staff: triToBool(stableStaff),
+        has_chugim_in_gan: triToBool(chugimInGan),
+        has_holiday_camp: triToBool(holidayCamp),
+        flexible_hours: triToBool(flexibleHours),
       };
       const res = await fetch("/api/places/kids-attributes", {
         method: "POST",
@@ -262,6 +281,22 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
                 ))}
               </div>
             </Field></div>
+            <div className="col-span-2"><Field label="גישה (בחרו את כל מה שמתאים)">
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(GAN_APPROACH_LABELS) as GanApproach[]).map(v => (
+                  <label key={v} className="flex items-center gap-1.5 font-hebrew" style={{ fontSize: 13, cursor: "pointer" }}>
+                    <input type="checkbox" checked={approach.includes(v)} onChange={() => toggleApproach(v)} style={{ accentColor: "#0A2B6B" }} />
+                    {GAN_APPROACH_LABELS[v]}
+                  </label>
+                ))}
+              </div>
+            </Field></div>
+            <Field label="גן ביתי"><TriSelect value={homeGan} onChange={setHomeGan} /></Field>
+            <Field label="קבוצה קטנה / יחס אישי"><TriSelect value={smallGroup} onChange={setSmallGroup} /></Field>
+            <Field label="צוות יציב"><TriSelect value={stableStaff} onChange={setStableStaff} /></Field>
+            <Field label="חוגים בגן"><TriSelect value={chugimInGan} onChange={setChugimInGan} /></Field>
+            <Field label="קייטנה בחופשים"><TriSelect value={holidayCamp} onChange={setHolidayCamp} /></Field>
+            <Field label="גמישות בשעות"><TriSelect value={flexibleHours} onChange={setFlexibleHours} /></Field>
             <div className="col-span-2"><Field label="חוגים (מופרדים בפסיק)">
               <input value={chugim} onChange={(e) => setChugim(e.target.value)} placeholder="מוזיקה, אמנות, ספורט..." className="font-hebrew" style={inputStyle} />
             </Field></div>

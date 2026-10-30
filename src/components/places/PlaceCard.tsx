@@ -7,6 +7,7 @@ import {
   PLACE_CATEGORY_LABELS,
   NEIGHBORHOOD_LABELS,
 } from "@/types/places";
+import { factLabel, placeFacts } from "@/lib/place-facts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -162,6 +163,8 @@ export function PlaceCard({
 
   // Tags
   const tags: { label: string; variant: "blue" | "green" | "gold" | "rose" }[] = [];
+  // Gan facts (חצר, טבעוני…) come first; the card shows two chips.
+  placeFacts(place).slice(0, 2).forEach((f) => tags.push({ label: factLabel(f, place), variant: "blue" }));
   if (place.kosher === "CERTIFIED") tags.push({ label: "כשר", variant: "green" });
   if (place.price_range === 1) tags.push({ label: "זול", variant: "green" });
   if (place.price_range === 3) tags.push({ label: "יקר", variant: "rose" });
