@@ -9,6 +9,7 @@ import {
 import { DrumstickIcon, PeanutIcon, getLanguageChar } from "@/components/gan/GanAttributeIcons";
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import { useSession } from "@/lib/useSession";
+import { signInWithGoogle } from "@/lib/sign-in";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 import { GAN_APPROACH_LABELS, factLabel, reviewFactCounts, tagToFact, type GanApproach } from "@/lib/place-facts";
@@ -587,7 +588,11 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             )}
 
             {!user && (
-              <p className="font-hebrew text-xs text-center py-3" style={{ color: "#8A95A8" }}>התחבר/י כדי לכתוב המלצה</p>
+              <button type="button" onClick={() => signInWithGoogle(`/place/${place.id}`)}
+                className="w-full flex items-center justify-center gap-2 font-hebrew font-bold"
+                style={{ marginTop: 8, padding: 12, borderRadius: 14, background: "#fff", border: "1.5px solid #0A2B6B", color: "#0A2B6B", fontSize: 14, cursor: "pointer" }}>
+                התחברו כדי לכתוב המלצה
+              </button>
             )}
 
             {showForm && (

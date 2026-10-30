@@ -9,6 +9,7 @@ import { CategoryTabs, FilterPills } from "./CategoryFilterBar";
 import type { Facet } from "./filter-facets";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
+import { signInWithGoogle } from "@/lib/sign-in";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -190,13 +191,7 @@ export function PlaceFeedPanel({
   const greeting = useMemo(() => getGreeting(), []);
   const userInitial = user?.email?.[0]?.toUpperCase() ?? "א";
 
-  const handleSignIn = async () => {
-    if (!supabase) return;
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: typeof window !== "undefined" ? window.location.origin : undefined },
-    });
-  };
+  const handleSignIn = () => signInWithGoogle();
   const handleSignOut = async () => {
     setShowProfileMenu(false);
     if (!supabase) return;

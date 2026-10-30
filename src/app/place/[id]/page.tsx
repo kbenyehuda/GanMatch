@@ -38,9 +38,10 @@ export async function generateMetadata({
       description,
       locale: "he_IL",
       type: "website",
+      images: [{ url: `/og/${place.place_category}`, width: 1200, height: 630 }],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title,
       description,
     },

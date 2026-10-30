@@ -4,19 +4,12 @@ import { LogIn, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
+import { signInWithGoogle } from "@/lib/sign-in";
 
 export function AuthButton() {
   const { user, loading } = useSession();
 
-  const signIn = async () => {
-    if (!supabase) return;
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
-      },
-    });
-  };
+  const signIn = () => signInWithGoogle();
 
   const signOut = async () => {
     if (!supabase) return;

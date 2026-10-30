@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { signInWithGoogle } from "@/lib/sign-in";
 
 export const SKIP_LOGIN_STORAGE_KEY = "ganmatch_skip_login";
 
@@ -20,12 +21,7 @@ export function ConnectionGate({
     if (!supabase) return;
     setSigningIn(true);
     try {
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
-        },
-      });
+      await signInWithGoogle();
     } finally {
       setSigningIn(false);
     }

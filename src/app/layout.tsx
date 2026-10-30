@@ -19,9 +19,23 @@ const jakartaSans = Plus_Jakarta_Sans({
   weight: ["400", "500", "600", "700", "800"],
 });
 
+// Link previews need absolute image URLs. NEXT_PUBLIC_SITE_URL wins; on Vercel the
+// production domain is exposed as VERCEL_PROJECT_PRODUCTION_URL.
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "GiveMyTime | גבעתיים",
   description: "גלו מקומות, שירותים ועסקים מומלצים בגבעתיים.",
+  openGraph: {
+    title: "GiveMyTime | גבעתיים",
+    description: "גלו מקומות, שירותים ועסקים מומלצים בגבעתיים.",
+    locale: "he_IL",
+    type: "website",
+    images: [{ url: "/og/kids", width: 1200, height: 630 }],
+  },
   applicationName: "GiveMyTime",
   manifest: "/manifest.webmanifest",
   appleWebApp: {

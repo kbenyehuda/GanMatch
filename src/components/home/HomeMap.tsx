@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
+import { signInWithGoogle, takeReturnPath } from "@/lib/sign-in";
 import { IntroOverlay, INTRO_SEEN_STORAGE_KEY } from "@/components/home/IntroOverlay";
 import { PlaceFeedPanel } from "@/components/places/PlaceFeedPanel";
 import { CategoryTabs, FilterPills } from "@/components/places/CategoryFilterBar";
@@ -346,7 +347,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(() => seedPlace ?? null);
-  const [detailPlace, setDetailPlace] = useState<Place | null>(null);
+  // A shared /place/<id> link opens that place's window directly.
+  const [detailPlace, setDetailPlace] = useState<Place | null>(() => seedPlace ?? null);
+  const [shareBannerClosed, setShareBannerClosed] = useState(false);
   const [selectedClusterPlaces, setSelectedClusterPlaces] = useState<Place[] | null>(null);
   const [filters, setFilters] = useState<PlaceFilters>(DEFAULT_PLACE_FILTERS);
   const [fitToAddress, setFitToAddress] = useState<{
@@ -498,6 +501,13 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     }
   }, []);
 
+  // Google sign-in always lands on "/"; go back to the page it started from (e.g. a shared place).
+  useEffect(() => {
+    if (!user) return;
+    const path = takeReturnPath();
+    if (path && path !== window.location.pathname + window.location.search) window.location.replace(path);
+  }, [user]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -618,9 +628,10 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   );
 
   // ─── Auth gate ──────────────────────────────────────────────────────────────
+  // Shared place links skip the intro and the sign-in screen; a soft banner offers sign-in instead.
 
-  if (seenIntro === null) return <ConnectionGate loading />;
-  if (!seenIntro) {
+  if (seenIntro === null && !seedPlace) return <ConnectionGate loading />;
+  if (seenIntro === false && !seedPlace) {
     return (
       <IntroOverlay
         onContinue={() => {
@@ -630,8 +641,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
       />
     );
   }
-  if (loading || skipLogin === null) return <ConnectionGate loading />;
-  if (!user && !skipLogin) {
+  if ((loading || skipLogin === null) && !seedPlace) return <ConnectionGate loading />;
+  if (!user && !skipLogin && !seedPlace) {
     return (
       <ConnectionGate
         onSkip={() => {
@@ -645,6 +656,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const showPeek = activeTab === "map" && (selectedPlace || selectedClusterPlaces);
+  const showShareBanner = !!seedPlace && !loading && !user && skipLogin === false && !shareBannerClosed;
 
   return (
     <div className="relative w-full h-screen min-h-[100dvh] overflow-hidden bg-[#F5F6FA]" dir="rtl">
@@ -659,6 +671,29 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             <Loader2 className="h-4 w-4 animate-spin text-[#0A2B6B]" />
             <span className="text-sm font-semibold text-[#0A2B6B]">טוען מקומות...</span>
           </div>
+        </div>
+      )}
+
+      {/* Shared place link, signed out: a soft sign-in offer instead of the sign-in screen */}
+      {showShareBanner && (
+        <div
+          className="fixed z-[450] flex items-center gap-2.5 font-hebrew"
+          style={{
+            bottom: "calc(96px + env(safe-area-inset-bottom, 0px))", insetInline: 16, marginInline: "auto", maxWidth: 420,
+            background: "#0A2B6B", color: "#fff", borderRadius: 16, padding: "10px 12px",
+            boxShadow: "0 10px 26px rgba(10,43,107,.3)",
+          }}
+          dir="rtl"
+        >
+          <span className="flex-1" style={{ fontSize: 13, lineHeight: 1.4 }}>התחברו כדי לכתוב המלצה ולשמור מקומות</span>
+          <button type="button" onClick={() => signInWithGoogle()} className="font-bold"
+            style={{ background: "#fff", color: "#0A2B6B", border: 0, borderRadius: 10, padding: "7px 12px", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+            התחברות
+          </button>
+          <button type="button" onClick={() => setShareBannerClosed(true)} aria-label="סגירה"
+            style={{ background: "none", border: 0, color: "rgba(255,255,255,.75)", cursor: "pointer", padding: 2, lineHeight: 0 }}>
+            <X style={{ width: 16, height: 16 }} />
+          </button>
         </div>
       )}
 
