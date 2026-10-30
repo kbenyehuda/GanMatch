@@ -124,10 +124,13 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
           </div>
           <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{date}</div>
         </div>
-        <span className="flex items-center gap-1" style={{ background: "#E8F0FB", color: "#0A2B6B", padding: "2px 6px", borderRadius: 5, fontSize: 12, fontWeight: 700 }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 9, height: 9 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
-          מאומת
-        </span>
+        {/* Only WhatsApp recommendations are approved one by one in triage; app reviews publish directly */}
+        {review.reviewer_public_name === WHATSAPP_REVIEWER_NAME && (
+          <span className="flex items-center gap-1" style={{ background: "#E8F0FB", color: "#0A2B6B", padding: "2px 6px", borderRadius: 5, fontSize: 12, fontWeight: 700 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 9, height: 9 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+            אושרה לפרסום
+          </span>
+        )}
       </div>
       {/* Stars */}
       <div className="flex gap-0.5 mb-1.5" dir="ltr">
