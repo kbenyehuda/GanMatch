@@ -13,7 +13,7 @@ import { signInWithGoogle } from "@/lib/sign-in";
 import { placeTypeLabel } from "@/lib/place-type";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
-import { GAN_APPROACH_LABELS, factLabel, reviewFactCounts, tagToFact, type GanApproach } from "@/lib/place-facts";
+import { GAN_APPROACH_LABELS, factLabel, factsFor, reviewFactCounts, tagToFact, type GanApproach } from "@/lib/place-facts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,9 +58,9 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
 const AVA_COLORS = ["#1F5BB5","#E59A2C","#2EA86B","#D86B7D","#9C5BBD"];
 
 function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onContact }: { review: PlaceReview; place: Place; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void }) {
-  // Kids reviews show only the tags that are facts (חצר, טבעוני…), not type words or praise.
-  const tags = place.place_category === "kids"
-    ? Array.from(new Set((review.tags ?? []).map((t) => tagToFact(t, "kids")).filter((f) => f != null).map((f) => factLabel(f, place))))
+  // Reviews show only the tags that are facts (חצר, קשוב…), not type words, health funds or praise.
+  const tags = factsFor(place.place_category).length
+    ? Array.from(new Set((review.tags ?? []).map((t) => tagToFact(t, place.place_category)).filter((f) => f != null).map((f) => factLabel(f, place))))
     : (review.tags ?? []);
   const name = review.reviewer_public_name ?? (review.is_anonymous ? "אנונימי" : "משתמש");
   const initials = name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
@@ -527,8 +527,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           )}
 
           {/* What parents say: facts from review tags, most mentioned first */}
-          {place.place_category === "kids" && (() => {
-            const said = reviewFactCounts(reviews, "kids");
+          {(() => {
+            const said = reviewFactCounts(reviews, place.place_category);
             if (!said.length) return null;
             return (
               <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>

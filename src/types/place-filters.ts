@@ -31,7 +31,9 @@ export interface PlaceFilters {
   kids_facts: string[] | null;
   // Doctor-specific
   doctor_specialty: string[] | null;
-  doctor_for_children: boolean | null; // "known to see children" — attributes.for_children === true
+  doctor_for_children: boolean | null; // "known to see children" — fact dr_for_children (field or review tag)
+  doctor_facts: string[] | null; // fact ids (src/lib/place-facts.ts), all required
+  cosmetics_facts: string[] | null;
   // Cosmetics-specific
   cosmetics_specialty: string[] | null;
   // General — any category with an hours field
@@ -74,6 +76,8 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   kids_facts: null,
   doctor_specialty: null,
   doctor_for_children: null,
+  doctor_facts: null,
+  cosmetics_facts: null,
   cosmetics_specialty: null,
   hours_contains: null,
   sport_gender: null,
@@ -114,6 +118,8 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.kids_specialty != null && f.kids_specialty.length > 0) n++;
   if (f.doctor_specialty != null && f.doctor_specialty.length > 0) n++;
   if (f.doctor_for_children != null) n++;
+  if (f.doctor_facts != null && f.doctor_facts.length > 0) n++;
+  if (f.cosmetics_facts != null && f.cosmetics_facts.length > 0) n++;
   if (f.cosmetics_specialty != null && f.cosmetics_specialty.length > 0) n++;
   if (f.hours_contains != null && f.hours_contains.trim() !== "") n++;
   if (f.sport_gender != null) n++;

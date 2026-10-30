@@ -1,5 +1,6 @@
 import type { Place } from "@/types/places";
 import { kidsTypeOf, mergedGanCategory, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
+import { factById, placeHasFact } from "@/lib/place-facts";
 
 /** Gan types, with the three צהרון variants merged (see mergedGanCategory). */
 export const GAN_CATEGORY_LABELS: Record<string, string> = {
@@ -31,7 +32,8 @@ export function placeTypeLabel(place: Place): string | null {
   }
   if (place.place_category === "doctor") {
     const s = str(a.specialty);
-    const kids = a.for_children === true;
+    const kidsFact = factById("dr_for_children");
+    const kids = kidsFact ? placeHasFact(place, kidsFact) : a.for_children === true;
     if (s) return kids && !s.includes("ילדים") ? `${s} · לילדים` : s;
     return kids ? "לילדים" : null;
   }

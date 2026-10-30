@@ -60,6 +60,23 @@ const toggleValue = (v: string[]) => (v.length ? true : null);
 
 const KIDS_PRICE_BRACKETS = [1500, 2500, 4000, 6000, 8000];
 
+/** "מה חשוב לכם": the category's facts (field or review tag); picked facts combine with AND. */
+function factsFacet(
+  key: string,
+  category: PlaceCategory,
+  get: FacetDef["get"],
+  set: FacetDef["set"],
+  exclude: string[] = [],
+): FacetDef {
+  const facts = factsFor(category).filter((f) => !exclude.includes(f.id));
+  return {
+    key, category, label: "מה חשוב לכם", mode: "multi", primary: true, matchAll: true,
+    valuesOf: (p) => facts.filter((fact) => placeHasFact(p, fact)).map((fact) => fact.id),
+    optionLabel: (id) => factById(id)?.label ?? id,
+    get, set,
+  };
+}
+
 const kidsTypeIs = (f: PlaceFilters, type: string) => f.kids_specialty?.includes(type) ?? false;
 
 const FACET_DEFS: FacetDef[] = [
@@ -118,12 +135,8 @@ const FACET_DEFS: FacetDef[] = [
     set: (f, v) => ({ ...f, kids_chugim: arrayOrNull(v) }),
   },
   {
-    key: "kids_facts", category: "kids", label: "מה חשוב לכם", mode: "multi", primary: true, matchAll: true,
+    ...factsFacet("kids_facts", "kids", (f) => f.kids_facts ?? [], (f, v) => ({ ...f, kids_facts: arrayOrNull(v) })),
     visible: (f) => kidsTypeIs(f, KIDS_GAN_TYPE),
-    valuesOf: (p) => factsFor("kids").filter((fact) => placeHasFact(p, fact)).map((fact) => fact.id),
-    optionLabel: (id) => factById(id)?.label ?? id,
-    get: (f) => f.kids_facts ?? [],
-    set: (f, v) => ({ ...f, kids_facts: arrayOrNull(v) }),
   },
   {
     key: "kids_neighborhood", category: "kids", label: "שכונה", mode: "multi", primary: true,
@@ -149,10 +162,12 @@ const FACET_DEFS: FacetDef[] = [
   },
   {
     key: "doctor_for_children", category: "doctor", label: "לילדים", mode: "toggle", primary: true,
-    valuesOf: (p) => (attrs(p).for_children === true ? ["yes"] : []),
+    valuesOf: (p) => (placeHasFact(p, factById("dr_for_children")!) ? ["yes"] : []),
     get: (f) => (f.doctor_for_children ? ["yes"] : []),
     set: (f, v) => ({ ...f, doctor_for_children: toggleValue(v) }),
   },
+  // "לילדים" has its own pill, so it's left out of the doctor facts list.
+  factsFacet("doctor_facts", "doctor", (f) => f.doctor_facts ?? [], (f, v) => ({ ...f, doctor_facts: arrayOrNull(v) }), ["dr_for_children"]),
 
   // ── Cosmetics ─────────────────────────────────────────────────────────────
   {
@@ -161,6 +176,7 @@ const FACET_DEFS: FacetDef[] = [
     get: (f) => f.cosmetics_specialty ?? [],
     set: (f, v) => ({ ...f, cosmetics_specialty: arrayOrNull(v) }),
   },
+  factsFacet("cosmetics_facts", "cosmetics", (f) => f.cosmetics_facts ?? [], (f, v) => ({ ...f, cosmetics_facts: arrayOrNull(v) })),
 
   // ── Hidden categories (not in VISIBLE_CATEGORIES yet; kept so they work when re-enabled) ──
   {

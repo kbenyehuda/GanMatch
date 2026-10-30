@@ -160,12 +160,11 @@ export function applyPlaceFilters(
       const chugim = Array.isArray(a.chugim_types) ? (a.chugim_types as string[]) : [];
       return filters.kids_chugim!.some((c) => chugim.includes(c));
     });
-  if (filters.kids_facts?.length) {
-    const facts = filters.kids_facts.map(factById).filter((f): f is PlaceFact => f != null);
-    result = result.filter((p) => {
-      if (p.place_category !== "kids") return true;
-      return facts.every((f) => placeHasFact(p, f));
-    });
+  // Facts (field or review tag), per category; every picked fact is required.
+  for (const [category, ids] of [["kids", filters.kids_facts], ["doctor", filters.doctor_facts], ["cosmetics", filters.cosmetics_facts]] as const) {
+    if (!ids?.length) continue;
+    const facts = ids.map(factById).filter((f): f is PlaceFact => f != null);
+    result = result.filter((p) => p.place_category !== category || facts.every((f) => placeHasFact(p, f)));
   }
   if (filters.hours_contains?.trim()) {
     const q = filters.hours_contains.trim().toLowerCase();
@@ -181,8 +180,8 @@ export function applyPlaceFilters(
   if (filters.doctor_for_children)
     result = result.filter((p) => {
       if (p.place_category !== "doctor") return true;
-      const a = p.attributes as Record<string, unknown>;
-      return a.for_children === true;
+      const fact = factById("dr_for_children");
+      return fact ? placeHasFact(p, fact) : false;
     });
   // Cosmetics-specific
   if (filters.cosmetics_specialty?.length)

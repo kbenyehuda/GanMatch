@@ -7,7 +7,8 @@ import type { Place, PlaceCategory, PlaceReview } from "@/types/places";
  * generic praise (מומלץ, מקצועי) — those have their own spots or are noise.
  *
  * A place has a fact when its own fields say so, or when a review tag means it.
- * Gan list approved by the user 2026-10-30; doctors and cosmetics come next.
+ * Gan list approved by the user 2026-10-30. Doctor (dr_*) and cosmetics (cos_*) lists were
+ * drafted from the real review tags the same day while the user was away — pending review.
  */
 
 export type GanApproach = "ANTHROPOSOPHIC" | "NATURE" | "MONTESSORI" | "BILINGUAL";
@@ -45,6 +46,20 @@ export function closingHour(hours: string | null | undefined): number | null {
     .filter((h) => h <= 24);
   return times.length ? Math.max(...times) : null;
 }
+
+/** Cosmetics services: [fact id, label = value stored in attributes.services, tag synonyms]. */
+export const COSMETICS_SERVICES: [string, string, string[]][] = [
+  ["gel", "לק ג'ל", ["לק גל", "לק גלי"]],
+  ["manicure", "מניקור", ["מניקור", "ציפורניים"]],
+  ["pedicure", "פדיקור", ["פדיקור"]],
+  ["brows", "גבות", ["גבות", "סידור גבות"]],
+  ["ear_piercing", "חורים באוזניים", ["חורים באוזניים", "חור באוזן", "עגילים"]],
+  ["facial", "טיפול פנים", ["טיפול פנים", "טיפולי פנים"]],
+  ["hair_color", "צבע שיער", ["צבע שיער", "צבע", "גוונים"]],
+  ["curls", "תלתלים", ["תלתלים", "מספרת תלתלים", "מספר תלתלים"]],
+  ["keratin", "החלקה / קראטין", ["טיפול קראטין", "קראטין", "החלקה"]],
+  ["makeup", "איפור", ["איפור", "איפור שיער"]],
+];
 
 /** "שעות ארוכות" = closes at 16:30 or later (user, 2026-10-30). */
 const LONG_HOURS_FROM = 16.5;
@@ -126,6 +141,51 @@ export const PLACE_FACTS: PlaceFact[] = [
   { id: "vacancy", category: "kids", group: "שעות וזמינות", label: "יש מקום פנוי",
     fromFields: (p) => ["Available", "Limited"].includes(String(attrs(p).vacancy_status ?? "")),
     synonyms: ["יש מקום", "מקום פנוי", "יש מקומות פנויים"] },
+
+  // ── Doctors (drafted from the real review tags 2026-10-30, while the user was away) ──
+  { id: "dr_for_children", category: "doctor", group: "למי", label: "מקבל ילדים",
+    fromFields: isTrue("for_children"),
+    synonyms: ["מתאים לילדים", "מקבל ילדים", "מקבלת ילדים", "קידס פרנדלי", "ילדים", "תינוקות", "מתאים לתינוקות"] },
+  { id: "dr_pregnancy", category: "doctor", group: "למי", label: "מתאים להריון",
+    fromFields: isTrue("pregnancy_friendly"),
+    synonyms: ["מתאים להריון", "הריון", "מעקב הריון"] },
+  { id: "dr_gentle", category: "doctor", group: "יחס", label: "קשוב וסבלני",
+    fromFields: isTrue("gentle"),
+    synonyms: ["קשוב", "קשובה", "סבלני", "סבלנית", "עדין", "עדינה", "רגיש", "רגישה"] },
+  { id: "dr_short_wait", category: "doctor", group: "זמינות", label: "תור קצר",
+    fromFields: isTrue("short_wait"),
+    synonyms: ["תור קצר", "זמינות", "זמין", "זמינה", "תורים פנויים"] },
+  { id: "dr_online", category: "doctor", group: "זמינות", label: "זמינות אונליין",
+    fromFields: isTrue("online_available"),
+    synonyms: ["זמינות אונליין", "זמין בוואטסאפ", "ייעוץ אונליין"] },
+  { id: "dr_home_visits", category: "doctor", group: "זמינות", label: "ביקורי בית",
+    fromFields: isTrue("home_visits"),
+    synonyms: ["מגיע לבית", "מגיעה לבית", "ביקורי בית", "הגעה לבית"] },
+  { id: "dr_private", category: "doctor", group: "זמינות", label: "פרטי",
+    fromFields: isTrue("is_private"),
+    synonyms: ["פרטי", "פרטית"] },
+
+  // ── Cosmetics: services (attributes.services) and service style ──────────
+  ...COSMETICS_SERVICES.map(([id, label, synonyms]): PlaceFact => ({
+    id: `cos_${id}`, category: "cosmetics", group: "שירותים", label,
+    fromFields: (p) => {
+      const v = attrs(p).services;
+      return Array.isArray(v) && v.includes(label);
+    },
+    synonyms,
+  })),
+  { id: "cos_home_visits", category: "cosmetics", group: "שירות", label: "הגעה לבית",
+    fromFields: isTrue("home_visits"),
+    synonyms: ["הגעה לבית", "מגיעה לבית", "מגיע לבית"] },
+  { id: "cos_for_children", category: "cosmetics", group: "שירות", label: "מתאים לילדים",
+    fromFields: isTrue("for_children"),
+    synonyms: ["מתאים לילדים", "מתאים לילדות", "מספרת ילדים", "ילדים"] },
+  { id: "cos_walk_in", category: "cosmetics", group: "שירות", label: "ללא תור",
+    fromFields: isTrue("walk_in"),
+    synonyms: ["ללא תור", "בלי תור", "אפשר בלי תור"] },
+  { id: "cos_short_wait", category: "cosmetics", group: "שירות", label: "תורים פנויים",
+    fromFields: isTrue("short_wait"),
+    synonyms: ["תורים פנויים", "זמינות", "זמינה", "תור קצר"] },
 ];
 
 /** Compares tags loosely: no quotes/geresh, hyphens and spaces collapsed ("ממ״ד" = "ממד"). */

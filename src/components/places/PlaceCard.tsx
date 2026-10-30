@@ -81,18 +81,22 @@ export function PlaceCard({
     hasPin(place) ? null : NO_PIN_LABEL,
   ].filter(Boolean) as string[];
 
-  // Tags
-  const tags: { label: string; variant: "blue" | "green" | "gold" | "rose" }[] = [];
-  // Gan facts (חצר, טבעוני…) come first; the card shows two chips plus "+N" for the rest.
-  const facts = placeFacts(place);
-  facts.slice(0, 2).forEach((f) => tags.push({ label: factLabel(f, place), variant: "blue" }));
-  const moreFacts = facts.length - 2;
+  // Tags: two chips plus "+N" for the rest. Kids lead with facts (חצר, טבעוני…); other
+  // categories lead with health funds etc. "לילדים" is already in a doctor's type label.
+  type Tag = { label: string; variant: "blue" | "green" | "gold" | "rose" };
+  const tags: Tag[] = [];
+  const factTags: Tag[] = placeFacts(place)
+    .filter((f) => f.id !== "dr_for_children")
+    .map((f) => ({ label: factLabel(f, place), variant: "blue" }));
   if (place.kosher === "CERTIFIED") tags.push({ label: "כשר", variant: "green" });
   if (place.price_range === 1) tags.push({ label: "זול", variant: "green" });
   if (place.price_range === 3) tags.push({ label: "יקר", variant: "rose" });
   place.hmo?.forEach((h) => {
     if (HMO_LABELS[h]) tags.push({ label: HMO_LABELS[h], variant: h === "clalit" ? "green" : h === "meuhedet" ? "gold" : "blue" });
   });
+  const orderedTags = place.place_category === "kids" ? [...factTags, ...tags] : [...tags, ...factTags];
+  const shownTags = orderedTags.slice(0, 2);
+  const moreFacts = orderedTags.length - shownTags.length;
   const TAG_STYLES = {
     blue:  { background: "#E8F0FB", color: "#0A2B6B" },
     green: { background: "#DCF3E6", color: "#1D7F4F" },
@@ -185,9 +189,9 @@ export function PlaceCard({
               <span className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>אין דירוג</span>
             )}
           </div>
-          {tags.length > 0 && (
+          {shownTags.length > 0 && (
             <div className="flex gap-1 flex-wrap justify-end">
-              {tags.slice(0, 2).map((tag, i) => (
+              {shownTags.map((tag, i) => (
                 <span key={i} className="font-hebrew" style={{ fontSize: 12, fontWeight: 700, padding: "3px 7px", borderRadius: 6, ...TAG_STYLES[tag.variant] }}>
                   {tag.label}
                 </span>
