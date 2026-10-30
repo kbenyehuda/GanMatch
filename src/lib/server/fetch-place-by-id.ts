@@ -94,10 +94,11 @@ export const getCachedPlaceById = cache(async (id: string): Promise<Place | null
   if (!Array.isArray(rows) || rows.length === 0) return null;
 
   const row = rows[0] as Record<string, unknown>;
-  const coords = parseCoords(row);
-  if (!coords) {
+  // Places without a pin (most doctors, babysitters…) are still real places: the app lists
+  // them as "ללא מיקום מדויק", so a shared link must open them instead of 404ing.
+  const coords = parseCoords(row) ?? { lat: null, lon: null };
+  if (row.location != null && coords.lat == null) {
     console.error("[fetch-place-by-id] could not parse coords for", id, "location:", typeof row.location);
-    return null;
   }
 
   const { location: _loc, ...rest } = row;
