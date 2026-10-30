@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail, HelpCircle } from "lucide-react";
+import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail, HelpCircle, Flag } from "lucide-react";
 import type { Place, PlaceReview, SpokenLanguage } from "@/types/places";
 import {
   PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS, HMO_LABELS,
@@ -12,7 +12,7 @@ import { useSession } from "@/lib/useSession";
 import { signInWithGoogle } from "@/lib/sign-in";
 import { placeTypeLabel } from "@/lib/place-type";
 import { isApproximateLocation } from "@/lib/place-location";
-import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME } from "@/lib/contact";
+import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME, reportReviewMailto, reportPlaceMailto, ownerMailto } from "@/lib/contact";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 import { GAN_APPROACH_LABELS, displayTags, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
@@ -108,7 +108,8 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
   const initials = name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
   const avaColor = AVA_COLORS[name.charCodeAt(0) % AVA_COLORS.length];
   const isHelpful = helpfulIds.has(review.id);
-  const date = new Date(review.created_at).toLocaleDateString("he-IL", { day: "numeric", month: "short" });
+  // Month and year only: the exact day would help match a WhatsApp recommendation to its original message
+  const date = new Date(review.created_at).toLocaleDateString("he-IL", { month: "long", year: "numeric" });
 
   return (
     <div style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 14, padding: 14, marginBottom: 8 }}>
@@ -166,6 +167,11 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
             שליחת הודעה
           </button>
         )}
+        <a href={reportReviewMailto(place, review.id)}
+          className="flex items-center gap-1 ms-auto" style={{ color: "#8A95A8", fontWeight: 600, fontSize: 12, textDecoration: "none" }}>
+          <Flag style={{ width: 12, height: 12 }} />
+          דיווח
+        </a>
       </div>
     </div>
   );
@@ -710,6 +716,13 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 )}
               </div>
             )}
+          </div>
+
+          {/* Owners and reports: by email for now (CONTACT_EMAIL) */}
+          <div className="font-hebrew flex flex-wrap items-center justify-center gap-x-3 gap-y-1" style={{ paddingTop: 16, marginTop: 14, borderTop: "1px solid #E5E9F0", fontSize: 12, color: "#8A95A8" }}>
+            <a href={ownerMailto(place)} style={{ color: "#1F5BB5", fontWeight: 700, textDecoration: "none" }}>זה העסק שלכם?</a>
+            <span aria-hidden>·</span>
+            <a href={reportPlaceMailto(place)} style={{ color: "#8A95A8", fontWeight: 600, textDecoration: "underline" }}>דיווח על טעות או בקשת הסרה</a>
           </div>
 
         </div>
