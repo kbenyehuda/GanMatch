@@ -30,6 +30,7 @@ import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
   ChevronRight, Send, Shield, Info, Check,
+  ClipboardCheck,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1335,6 +1336,7 @@ function ProfileScreen({
             <ProfileListCard icon={<Send style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' WhatsApp" sub="אישור המלצות שחולצו מוואטסאפ" onClick={() => (window.location.href = "/admin/whatsapp")} />
             <ProfileListCard icon={<Shield style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' גנים" sub="עריכות והמלצות ממתינות" onClick={() => (window.location.href = "/admin/triage")} />
             <ProfileListCard icon={<MapPin style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות שינוי מיקום" sub="אישור עדכוני מיקום ממשתמשים" onClick={() => (window.location.href = "/admin/place-location-requests")} />
+            <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות עדכון פרטים" sub="אישור פרטים שהורים מילאו בגנים" onClick={() => (window.location.href = "/admin/place-detail-requests")} />
           </>
         )}
 

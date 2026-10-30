@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import type { Place, KidsAttributes, SpokenLanguage, KosherStatus } from "@/types/places";
 import { useSession } from "@/lib/useSession";
 import { GAN_APPROACH_LABELS, type GanApproach } from "@/lib/place-facts";
+import { KIDS_FIELD_LABELS, currentKidsValue, formatKidsValue } from "@/lib/kids-attributes";
 
 const GAN_CATEGORY_OPTS: { value: string; label: string }[] = [
   { value: "", label: "לא ידוע" },
@@ -62,9 +63,15 @@ function yearsStrToMonths(s: string): number | null {
   return Math.round(n * 12);
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// Fields the place already has a value for are "locked": hidden from the form and listed
+// greyed out under "מה שכבר ידוע" until the user says the value is wrong (user, 2026-10-30).
+const LockedContext = createContext<(key: string) => boolean>(() => false);
+
+function Field({ label, children, k, span = false }: { label: string; children: React.ReactNode; k?: string; span?: boolean }) {
+  const isLocked = useContext(LockedContext);
+  if (k && isLocked(k)) return null;
   return (
-    <div>
+    <div className={span ? "col-span-2" : undefined}>
       <label className="font-hebrew block mb-1" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 600 }}>{label}</label>
       {children}
     </div>
@@ -126,6 +133,18 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
   const [holidayCamp, setHolidayCamp] = useState<TriState>(boolToTri(a.has_holiday_camp));
   const [flexibleHours, setFlexibleHours] = useState<TriState>(boolToTri(a.flexible_hours));
 
+  // Keys the place already has a value for, fixed when the form opens.
+  const knownKeys = useMemo(() => {
+    const values = { attributes: (place.attributes ?? {}) as Record<string, unknown>, hours: place.hours, kosher: place.kosher };
+    return Object.keys(KIDS_FIELD_LABELS).filter((key) => {
+      const v = currentKidsValue(values, key);
+      return v != null && !(Array.isArray(v) && v.length === 0);
+    });
+  }, [place.attributes, place.hours, place.kosher]);
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const isLocked = (key: string) => knownKeys.includes(key) && !unlocked.has(key);
+  const lockedKeys = knownKeys.filter(isLocked);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,8 +203,8 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
-      onSaved({ ...place, attributes: data.attributes, hours: body.hours, kosher: (body.kosher as KosherStatus) ?? null });
-      onShowToast?.("הפרטים נשמרו, תודה 🙏");
+      // Nothing changes on the place until an admin approves the request.
+      onShowToast?.("תודה! נבדוק את העדכון ונפרסם אותו בקרוב 🙏");
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה בשמירה");
@@ -208,70 +227,74 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
           </button>
         </div>
         <div className="flex-1 overflow-y-auto" style={{ padding: "0 20px 12px" }}>
-          <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", marginBottom: 14, lineHeight: 1.5 }}>
+          <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", marginBottom: 6, lineHeight: 1.5 }}>
             כל שדה אופציונלי — מלאו מה שאתם יודעים, זה עוזר לכל ההורים שמחפשים גן.
           </p>
+          <p className="font-hebrew" style={{ fontSize: 12, color: "#4A5568", marginBottom: 14, lineHeight: 1.5, background: "#FBF1D8", borderRadius: 10, padding: "8px 10px" }}>
+            כל עדכון נבדק על ידינו לפני שהוא מופיע באתר, כדי שהמידע יישאר אמין.
+          </p>
+          <LockedContext.Provider value={isLocked}>
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><Field label="סוג גן">
+            <Field span label="סוג גן" k="gan_category">
               <select value={ganCategory} onChange={(e) => setGanCategory(e.target.value)} className="font-hebrew" style={selectStyle}>
                 {GAN_CATEGORY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-            </Field></div>
+            </Field>
             {ganCategory === "MAON_SYMBOL" && (
-              <div className="col-span-2"><Field label="סמל מעון">
+              <Field span label="סמל מעון" k="maon_symbol_code">
                 <input value={maonSymbolCode} onChange={(e) => setMaonSymbolCode(e.target.value)} inputMode="numeric" placeholder="לדוגמה: 73874" className="font-hebrew" style={inputStyle} />
-              </Field></div>
+              </Field>
             )}
-            <Field label="גיל מינימום (בשנים)">
+            <Field label="גיל מינימום (בשנים)" k="min_age_months">
               <input value={minAgeYears} onChange={(e) => setMinAgeYears(e.target.value)} inputMode="decimal" placeholder="0.5" className="font-hebrew" style={inputStyle} />
             </Field>
-            <Field label="גיל מקסימום (בשנים)">
+            <Field label="גיל מקסימום (בשנים)" k="max_age_months">
               <input value={maxAgeYears} onChange={(e) => setMaxAgeYears(e.target.value)} inputMode="decimal" placeholder="3" className="font-hebrew" style={inputStyle} />
             </Field>
-            <div className="col-span-2"><Field label="מחיר חודשי (₪)">
+            <Field span label="מחיר חודשי (₪)" k="monthly_price_nis">
               <input value={monthlyPrice} onChange={(e) => setMonthlyPrice(e.target.value)} inputMode="numeric" placeholder="4200" className="font-hebrew" style={inputStyle} />
-            </Field></div>
-            <div className="col-span-2"><Field label="מקום פנוי">
+            </Field>
+            <Field span label="מקום פנוי" k="vacancy_status">
               <select value={vacancyStatus} onChange={(e) => setVacancyStatus(e.target.value)} className="font-hebrew" style={selectStyle}>
                 {VACANCY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-            </Field></div>
-            <div className="col-span-2"><Field label="שעות פעילות">
+            </Field>
+            <Field span label="שעות פעילות" k="hours">
               <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="07:30–16:00, א'-ה'" className="font-hebrew" style={inputStyle} />
-            </Field></div>
-            <Field label="ימי שישי">
+            </Field>
+            <Field label="ימי שישי" k="friday_schedule">
               <select value={fridaySchedule} onChange={(e) => setFridaySchedule(e.target.value)} className="font-hebrew" style={selectStyle}>
                 {FRIDAY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </Field>
-            <Field label="סוג אוכל">
+            <Field label="סוג אוכל" k="meal_type">
               <select value={mealType} onChange={(e) => setMealType(e.target.value)} className="font-hebrew" style={selectStyle}>
                 {MEAL_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </Field>
-            <Field label="טבעוני"><TriSelect value={vegan} onChange={setVegan} /></Field>
-            <Field label="צמחוני"><TriSelect value={vegetarian} onChange={setVegetarian} /></Field>
-            <Field label="מגיש בשר"><TriSelect value={meat} onChange={setMeat} /></Field>
-            <Field label="ידידותי לאלרגיות"><TriSelect value={allergy} onChange={setAllergy} /></Field>
-            <Field label="כשרות">
+            <Field label="טבעוני" k="vegan_friendly"><TriSelect value={vegan} onChange={setVegan} /></Field>
+            <Field label="צמחוני" k="vegetarian_friendly"><TriSelect value={vegetarian} onChange={setVegetarian} /></Field>
+            <Field label="מגיש בשר" k="meat_served"><TriSelect value={meat} onChange={setMeat} /></Field>
+            <Field label="ידידותי לאלרגיות" k="allergy_friendly"><TriSelect value={allergy} onChange={setAllergy} /></Field>
+            <Field label="כשרות" k="kosher">
               <select value={kosher} onChange={(e) => setKosher(e.target.value as KosherStatus | "")} className="font-hebrew" style={selectStyle}>
                 {KOSHER_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </Field>
-            <Field label="גוף כשרות (אופציונלי)">
+            <Field label="גוף כשרות (אופציונלי)" k="kosher_certifier">
               <input value={kosherCertifier} onChange={(e) => setKosherCertifier(e.target.value)} placeholder="רבנות, בד״ץ..." className="font-hebrew" style={inputStyle} />
             </Field>
-            <Field label="חצר חיצונית"><TriSelect value={hasOutdoor} onChange={setHasOutdoor} /></Field>
-            <Field label='ממ"ד / מיקלט'><TriSelect value={hasMamad} onChange={setHasMamad} /></Field>
-            <Field label="מצלמות"><TriSelect value={hasCctv} onChange={setHasCctv} /></Field>
+            <Field label="חצר חיצונית" k="has_outdoor_space"><TriSelect value={hasOutdoor} onChange={setHasOutdoor} /></Field>
+            <Field label='ממ"ד / מיקלט' k="has_mamad"><TriSelect value={hasMamad} onChange={setHasMamad} /></Field>
+            <Field label="מצלמות" k="has_cctv"><TriSelect value={hasCctv} onChange={setHasCctv} /></Field>
             {hasCctv === "yes" && (
-              <Field label="ניתן לצפייה מרחוק"><TriSelect value={cctvOnline} onChange={setCctvOnline} /></Field>
+              <Field label="ניתן לצפייה מרחוק" k="cctv_streamed_online"><TriSelect value={cctvOnline} onChange={setCctvOnline} /></Field>
             )}
-            <Field label="עזרה ראשונה"><TriSelect value={firstAid} onChange={setFirstAid} /></Field>
-            <Field label="יחס צוות-ילד">
+            <Field label="עזרה ראשונה" k="first_aid_trained"><TriSelect value={firstAid} onChange={setFirstAid} /></Field>
+            <Field label="יחס צוות-ילד" k="staff_child_ratio">
               <input value={staffChildRatio} onChange={(e) => setStaffChildRatio(e.target.value)} inputMode="decimal" placeholder="0.33 = 1:3" className="font-hebrew" style={inputStyle} />
             </Field>
-            <div className="col-span-2"><Field label="שפות (בחרו את כולן)">
+            <Field span label="שפות (בחרו את כולן)" k="languages_spoken">
               <div className="flex flex-wrap gap-2">
                 {LANG_OPTS.map(o => (
                   <label key={o.value} className="flex items-center gap-1.5 font-hebrew" style={{ fontSize: 13, cursor: "pointer" }}>
@@ -280,8 +303,8 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
                   </label>
                 ))}
               </div>
-            </Field></div>
-            <div className="col-span-2"><Field label="גישה (בחרו את כל מה שמתאים)">
+            </Field>
+            <Field span label="גישה (בחרו את כל מה שמתאים)" k="approach">
               <div className="flex flex-wrap gap-2">
                 {(Object.keys(GAN_APPROACH_LABELS) as GanApproach[]).map(v => (
                   <label key={v} className="flex items-center gap-1.5 font-hebrew" style={{ fontSize: 13, cursor: "pointer" }}>
@@ -290,17 +313,33 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
                   </label>
                 ))}
               </div>
-            </Field></div>
-            <Field label="גן ביתי"><TriSelect value={homeGan} onChange={setHomeGan} /></Field>
-            <Field label="קבוצה קטנה / יחס אישי"><TriSelect value={smallGroup} onChange={setSmallGroup} /></Field>
-            <Field label="צוות יציב"><TriSelect value={stableStaff} onChange={setStableStaff} /></Field>
-            <Field label="חוגים בגן"><TriSelect value={chugimInGan} onChange={setChugimInGan} /></Field>
-            <Field label="קייטנה בחופשים"><TriSelect value={holidayCamp} onChange={setHolidayCamp} /></Field>
-            <Field label="גמישות בשעות"><TriSelect value={flexibleHours} onChange={setFlexibleHours} /></Field>
-            <div className="col-span-2"><Field label="חוגים (מופרדים בפסיק)">
+            </Field>
+            <Field label="גן ביתי" k="is_home_gan"><TriSelect value={homeGan} onChange={setHomeGan} /></Field>
+            <Field label="קבוצה קטנה / יחס אישי" k="small_group"><TriSelect value={smallGroup} onChange={setSmallGroup} /></Field>
+            <Field label="צוות יציב" k="stable_staff"><TriSelect value={stableStaff} onChange={setStableStaff} /></Field>
+            <Field label="חוגים בגן" k="has_chugim_in_gan"><TriSelect value={chugimInGan} onChange={setChugimInGan} /></Field>
+            <Field label="קייטנה בחופשים" k="has_holiday_camp"><TriSelect value={holidayCamp} onChange={setHolidayCamp} /></Field>
+            <Field label="גמישות בשעות" k="flexible_hours"><TriSelect value={flexibleHours} onChange={setFlexibleHours} /></Field>
+            <Field span label="חוגים (מופרדים בפסיק)" k="chugim_types">
               <input value={chugim} onChange={(e) => setChugim(e.target.value)} placeholder="מוזיקה, אמנות, ספורט..." className="font-hebrew" style={inputStyle} />
-            </Field></div>
+            </Field>
           </div>
+          </LockedContext.Provider>
+
+          {lockedKeys.length > 0 && (
+            <div style={{ marginTop: 16, background: "#F0F3F8", borderRadius: 14, padding: "12px 14px" }}>
+              <div className="font-hebrew" style={{ fontSize: 13, fontWeight: 700, color: "#8A95A8", marginBottom: 6 }}>מה שכבר ידוע</div>
+              {lockedKeys.map((key) => (
+                <div key={key} className="flex items-center justify-between gap-2 font-hebrew" style={{ padding: "6px 0", borderTop: "1px solid #E5E9F0", color: "#8A95A8", fontSize: 13 }}>
+                  <span>{KIDS_FIELD_LABELS[key]}: <strong style={{ fontWeight: 600 }}>{formatKidsValue(key, currentKidsValue({ attributes: a as Record<string, unknown>, hours: place.hours, kosher: place.kosher }, key))}</strong></span>
+                  <button type="button" onClick={() => setUnlocked((prev) => new Set(prev).add(key))}
+                    style={{ background: "none", border: 0, color: "#1F5BB5", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", padding: 0 }}>
+                    זה לא נכון, אני רוצה לתקן
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {error && (
             <div className="font-hebrew" style={{ marginTop: 14, fontSize: 12.5, color: "#B42318", background: "#FEF3F2", border: "1px solid #FDA29B", borderRadius: 10, padding: "9px 12px" }}>
