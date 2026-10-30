@@ -325,6 +325,8 @@ export async function POST(req: Request) {
     whatsapp_reviewer_name: row.reviewer_name,
     is_anonymous:          true,
     allow_contact:         false,
+    // Negative recommendations aren't displayed for now (see migration 20261030000300)
+    is_hidden:             rating <= 2,
     ...(row.message_date ? { created_at: row.message_date } : {}),
   });
   if (reviewErr && !reviewErr.message.includes("duplicate") && !reviewErr.message.includes("unique")) {

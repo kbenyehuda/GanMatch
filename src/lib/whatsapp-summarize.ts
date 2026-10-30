@@ -446,6 +446,8 @@ export async function syncSummaryToPlaceReview(
     text: args.text,
     rating: args.rating,
     tags: args.tags,
+    // Negative recommendations aren't displayed for now (see migration 20261030000300)
+    is_hidden: args.rating <= 2,
   }).eq("id", review.id);
   return true;
 }

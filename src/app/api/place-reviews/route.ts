@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
     .from("place_reviews")
     .select("id, user_id, rating, text, tags, is_anonymous, allow_contact, reviewer_public_name, created_at")
     .eq("place_id", placeId!)
+    .eq("is_hidden", false)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -155,6 +156,8 @@ export async function POST(req: NextRequest) {
         text,
         is_anonymous: isAnonymous,
         reviewer_public_name: reviewerPublicName,
+        // Negative recommendations aren't displayed for now (see migration 20261030000300)
+        is_hidden: rating <= 2,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,place_id" }
