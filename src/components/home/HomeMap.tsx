@@ -1292,10 +1292,14 @@ function ProfileScreen({
   const [recCount, setRecCount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!user?.id) return;
-    fetch(`/api/place-reviews?user_id=${encodeURIComponent(user.id)}`)
-      .then(r => r.json())
-      .then(d => { if (typeof d.count === "number") setRecCount(d.count); })
+    if (!user?.id || !supabase) return;
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        const token = data.session?.access_token;
+        if (!token) return null;
+        return fetch("/api/place-reviews?mine=1", { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json());
+      })
+      .then(d => { if (typeof d?.count === "number") setRecCount(d.count); })
       .catch(() => {});
   }, [user?.id]);
 

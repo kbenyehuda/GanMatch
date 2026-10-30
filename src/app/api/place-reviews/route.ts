@@ -2,15 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 
-function supabaseAnon() {
-  const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) return null;
-  return createClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-}
-
 function supabaseAdmin() {
   const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
   const key = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
@@ -20,26 +11,48 @@ function supabaseAdmin() {
   });
 }
 
-// GET /api/place-reviews?place_id=<uuid>  — reviews for a place
-// GET /api/place-reviews?user_id=<uuid>   — reviews submitted by a user (count only)
+/** The signed-in caller's id from the Bearer token, or null for guests / bad tokens. */
+async function callerId(req: NextRequest): Promise<string | null> {
+  const authHeader = req.headers.get("authorization") ?? "";
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+  const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) return null;
+  const userClient = createClient(url, anon, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { data } = await userClient.auth.getUser();
+  return data?.user?.id ?? null;
+}
+
+// The public API can't read place_reviews.user_id or whatsapp_reviewer_name (column grants), so
+// recommendations by the same person can't be linked together. Reads go through the service role
+// here, and the writer's id never leaves the server: the response says only whether it's yours.
+//
+// GET /api/place-reviews?place_id=<uuid>  — reviews for a place (is_mine needs a Bearer token)
+// GET /api/place-reviews?mine=1           — how many reviews the signed-in caller wrote (Bearer token)
 export async function GET(req: NextRequest) {
   const placeId = req.nextUrl.searchParams.get("place_id")?.trim();
-  const userId = req.nextUrl.searchParams.get("user_id")?.trim();
+  // `user_id` is the old spelling of `mine`; the value is ignored, the token decides whose count it is
+  const mine = req.nextUrl.searchParams.has("mine") || req.nextUrl.searchParams.has("user_id");
 
-  if (!placeId && !userId) {
-    return NextResponse.json({ error: "Missing place_id or user_id" }, { status: 400 });
+  if (!placeId && !mine) {
+    return NextResponse.json({ error: "Missing place_id or mine" }, { status: 400 });
   }
 
-  const db = supabaseAnon();
+  const db = supabaseAdmin();
   if (!db) {
     return NextResponse.json({ error: "Supabase config missing" }, { status: 500 });
   }
+  const me = await callerId(req);
 
-  if (userId) {
+  if (mine) {
+    if (!me) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     const { count, error } = await db
       .from("place_reviews")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", userId);
+      .eq("user_id", me);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ count: count ?? 0 });
   }
@@ -53,7 +66,8 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ reviews: data ?? [] });
+  const reviews = (data ?? []).map(({ user_id, ...rest }) => ({ ...rest, is_mine: me != null && user_id === me }));
+  return NextResponse.json({ reviews });
 }
 
 // POST /api/place-reviews

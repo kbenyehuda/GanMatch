@@ -121,7 +121,8 @@ export interface Place {
 
 export interface PlaceReview {
   id: string;
-  user_id: string;
+  /** Set by /api/place-reviews from the caller's token; the writer's id itself is never sent. */
+  is_mine?: boolean;
   place_id: string;
   rating: number;
   text: string | null;

@@ -112,7 +112,7 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
           </svg>
           מועיל
         </button>
-        {currentUserId && review.user_id !== currentUserId && review.allow_contact && (
+        {currentUserId && !review.is_mine && review.allow_contact && (
           <button type="button" onClick={() => onContact(review.id)}
             className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", fontWeight: 600, fontSize: 12 }}>
             <Mail style={{ width: 13, height: 13 }} />
@@ -221,12 +221,15 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const loadReviews = useCallback(async () => {
     setReviewsLoading(true);
     try {
-      const res = await fetch(`/api/place-reviews?place_id=${encodeURIComponent(place.id)}`);
+      // The token lets the API mark your own review (is_mine) without sending anyone's user id
+      const res = await fetch(`/api/place-reviews?place_id=${encodeURIComponent(place.id)}`, {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+      });
       const d = await res.json();
       setReviews(d.reviews ?? []);
     } catch { /* silent */ }
     finally { setReviewsLoading(false); }
-  }, [place.id]);
+  }, [place.id, session?.access_token]);
 
   useEffect(() => { loadReviews(); }, [loadReviews]);
 
