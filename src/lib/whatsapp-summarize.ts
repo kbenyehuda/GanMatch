@@ -1,4 +1,6 @@
 import "server-only";
+import { factsFor, factsToAttributes, tagToFact, type PlaceFact } from "@/lib/place-facts";
+import type { PlaceCategory } from "@/types/places";
 
 // Defense-in-depth: blocks publishing a summary that still contains an
 // Israeli-style phone number, even though the prompt already forbids it.
@@ -103,10 +105,28 @@ function categoryFieldsPrompt(category: string, specialtyOptions: string[]): str
   }
 }
 
+/** Fact labels for categories with a fixed vocabulary (src/lib/place-facts.ts); empty otherwise. */
+function factLabelsFor(category: string): string[] {
+  return factsFor(category as PlaceCategory).map((f) => f.label);
+}
+
+// Kids, doctors and cosmetics: tags are a closed list (the facts vocabulary), so the map's
+// chips and filters don't fragment. Overrides the "create a new tag" rule above.
+function factTagsPrompt(category: string): string {
+  const labels = factLabelsFor(category);
+  if (labels.length === 0) return "";
+  return `
+
+חשוב — בקטגוריה הזו התגיות הן רשימה סגורה. בחר תגיות רק מתוך הרשימה הבאה, ורק אם הפרט נאמר במפורש בדיאלוג (לא ניחוש): ${labels.join(", ")}.
+- אל תיצור תגיות חדשות.
+- לא תגית: סוג המקום (גן, משפחתון, רופא עור), קבוצת גיל (תינוקות), קופת חולים, מיקום, או שבח כללי (מומלץ, מקצועי, אדיב, מקסים).
+- אם אף תגית מהרשימה לא נאמרה במפורש — החזר מערך ריק.`;
+}
+
 function buildSystemPrompt(category: string, specialtyOptions: string[]): string {
   return SYSTEM_PROMPT + (category === "kids"
     ? KIDS_FIELDS_PROMPT + kidsSpecialtyPrompt(specialtyOptions)
-    : categoryFieldsPrompt(category, specialtyOptions));
+    : categoryFieldsPrompt(category, specialtyOptions)) + factTagsPrompt(category);
 }
 
 const HMO_CODES: Record<string, string> = { "מכבי": "maccabi", "כללית": "clalit", "מאוחדת": "meuhedet", "לאומית": "leumit" };
@@ -179,7 +199,11 @@ function buildTool(category: string, specialtyOptions: string[]) {
       description: "Summarize, rate, and tag a place recommendation.",
       parameters: {
         type: "object",
-        properties: { ...BASE_PROPERTIES, ...categoryProperties(category, specialtyOptions) },
+        properties: {
+          ...BASE_PROPERTIES,
+          ...(factLabelsFor(category).length > 0 ? { tags: { type: "array", items: { type: "string", enum: factLabelsFor(category) } } } : {}),
+          ...categoryProperties(category, specialtyOptions),
+        },
         required: ["summary", "rating", "tags"],
       },
     },
@@ -222,7 +246,10 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
   const sourceText = input.sourceMessages && input.sourceMessages.length > 0
     ? input.sourceMessages.join("\n")
     : "אין";
-  const existingTagsText = input.existingTags.length > 0 ? input.existingTags.join(", ") : "אין תגיות קיימות עדיין";
+  const factLabels = factLabelsFor(input.category);
+  const existingTagsText = factLabels.length > 0
+    ? factLabels.join(", ")
+    : input.existingTags.length > 0 ? input.existingTags.join(", ") : "אין תגיות קיימות עדיין";
 
   const userContent = [
     `שם המקום: ${input.placeName}`,
@@ -257,9 +284,14 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
   const summary = String(args?.summary ?? "").trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
   const ratingRaw = Number(args?.rating);
   const rating: Rating = VALID_RATINGS.includes(ratingRaw as Rating) ? (ratingRaw as Rating) : 4;
-  const tags: string[] = Array.isArray(args?.tags)
+  let tags: string[] = Array.isArray(args?.tags)
     ? Array.from(new Set<string>(args.tags.filter((t: unknown): t is string => typeof t === "string" && t.trim().length > 0).map((t: string) => t.trim())))
     : [];
+  // Fixed-vocabulary categories: keep only facts, under their canonical label.
+  const facts = factLabels.length > 0
+    ? Array.from(new Set(tags.map((t) => tagToFact(t, input.category as PlaceCategory)).filter((f): f is PlaceFact => f != null)))
+    : [];
+  if (factLabels.length > 0) tags = facts.map((f) => f.label);
 
   const result: SummarizeResult = { summary, rating, tags };
   if (input.category === "kids") {
@@ -301,6 +333,13 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
       if ([1, 2, 3].includes(Number(args?.price_range))) extras.price_range = Number(args.price_range) as 1 | 2 | 3;
     }
     if (Object.keys(extras).length > 0) result.place_extras = extras;
+  }
+  // Tags = fields: each fact also fills its field. Fields the model set explicitly win.
+  const implied = factsToAttributes(facts);
+  if (Object.keys(implied).length > 0) {
+    const extras = result.place_extras ?? {};
+    extras.attributes = { ...implied, ...(extras.attributes ?? {}) };
+    result.place_extras = extras;
   }
   return result;
 }

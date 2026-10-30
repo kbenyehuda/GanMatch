@@ -246,3 +246,57 @@ export function reviewFactCounts(reviews: PlaceReview[], category: PlaceCategory
   return Array.from(counts, ([fact, count]) => ({ fact, count }))
     .sort((a, b) => b.count - a.count || order.indexOf(a.fact) - order.indexOf(b.fact));
 }
+
+/**
+ * The field a fact fills when a recommendation states it ("tags = fields"). Facts left
+ * out are derived (שעות ארוכות from hours), ambiguous (פתוח בשישי: every or every other)
+ * or time-sensitive (יש מקום פנוי), so they stay tags only.
+ */
+const FACT_FIELDS: Record<string, { key: string; value?: unknown; add?: string }> = {
+  outdoor: { key: "has_outdoor_space" },
+  mamad: { key: "has_mamad" },
+  cctv: { key: "has_cctv" },
+  home_gan: { key: "is_home_gan" },
+  cook: { key: "meal_type", value: "IN_HOUSE_COOK" },
+  vegan: { key: "vegan_friendly" },
+  vegetarian: { key: "vegetarian_friendly" },
+  allergy: { key: "allergy_friendly" },
+  anthroposophic: { key: "approach", add: "ANTHROPOSOPHIC" },
+  nature: { key: "approach", add: "NATURE" },
+  montessori: { key: "approach", add: "MONTESSORI" },
+  bilingual: { key: "approach", add: "BILINGUAL" },
+  small_group: { key: "small_group" },
+  stable_staff: { key: "stable_staff" },
+  first_aid: { key: "first_aid_trained" },
+  chugim_in_gan: { key: "has_chugim_in_gan" },
+  flexible_hours: { key: "flexible_hours" },
+  holiday_camp: { key: "has_holiday_camp" },
+  dr_for_children: { key: "for_children" },
+  dr_pregnancy: { key: "pregnancy_friendly" },
+  dr_gentle: { key: "gentle" },
+  dr_short_wait: { key: "short_wait" },
+  dr_online: { key: "online_available" },
+  dr_home_visits: { key: "home_visits" },
+  dr_private: { key: "is_private" },
+  ...Object.fromEntries(COSMETICS_SERVICES.map(([id, label]) => [`cos_${id}`, { key: "services", add: label }])),
+  cos_home_visits: { key: "home_visits" },
+  cos_for_children: { key: "for_children" },
+  cos_walk_in: { key: "walk_in" },
+  cos_short_wait: { key: "short_wait" },
+};
+
+/** places.attributes values implied by these facts, e.g. [חצר, מונטסורי] → { has_outdoor_space: true, approach: ["MONTESSORI"] }. */
+export function factsToAttributes(facts: PlaceFact[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const fact of facts) {
+    const f = FACT_FIELDS[fact.id];
+    if (!f) continue;
+    if (f.add) {
+      const list = Array.isArray(out[f.key]) ? (out[f.key] as string[]) : [];
+      if (!list.includes(f.add)) out[f.key] = [...list, f.add];
+    } else {
+      out[f.key] = f.value ?? true;
+    }
+  }
+  return out;
+}
