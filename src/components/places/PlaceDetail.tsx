@@ -13,7 +13,7 @@ import { signInWithGoogle } from "@/lib/sign-in";
 import { placeTypeLabel } from "@/lib/place-type";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
-import { GAN_APPROACH_LABELS, factLabel, factsFor, reviewFactCounts, tagToFact, type GanApproach } from "@/lib/place-facts";
+import { GAN_APPROACH_LABELS, displayTags, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,10 +58,8 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
 const AVA_COLORS = ["#1F5BB5","#E59A2C","#2EA86B","#D86B7D","#9C5BBD"];
 
 function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onContact }: { review: PlaceReview; place: Place; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void }) {
-  // Reviews show only the tags that are facts (חצר, קשוב…), not type words, health funds or praise.
-  const tags = factsFor(place.place_category).length
-    ? Array.from(new Set((review.tags ?? []).map((t) => tagToFact(t, place.place_category)).filter((f) => f != null).map((f) => factLabel(f, place))))
-    : (review.tags ?? []);
+  // Same-meaning tags merge (מקבלת ילדים → מקבל ילדים); type words, health funds and praise are dropped.
+  const tags = displayTags(review.tags, place);
   const name = review.reviewer_public_name ?? (review.is_anonymous ? "אנונימי" : "משתמש");
   const initials = name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
   const avaColor = AVA_COLORS[name.charCodeAt(0) % AVA_COLORS.length];
@@ -528,15 +526,15 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
           {/* What parents say: facts from review tags, most mentioned first */}
           {(() => {
-            const said = reviewFactCounts(reviews, place.place_category);
+            const said = reviewTagCounts(reviews, place);
             if (!said.length) return null;
             return (
               <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
                 <h4 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>מה ההורים אומרים</h4>
                 <div className="flex flex-wrap gap-1.5">
-                  {said.map(({ fact, count }) => (
-                    <span key={fact.id} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 8, background: "#DCF3E6", color: "#1D7F4F" }}>
-                      {factLabel(fact, place)}
+                  {said.map(({ label, count }) => (
+                    <span key={label} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 8, background: "#DCF3E6", color: "#1D7F4F" }}>
+                      {label}
                       {count > 1 && <span style={{ fontWeight: 500, opacity: 0.8 }}>· {count} הורים</span>}
                     </span>
                   ))}

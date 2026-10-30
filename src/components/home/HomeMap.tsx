@@ -1314,7 +1314,7 @@ function SavedScreen({
 function ProfileScreen({
   user, savedIds, isAdmin = false, onGoSaved, onLogout,
 }: {
-  user: { id?: string; email?: string | null } | null;
+  user: { id?: string; email?: string | null; created_at?: string } | null;
   savedIds: Set<string>;
   isAdmin?: boolean;
   onGoSaved: () => void;
@@ -1350,7 +1350,7 @@ function ProfileScreen({
                 חשבון מאומת
               </span>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.7, color: "#fff", marginTop: 2 }} className="font-hebrew">גבעתיים · באפליקציה מאז 2024</div>
+            <div style={{ fontSize: 12, opacity: 0.7, color: "#fff", marginTop: 2 }} className="font-hebrew">{["גבעתיים", user?.created_at ? `באפליקציה מאז ${new Date(user.created_at).toLocaleDateString("he-IL", { month: "long", year: "numeric" })}` : null].filter(Boolean).join(" · ")}</div>
           </div>
         </div>
         {/* Floating stats card */}

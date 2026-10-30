@@ -235,16 +235,74 @@ export function placeFacts(place: Place): PlaceFact[] {
   return [...facts.filter((f) => mentioned.has(f)), ...facts.filter((f) => !mentioned.has(f))];
 }
 
-/** "מה ההורים אומרים": facts mentioned in reviews, most mentioned first. */
-export function reviewFactCounts(reviews: PlaceReview[], category: PlaceCategory): { fact: PlaceFact; count: number }[] {
-  const counts = new Map<PlaceFact, number>();
-  for (const r of reviews) {
-    const facts = new Set((r.tags ?? []).map((t) => tagToFact(t, category)).filter((f): f is PlaceFact => f != null));
-    facts.forEach((f) => counts.set(f, (counts.get(f) ?? 0) + 1));
+// ── Open tags ────────────────────────────────────────────────────────────────
+// Tags are open (user, 2026-10-30): a recommendation may add any useful tag. What must not
+// happen is several tags meaning the same thing, so known meanings merge into one fact label,
+// and these "not a tag" words are dropped: the place type, age group, health fund, location,
+// generic praise, and negatives (kept out of the chips).
+const NON_TAGS = new Set([
+  // generic praise
+  "מומלץ", "מומלצת", "מומלצים", "מקצועי", "מקצועית", "אדיב", "אדיבה", "מקסים", "מקסימה", "נחמד", "נחמדה",
+  "שירותי", "שירות מקצועי", "שירות אדיב", "שירות טוב", "פרנדלי", "מעולה", "מדהים", "מדהימה",
+  // negatives
+  "לא מומלץ", "לא מומלצת", "תור ארוך", "חסר רגישות", "שירות לא מקצועי", "יקר",
+  // health funds
+  "מכבי", "כללית", "מאוחדת", "לאומית", "מקבל מכבי", "מקבל כללית", "מקבל מאוחדת", "מקבל לאומית",
+  // age group
+  "תינוקות", "פעוטות", "מבוגר", "מבוגרים",
+  // locations
+  "קניון", "קניון גבעתיים", "רמת גן", "גבעתיים", "בורוכוב", "בורכוב", "מגדל המאה", "גבעת שמואל", "שינקין",
+  // kids types
+  "גן", "גן ילדים", "גנים", "משפחתון", "צהרון", "מעון", "מטפלת", "בייביסיטר", "חוג", "חוגים", "ילדים",
+  // doctor and cosmetics types (the place's specialty is shown separately)
+  "רופא", "רופאה", "אף אוזן גרון", "אוסטיאופתיה", "יועצת הנקה", "פיזיותרפיה", "מנתח", "כירורג", "חירורג",
+  "קלינאית תקשורת", "מוהל", "גינקולוג", "אורתופד", "אורולוג", "שיננית", "טיפת חלב", "אחות טיפת חלב",
+  "גסטרו", "נוירולוג", "מרפאה בעיסוק", "התפתחות הילד", "רצפת אגן", "אולטרסאונד", "אלרגיה", "רנטגן",
+  "שיער", "מספרה", "ספר", "ספרית", "קוסמטיקה", "קוסמטיקאית",
+].map(normalizeTag));
+
+function isNonTag(tag: string, place?: Place): boolean {
+  const n = normalizeTag(tag);
+  if (!n || NON_TAGS.has(n)) return true;
+  if (/^רופא(ת|ה)? /.test(n)) return true; // רופא עור, רופאת ילדים…
+  const specialty = place ? (place.attributes as Record<string, unknown> | null)?.specialty : null;
+  return typeof specialty === "string" && normalizeTag(specialty) === n;
+}
+
+/**
+ * One tag as shown: a known meaning becomes its fact label (מקבלת ילדים → מקבל ילדים), another
+ * useful tag stays as written, and a non-tag is dropped (null).
+ */
+export function canonicalTag(tag: string, category: PlaceCategory, place?: Place): string | null {
+  const fact = tagToFact(tag, category);
+  if (fact) return place ? factLabel(fact, place) : fact.label;
+  if (isNonTag(tag, place)) return null;
+  return tag.trim();
+}
+
+/** A review's tags as chips: canonical, without non-tags or duplicates. */
+export function displayTags(tags: string[] | null | undefined, place: Place): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tags ?? []) {
+    const label = canonicalTag(t, place.place_category, place);
+    if (!label || seen.has(normalizeTag(label))) continue;
+    seen.add(normalizeTag(label));
+    out.push(label);
   }
-  const order = PLACE_FACTS;
-  return Array.from(counts, ([fact, count]) => ({ fact, count }))
-    .sort((a, b) => b.count - a.count || order.indexOf(a.fact) - order.indexOf(b.fact));
+  return out;
+}
+
+/** "מה ההורים אומרים": what reviews mention (facts and other useful tags), most mentioned first. */
+export function reviewTagCounts(reviews: PlaceReview[], place: Place): { label: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const r of reviews) {
+    for (const label of displayTags(r.tags, place)) counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const factOrder = factsFor(place.place_category).map((f) => factLabel(f, place));
+  const rank = (l: string) => { const i = factOrder.indexOf(l); return i === -1 ? factOrder.length : i; };
+  return Array.from(counts, ([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || rank(a.label) - rank(b.label));
 }
 
 /**

@@ -1,5 +1,5 @@
 import "server-only";
-import { factsFor, factsToAttributes, tagToFact, type PlaceFact } from "@/lib/place-facts";
+import { canonicalTag, factsFor, factsToAttributes, tagToFact, type PlaceFact } from "@/lib/place-facts";
 import type { PlaceCategory } from "@/types/places";
 
 // Defense-in-depth: blocks publishing a summary that still contains an
@@ -110,17 +110,17 @@ function factLabelsFor(category: string): string[] {
   return factsFor(category as PlaceCategory).map((f) => f.label);
 }
 
-// Kids, doctors and cosmetics: tags are a closed list (the facts vocabulary), so the map's
-// chips and filters don't fragment. Overrides the "create a new tag" rule above.
+// Kids, doctors and cosmetics: tags are open, but a meaning the facts vocabulary already has
+// must use its exact label, so the same thing never ends up as several tags (user, 2026-10-30).
 function factTagsPrompt(category: string): string {
   const labels = factLabelsFor(category);
   if (labels.length === 0) return "";
   return `
 
-חשוב — בקטגוריה הזו התגיות הן רשימה סגורה. בחר תגיות רק מתוך הרשימה הבאה, ורק אם הפרט נאמר במפורש בדיאלוג (לא ניחוש): ${labels.join(", ")}.
-- אל תיצור תגיות חדשות.
-- לא תגית: סוג המקום (גן, משפחתון, רופא עור), קבוצת גיל (תינוקות), קופת חולים, מיקום, או שבח כללי (מומלץ, מקצועי, אדיב, מקסים).
-- אם אף תגית מהרשימה לא נאמרה במפורש — החזר מערך ריק.`;
+חשוב — תגיות בקטגוריה הזו:
+- אם הפרט שנאמר הוא אחד מאלה, השתמש בדיוק בניסוח הזה: ${labels.join(", ")}.
+- פרט שימושי אחר מותר כתגית חדשה (1-3 מילים), אבל רק אם אין כבר תגית קיימת באותה משמעות — אם יש, השתמש בה כמו שהיא.
+- לא תגית: סוג המקום (גן, משפחתון, רופא עור), קבוצת גיל (תינוקות), קופת חולים, מיקום, שבח כללי (מומלץ, מקצועי, אדיב, מקסים) או ביקורת שלילית.`;
 }
 
 function buildSystemPrompt(category: string, specialtyOptions: string[]): string {
@@ -201,7 +201,6 @@ function buildTool(category: string, specialtyOptions: string[]) {
         type: "object",
         properties: {
           ...BASE_PROPERTIES,
-          ...(factLabelsFor(category).length > 0 ? { tags: { type: "array", items: { type: "string", enum: factLabelsFor(category) } } } : {}),
           ...categoryProperties(category, specialtyOptions),
         },
         required: ["summary", "rating", "tags"],
@@ -247,9 +246,8 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
     ? input.sourceMessages.join("\n")
     : "אין";
   const factLabels = factLabelsFor(input.category);
-  const existingTagsText = factLabels.length > 0
-    ? factLabels.join(", ")
-    : input.existingTags.length > 0 ? input.existingTags.join(", ") : "אין תגיות קיימות עדיין";
+  const knownTags = Array.from(new Set([...factLabels, ...input.existingTags]));
+  const existingTagsText = knownTags.length > 0 ? knownTags.join(", ") : "אין תגיות קיימות עדיין";
 
   const userContent = [
     `שם המקום: ${input.placeName}`,
@@ -287,11 +285,15 @@ export async function summarizeRecommendation(input: SummarizeInput, apiKey: str
   let tags: string[] = Array.isArray(args?.tags)
     ? Array.from(new Set<string>(args.tags.filter((t: unknown): t is string => typeof t === "string" && t.trim().length > 0).map((t: string) => t.trim())))
     : [];
-  // Fixed-vocabulary categories: keep only facts, under their canonical label.
+  // Vocabulary categories: known meanings become their fact label, non-tags (type, health
+  // fund, praise…) are dropped, other useful tags are kept as written.
+  const cat = input.category as PlaceCategory;
   const facts = factLabels.length > 0
-    ? Array.from(new Set(tags.map((t) => tagToFact(t, input.category as PlaceCategory)).filter((f): f is PlaceFact => f != null)))
+    ? Array.from(new Set(tags.map((t) => tagToFact(t, cat)).filter((f): f is PlaceFact => f != null)))
     : [];
-  if (factLabels.length > 0) tags = facts.map((f) => f.label);
+  if (factLabels.length > 0) {
+    tags = Array.from(new Set(tags.map((t) => canonicalTag(t, cat)).filter((t): t is string => t != null)));
+  }
 
   const result: SummarizeResult = { summary, rating, tags };
   if (input.category === "kids") {

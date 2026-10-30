@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
-import { summarizeRecommendation, getCategorySpecialties, applyPlaceExtras } from "@/lib/whatsapp-summarize";
+import { summarizeRecommendation, getCategorySpecialties, getCategoryTags, recordNewTags, applyPlaceExtras } from "@/lib/whatsapp-summarize";
 import { factsFor } from "@/lib/place-facts";
 import type { PlaceCategory } from "@/types/places";
 
@@ -63,6 +63,7 @@ export async function POST(req: Request) {
   if (rowsErr) return NextResponse.json({ error: rowsErr.message }, { status: 500 });
 
   const specialtiesByCategory = new Map<string, string[]>();
+  const tagsByCategory = new Map<string, string[]>();
   let processed = 0;
   let failed = 0;
 
@@ -73,12 +74,16 @@ export async function POST(req: Request) {
         if (!specialtiesByCategory.has(row.category)) {
           specialtiesByCategory.set(row.category, await getCategorySpecialties(admin, row.category));
         }
+        if (refreshTags && !tagsByCategory.has(row.category)) {
+          tagsByCategory.set(row.category, await getCategoryTags(admin, row.category));
+        }
         const result = await summarizeRecommendation({
           placeName: row.place_name,
           recommendationText: row.recommendation_text,
           sourceMessages: row.source_messages,
           enthusiasm: row.enthusiasm,
-          existingTags: [],
+          // With refresh_tags the model sees the existing tags, so it reuses them instead of making near-duplicates.
+          existingTags: refreshTags ? (tagsByCategory.get(row.category) ?? []) : [],
           category: row.category,
           specialtyOptions: specialtiesByCategory.get(row.category) ?? [],
         }, openaiKey);
@@ -90,6 +95,7 @@ export async function POST(req: Request) {
             const current: string[] = Array.isArray(review.tags) ? review.tags : [];
             const merged = Array.from(new Set([...current, ...result.tags]));
             if (merged.length !== current.length) await admin.from("place_reviews").update({ tags: merged }).eq("id", review.id);
+            await recordNewTags(admin, row.category, result.tags);
           }
         }
         processed += 1;
