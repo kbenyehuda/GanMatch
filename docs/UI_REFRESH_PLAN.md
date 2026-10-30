@@ -4,9 +4,64 @@ Handoff for the UI session (prepared 2026-10-29). Work in this worktree (`GanMat
 
 Read `CLAUDE.md` first. It describes the older `ganim_v2` app; the live app is the `places` app (`src/components/places/*`, `src/components/home/HomeMap.tsx`, `src/types/places.ts`, `src/types/place-filters.ts`, `src/lib/apply-place-filters.ts`). Its rules still hold: Hebrew-only UI, RTL with `start`/`end` (never `left`/`right`), ask before any state-changing action (DB writes, migrations, git push, deploys).
 
+## Status — read this first (updated 2026-10-30)
+
+**Ganim come first** (user, 2026-10-30; also in `CLAUDE.md`). They are the most important part of the app. Prioritize gan data and gan UX.
+
+### Done (branch `ui-ux-refresh`, not pushed)
+
+- `5d1ade2` **Cap fix (ship to production soon, independent of the UI work).** `/api/places` capped `get_places_in_bbox` at 200 rows ordered by rating, so every unrated (newly approved) place disappeared once the city passed 200 pinned places. Cap is now 2000.
+- `3737588` **Items 1, 2 and 4 plus Google-Maps-style map:**
+  - Category tabs, one at a time (default ילדים, remembered in `localStorage` `gmt_category`). Search looks across all categories behind a temporary "תוצאות חיפוש" tab.
+  - Live filter pills (`src/components/places/CategoryFilterBar.tsx`, facets in `filter-facets.ts`). Desktop opens a popover, phone a short sheet. Counts per option, most common first, ✕ on an active pill. A facet is hidden until ≥5 places have the field (`MIN_PLACES_FOR_FILTER`).
+  - Kids type falls back to גני ילדים for gov-data places that only have `gan_category`. The three צהרון variants filter as one. New doctor `לילדים` filter (`doctor_for_children`).
+  - Neighborhood and health fund are stored per category.
+  - **All places load once** (`useAllPlaces`, `/api/places?all=1` → `get_all_places`, includes places with no pin). The list and counts no longer follow the map viewport. `usePlacesInViewport` is now unused.
+  - Places without a pin are in the list with the label "ללא מיקום מדויק".
+  - Desktop: hovering a card raises its pin on the map, or shows a "no location yet" note on the map if it has no pin. Clicking a pin opens the place directly.
+  - All health funds are shown on cards, the map peek and the place header (it used to show only the first).
+  - Removed the old full-width FilterSheet and the kosher / ₪ tier / rating / opening-hours filters from the UI. The filter logic is kept for the hidden categories.
+
+### Data findings (2026-10-30, read-only queries)
+
+- 460 places total; **181 have no pin** (doctors 120/159, babysitters 7/8, חוגים 8/10).
+- **`neighborhood` is null for every place**, so the neighborhood pill is hidden by the ≥5 rule. Filling it from coordinates is a separate data task.
+- Kids fields: ages, price and `chugim_types` have no data yet, so those pills stay hidden. Only 40 of 142 ganim have any review.
+- Possible duplicate places: `גן "שקד"` / `גן שקד`. Worth a dedupe pass in triage.
+
+### Next block: one "facts" vocabulary (tags = fields)
+
+User's definition: **a tag is useful extra information that helps you choose** (חצר, טבעוני, יחס אישי, זמינות, מתאים להריון). It is never the type (גן, משפחתון, רופא עיניים), the category (ילדים), the age group (תינוקות), the health fund, or generic praise (מומלץ, מקצועי, אדיב). Tags and structured fields should be one vocabulary: חצר is both a tag and `has_outdoor_space`.
+
+Today the summarizer writes free-text tags (`place_reviews.tags`, 140 distinct, collected in `tag_taxonomy`) separately from structured fields. Of 2,857 tag uses, only ~830 are real tags; type 998, generic 794, HMO 235. Doctors and cosmetics have useful ones. **Ganim have almost none** (13 uses). The prompt is tuned for services, so gan facts (מגיל חצי שנה, אנתרופוסופי, טבעוני, יחס אישי) stayed in the summary text. Tags currently render only as tiny 10px chips under each review in `PlaceDetail`.
+
+Draft gan facts (confirm with the user before building):
+- Facilities: חצר / שטח חוץ, ממ"ד, מצלמות
+- Food: בישול במקום, טבעוני, צמחוני
+- Approach: אנתרופוסופי, טבע, מונטסורי, דו-לשוני
+- Staff and atmosphere: יחס אישי / קבוצה קטנה, גננת ותיקה / צוות יציב
+- Logistics: פתוח בשישי, שעות ארוכות, יש מקום פנוי
+
+Ages, price and gan type are fields shown in their own spots, not tags.
+
+Other categories (drafts):
+- Doctors: מקבל ילדים, מתאים להריון, זמינות / תור קצר, קשוב / סבלני / עדין, מגיע לבית, פרטי, זמינות אונליין
+- Cosmetics: service types (לק ג'ל, טיפול פנים, חורים באוזניים, תלתלים, צבע), הגעה לבית, ללא תור, מתאים לילדים
+
+Steps:
+1. **This branch, no DB writes:** `src/lib/place-facts.ts` with the vocabulary per category. Each fact has a label, its field if any, and tag synonyms. Map the existing tags onto it: merge synonyms (מקבל/מקבלת/מתאים לילדים/קידס פרנדלי → for_children), keep negatives (לא מומלץ, תור ארוך, חסר רגישות) out of the positive chips, and treat locations (קניון גבעתיים, בורוכוב) as location. Show a "מה ההורים אומרים" fact summary in the place window plus 1–2 facts on the card. Let filter facets count facts from tags as well as fields.
+2. **Triage session (owns `src/lib/whatsapp-summarize.ts`):** the summarizer picks from the vocabulary instead of free text. Re-run it on the gan reviews. Then run a one-time backfill of mapped values into real fields, only with the user's OK.
+3. **Later:** owners and parents confirm or add facts through "ערכו פרטים".
+
+The user also asked about phones: hover is desktop-only. The phone equivalent of the "no location" note should go inside the place window (step 1 is a good time).
+
+### Still open from the original list
+
+Items 5–9 below: shared `/place/[id]` links skip the intro and sign-in screens (launch-critical), og:image, the guest review CTA button, type chips on cards, and polish.
+
 ## How to run
 
-- `npm run dev -- -p 3001` (port 3000 is the triage session's dev server).
+- `npm run dev -- -p 3000` (as of 2026-10-30 the triage dev server is no longer running; use 3001 if it is back). Supabase only allows Google sign-in to return to localhost ports on its Redirect URLs list, which caused "requested path is invalid" on 3001.
 - The user checks localhost herself. Don't drive the browser; after a change, run `npx tsc --noEmit -p .` and `npx next lint`, then hand her a short checklist of what to click and what to expect.
 
 ## Your area (and what to leave alone)

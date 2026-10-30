@@ -6,6 +6,16 @@ Local places discovery platform for Giv'atayim (גבעתיים), Israel. Started
 
 ---
 
+## Product priority: ganim come first
+
+**The biggest and most important part of this app is the ganim** (kindergartens, daycares, משפחתונים, צהרונים). Doctors and cosmetics are secondary. When deciding what to build, what data to collect, or how to design a screen, optimize for parents choosing a gan first:
+
+- Gan data quality (type, ages, price, food, outdoor area, ממ"ד, Fridays, staff) matters more than any other category's data.
+- Tags/facts are useful extra information that helps choose (חצר, טבעוני, יחס אישי…), never a restatement of the type (גן, משפחתון), category, age group, health fund or generic praise (מומלץ, מקצועי). Tags and structured fields should be one vocabulary: a fact like חצר is both a tag and `has_outdoor_space`.
+- Default category in the UI is ילדים.
+
+---
+
 ## Ask before acting
 
 **Do not run any action — Supabase MCP tools (migrations, SQL writes, pause/restore project, branches, etc.), destructive git commands, deployments, or any other state-changing operation — without asking the user first and getting explicit confirmation, every time.** This holds even mid-task, even for steps that seem obviously implied by what was just discussed. Read-only lookups (reading files, listing tables, `git status`) are fine without asking.
