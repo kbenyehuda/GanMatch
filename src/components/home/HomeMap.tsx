@@ -5,13 +5,15 @@ import { MapContainer } from "@/components/map/MapContainer";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
 import { IntroOverlay, INTRO_SEEN_STORAGE_KEY } from "@/components/home/IntroOverlay";
-import { PlaceFeedPanel, FilterSheet } from "@/components/places/PlaceFeedPanel";
+import { PlaceFeedPanel } from "@/components/places/PlaceFeedPanel";
+import { CategoryTabs, FilterPills } from "@/components/places/CategoryFilterBar";
+import { buildFacets, setFacetValues, clearCategoryFilters } from "@/components/places/filter-facets";
 import { PlaceDetail } from "@/components/places/PlaceDetail";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { AddPlaceModal } from "@/components/places/AddPlaceModal";
 import { RequestLocationChangeModal } from "@/components/places/RequestLocationChangeModal";
 import { Toast, useToast } from "@/components/ui/Toast";
-import { usePlacesInViewport } from "@/hooks/usePlacesInViewport";
+import { useAllPlaces } from "@/hooks/useAllPlaces";
 import type { Bounds } from "@/lib/places-api";
 import type { Place, PlaceCategory } from "@/types/places";
 import {
@@ -20,7 +22,7 @@ import {
   NEIGHBORHOOD_LABELS,
   VISIBLE_CATEGORIES,
 } from "@/types/places";
-import { DEFAULT_PLACE_FILTERS, type PlaceFilters } from "@/types/place-filters";
+import { DEFAULT_PLACE_FILTERS, activeCategory, type PlaceFilters } from "@/types/place-filters";
 import { applyPlaceFilters } from "@/lib/apply-place-filters";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
@@ -45,7 +47,11 @@ const PROGRESS_STEPS: { key: keyof PlaceProgress; label: string }[] = [
   { key: "applied", label: "נרשמתי" },
 ];
 
-const ALL_CATEGORIES = VISIBLE_CATEGORIES;
+/** Last category the user picked, so the app reopens where they left off. */
+const CATEGORY_STORAGE_KEY = "gmt_category";
+
+/** Filters that live in shared PlaceFilters fields but mean something different per category. */
+type CategoryScopedFilters = Pick<PlaceFilters, "neighborhoods" | "hmo">;
 
 const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
   doctor: "🩺", clinic: "🏥", cafe: "☕", kids: "🧸",
@@ -93,7 +99,10 @@ function MapPeekSheet({
   }, [place, userLocation]);
 
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
-  const hmoLabel = place.hmo?.[0] ? ({ maccabi:"מכבי",clalit:"כללית",meuhedet:"מאוחדת",leumit:"לאומית" })[place.hmo[0]] : null;
+  const hmoLabel = (place.hmo ?? [])
+    .map((h) => ({ maccabi: "מכבי", clalit: "כללית", meuhedet: "מאוחדת", leumit: "לאומית" } as Record<string, string>)[h])
+    .filter(Boolean)
+    .join(", ") || null;
 
   return (
     <div
@@ -251,78 +260,6 @@ function PlaceClusterList({
   );
 }
 
-// ─── Map category chips (floating over map) ───────────────────────────────────
-
-function MapFilterChips({
-  filters,
-  onFiltersChange,
-}: {
-  filters: PlaceFilters;
-  onFiltersChange: (f: PlaceFilters) => void;
-}) {
-  const toggle = (cat: PlaceCategory) => {
-    const current = filters.categories ?? [];
-    const next = current.includes(cat)
-      ? current.filter((c) => c !== cat)
-      : [...current, cat];
-    onFiltersChange({ ...filters, categories: next.length ? next : null });
-  };
-
-  const allActive = !filters.categories?.length;
-
-  return (
-    <div
-      className="absolute z-[401] inset-x-0 scrollbar-hide"
-      style={{
-        top: "calc(var(--safe-top, 0px) + 130px)",
-        display: "flex", gap: 6, padding: "4px 14px",
-        overflowX: "auto", flexWrap: "nowrap",
-      }}
-      dir="rtl"
-    >
-      {/* All chip */}
-      <button
-        type="button"
-        onClick={() => onFiltersChange({ ...filters, categories: null })}
-        className="font-hebrew"
-        style={{
-          gap: 6, padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
-          whiteSpace: "nowrap", flexShrink: 0, border: "none", cursor: "pointer",
-          transition: "background .15s, color .15s",
-          background: allActive ? "#0A2B6B" : "#fff",
-          color: allActive ? "#fff" : "#4A5568",
-          boxShadow: allActive ? "none" : "0 2px 8px rgba(10,43,107,.06)",
-        }}
-      >
-        הכל
-      </button>
-      {ALL_CATEGORIES.map((cat) => {
-        const active = filters.categories?.includes(cat) ?? false;
-        return (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => toggle(cat)}
-            aria-pressed={active}
-            className="flex items-center font-hebrew"
-            style={{
-              gap: 6, padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
-              whiteSpace: "nowrap", flexShrink: 0, border: "none", cursor: "pointer",
-              transition: "background .15s, color .15s",
-              background: active ? "#0A2B6B" : "#fff",
-              color: active ? "#fff" : "#4A5568",
-              boxShadow: active ? "none" : "0 2px 8px rgba(10,43,107,.06)",
-            }}
-          >
-            <span>{CATEGORY_EMOJI[cat]}</span>
-            {PLACE_CATEGORY_LABELS[cat]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── Bottom tab bar ───────────────────────────────────────────────────────────
 
 type MobileTab = "home" | "map" | "add" | "saved" | "profile";
@@ -461,12 +398,10 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
 
   // ── Map overlay state ─────────────────────────────────────────────────────────
   const [mapSearchQuery, setMapSearchQuery] = useState("");
-  const [showMapFilterSheet, setShowMapFilterSheet] = useState(false);
 
   // ── Desktop/tablet feed panel collapse ──────────────────────────────────────
   const [feedCollapsed, setFeedCollapsed] = useState(false);
 
-  const activeFilterCountMap = (filters.categories?.length ?? 0) + (filters.hmo?.length ?? 0) + (filters.neighborhoods?.length ?? 0);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
@@ -477,20 +412,25 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     );
   }, []);
 
-  const preservePlaceIds = useMemo(
-    () => (selectedPlace?.id ? new Set([selectedPlace.id]) : undefined),
-    [selectedPlace?.id]
-  );
-
+  // Every place in the city, loaded once. Like Google Maps, the list doesn't follow
+  // the map: zooming or panning never hides places from the list or the filters.
   const {
     places,
     loading: placesLoading,
-    pending: placesPending,
     error: fetchError,
-    onBoundsChange,
     addPlace,
-    refetchViewport,
-  } = usePlacesInViewport({ preservePlaceIds });
+    refetch: refetchPlaces,
+  } = useAllPlaces();
+  const placesPending = false;
+
+  // Desktop: the card under the pointer gets a raised pin on the map.
+  const [hoveredPlaceId, setHoveredPlaceId] = useState<string | null>(null);
+  // …or, when it has no pin, a note on the map saying so.
+  const hoveredUnpinned = useMemo(() => {
+    if (!hoveredPlaceId) return null;
+    const p = places.find((x) => x.id === hoveredPlaceId);
+    return p && (p.lat == null || p.lon == null) ? p : null;
+  }, [hoveredPlaceId, places]);
 
   // Don't let a background refresh swap `places` out from under someone mid-flow
   // (filling out a modal, or actively picking a pin on the map).
@@ -509,7 +449,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     const REFRESH_INTERVAL_MS = 120_000;
     const trySilentRefetch = () => {
       if (document.visibilityState === "visible" && !suppressBackgroundRefreshRef.current) {
-        refetchViewport({ silent: true });
+        refetchPlaces({ silent: true });
       }
     };
     const interval = setInterval(trySilentRefetch, REFRESH_INTERVAL_MS);
@@ -518,7 +458,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", trySilentRefetch);
     };
-  }, [refetchViewport]);
+  }, [refetchPlaces]);
 
   useEffect(() => {
     if (places.length === 0) return;
@@ -624,13 +564,57 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   );
 
   const handleBoundsChange = useCallback(
-    (bounds: Bounds) => { setCurrentBounds(bounds); onBoundsChange(bounds); },
-    [onBoundsChange]
+    (bounds: Bounds) => setCurrentBounds(bounds),
+    []
+  );
+
+  // ── Category (exactly one at a time) ─────────────────────────────────────────
+  const category = activeCategory(filters);
+  const scopedByCategoryRef = useRef<Partial<Record<PlaceCategory, CategoryScopedFilters>>>({});
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CATEGORY_STORAGE_KEY) as PlaceCategory | null;
+      if (saved && VISIBLE_CATEGORIES.includes(saved)) setFilters(f => ({ ...f, categories: [saved] }));
+    } catch {}
+  }, []);
+
+  // Neighborhood and health fund are stored per category: a Borochov filter makes
+  // sense for a gan, not for a dermatologist (and hmo would empty any non-doctor list).
+  const selectCategory = useCallback((next: PlaceCategory) => {
+    if (next === category) return;
+    scopedByCategoryRef.current[category] = { neighborhoods: filters.neighborhoods, hmo: filters.hmo };
+    const restored = scopedByCategoryRef.current[next] ?? { neighborhoods: null, hmo: null };
+    setFilters({ ...filters, categories: [next], ...restored });
+    setSelectedClusterPlaces(null);
+    try { window.localStorage.setItem(CATEGORY_STORAGE_KEY, next); } catch {}
+  }, [category, filters]);
+
+  // Search looks across every category and ignores the category's filters.
+  const searching = mapSearchQuery.trim() !== "";
+  const effectiveFilters = useMemo<PlaceFilters>(
+    () => (searching ? { ...DEFAULT_PLACE_FILTERS, categories: null, search_query: filters.search_query } : filters),
+    [searching, filters]
   );
 
   const filteredPlaces = useMemo(
-    () => applyPlaceFilters(places, filters, selectedPlace?.id ?? null),
-    [places, filters, selectedPlace?.id]
+    () => applyPlaceFilters(places, effectiveFilters, selectedPlace?.id ?? null),
+    [places, effectiveFilters, selectedPlace?.id]
+  );
+
+  // ── Filter facets (pills) ─────────────────────────────────────────────────────
+  const facets = useMemo(
+    () => buildFacets(category, filters, places, places),
+    [category, filters, places]
+  );
+
+  const handleFacetChange = useCallback(
+    (key: string, values: string[]) => setFilters(f => setFacetValues(f, key, values)),
+    []
+  );
+  const handleClearFilters = useCallback(
+    () => setFilters(f => clearCategoryFilters(f, activeCategory(f))),
+    []
   );
 
   // ─── Auth gate ──────────────────────────────────────────────────────────────
@@ -683,15 +667,20 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
         {/* Feed panel — collapsible so tablets can reclaim map space */}
         <div
           className="shrink-0 h-full border-e border-[#E5E9F0] overflow-hidden"
-          style={{ width: feedCollapsed ? 0 : 360, transition: "width .2s ease" }}
+          style={{ width: feedCollapsed ? 0 : 400, transition: "width .2s ease" }}
         >
-          <div style={{ width: 360, height: "100%" }}>
+          <div style={{ width: 400, height: "100%" }}>
             <PlaceFeedPanel
               places={filteredPlaces}
               selectedPlaceId={selectedPlace?.id ?? null}
               onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); setDetailPlace(p); }}
-              filters={filters}
-              onFiltersChange={setFilters}
+              onHoverPlace={setHoveredPlaceId}
+              category={category}
+              onSelectCategory={selectCategory}
+              facets={facets}
+              onFacetChange={handleFacetChange}
+              onClearFilters={handleClearFilters}
+              variant="desktop"
               userLocation={userLocation}
               isVisible
               savedIds={savedIds}
@@ -727,8 +716,14 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             selectedPlaceId={selectedPlace?.id ?? null}
             initialMapFocus={seedPlace?.lon != null && seedPlace?.lat != null ? { lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 } : null}
             fitToAddress={fitToAddress}
-            onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); }}
-            onSelectCluster={(list) => { setSelectedClusterPlaces(list); setSelectedPlace(null); }}
+            highlightedPlaceId={hoveredPlaceId}
+            onSelectPlace={(p) => {
+              setSelectedClusterPlaces(null);
+              if (!p) { if (!detailPlace) setSelectedPlace(null); return; }
+              setSelectedPlace(p);
+              setDetailPlace(p);
+            }}
+            onSelectCluster={(list) => { setSelectedClusterPlaces(list); setSelectedPlace(null); setDetailPlace(null); }}
             onBoundsChange={handleBoundsChange}
             loading={placesLoading || placesPending}
             pendingPin={suggestPin ?? locationRequestPin}
@@ -780,6 +775,27 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                   onSelect={(p) => { setSelectedPlace(p); setDetailPlace(p); setSelectedClusterPlaces(null); }}
                 />
               ) : null}
+            </div>
+          )}
+          {/* Hovered card has no pin — say so instead of showing nothing */}
+          {hoveredUnpinned && (
+            <div className="absolute inset-x-0 top-20 z-30 flex justify-center pointer-events-none" dir="rtl">
+              <div
+                role="status"
+                className="flex items-start gap-3 font-hebrew"
+                style={{ maxWidth: 360, background: "#fff", borderRadius: 16, padding: "12px 16px", border: "1px solid #E5E9F0", boxShadow: "0 12px 30px rgba(10,43,107,.18)" }}
+              >
+                <span className="flex items-center justify-center shrink-0" style={{ width: 34, height: 34, borderRadius: 10, background: "#FBF1D8", color: "#9C7A21" }}>
+                  <MapPin style={{ width: 18, height: 18 }} />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate" style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E" }}>{hoveredUnpinned.name}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#4A5568", marginTop: 2 }}>למקום הזה עדיין אין מיקום על המפה</div>
+                  <div style={{ fontSize: 12, color: "#8A95A8", marginTop: 2, lineHeight: 1.45 }}>
+                    ההמלצה הגיעה בלי כתובת מדויקת. אנחנו עובדים על איתור המיקום, ובינתיים כל הפרטים נמצאים בכרטיס.
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           {/* Desktop add-place FAB — hidden while the right-side panel is open so it can't peek out from behind it */}
@@ -844,8 +860,12 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 setSelectedPlace(p);
                 setDetailPlace(p);
               }}
-              filters={filters}
-              onFiltersChange={setFilters}
+              category={category}
+              onSelectCategory={selectCategory}
+              facets={facets}
+              onFacetChange={handleFacetChange}
+              onClearFilters={handleClearFilters}
+              variant="phone"
               userLocation={userLocation}
               isVisible
               savedIds={savedIds}
@@ -907,11 +927,6 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             pendingPin={suggestPin ?? locationRequestPin}
           />
 
-          {/* Floating category chips over map */}
-          {activeTab === "map" && (
-            <MapFilterChips filters={filters} onFiltersChange={setFilters} />
-          )}
-
           {/* Recenter button — physical right side, hide when peek showing */}
           {activeTab === "map" && userLocation && !showPeek && (
             <button
@@ -935,11 +950,11 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             </button>
           )}
 
-          {/* Map search overlay + filter button */}
+          {/* Map search + category tabs + filter pills (same state as the feed tab) */}
           {activeTab === "map" && (
             <div
-              className="absolute z-[401]"
-              style={{ top: "calc(var(--safe-top, 0px) + 50px)", left: 14, right: 14 }}
+              className="absolute z-[401] flex flex-col"
+              style={{ top: "calc(var(--safe-top, 0px) + 50px)", insetInline: 14, gap: 8 }}
               dir="rtl"
             >
               <div className="flex items-center gap-2.5" style={{ background: "#fff", borderRadius: 14, padding: "12px 14px", boxShadow: "0 8px 20px rgba(10,43,107,.18)", fontSize: 13 }}>
@@ -958,38 +973,31 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                   style={{ border: 0, outline: 0, background: "transparent", fontSize: 13, color: "#0F1A2E", minWidth: 0 }}
                 />
                 {mapSearchQuery && (
-                  <button type="button" onClick={() => { setMapSearchQuery(""); setFilters(f => ({ ...f, search_query: null })); }} style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", padding: 0, lineHeight: 0 }}>
+                  <button type="button" aria-label="ניקוי חיפוש" onClick={() => { setMapSearchQuery(""); setFilters(f => ({ ...f, search_query: null })); }} style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", padding: 0, lineHeight: 0 }}>
                     <X style={{ width: 14, height: 14 }} />
                   </button>
                 )}
-                {/* Filter button */}
-                <button
-                  type="button"
-                  onClick={() => setShowMapFilterSheet(true)}
-                  className="relative flex items-center justify-center"
-                  style={{ width: 36, height: 36, borderRadius: 10, background: activeFilterCountMap > 0 ? "#0A2B6B" : "#F4F8FE", border: 0, color: activeFilterCountMap > 0 ? "#fff" : "#0A2B6B", cursor: "pointer", flexShrink: 0 }}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
-                    <path d="M3 6h18M6 12h12M10 18h4"/>
-                  </svg>
-                  {activeFilterCountMap > 0 && (
-                    <span className="absolute flex items-center justify-center" style={{ top: -4, insetInlineEnd: -4, width: 16, height: 16, borderRadius: "50%", background: "#C8A24B", fontSize: 9, fontWeight: 800, color: "#fff", border: "2px solid #F6F9FE" }}>
-                      {activeFilterCountMap}
-                    </span>
-                  )}
-                </button>
               </div>
+              <CategoryTabs
+                active={category}
+                searching={searching}
+                floating
+                onSelect={(c) => {
+                  if (searching) { setMapSearchQuery(""); setFilters(f => ({ ...f, search_query: null })); }
+                  selectCategory(c);
+                }}
+              />
+              {!searching && (
+                <FilterPills
+                  facets={facets}
+                  onChange={handleFacetChange}
+                  onClearAll={handleClearFilters}
+                  variant="phone"
+                  resultCount={filteredPlaces.length}
+                  floating
+                />
+              )}
             </div>
-          )}
-
-          {/* Map filter sheet */}
-          {showMapFilterSheet && (
-            <FilterSheet
-              filters={filters}
-              places={filteredPlaces}
-              onApply={setFilters}
-              onClose={() => setShowMapFilterSheet(false)}
-            />
           )}
 
           {/* Peek sheet / cluster list */}

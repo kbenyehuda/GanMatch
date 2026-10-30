@@ -25,6 +25,10 @@ function lightenColor(hex: string, t = 0.35): string {
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 }
 
+/** Most WhatsApp recommendations (babysitters, private teachers…) have no address to pin. */
+const NO_PIN_LABEL = "ללא מיקום מדויק";
+const hasPin = (p: Place) => p.lat != null && p.lon != null;
+
 function distanceLabel(place: Place, user: { lon: number; lat: number } | null): string | null {
   if (!user || place.lat == null || place.lon == null) return null;
   const R = 6371e3;
@@ -95,7 +99,7 @@ function FeaturedCard({ place, onSelect, userLocation, isSaved, onToggleSave }: 
         </h4>
         {/* Sub */}
         <div className="font-hebrew mb-3.5" style={{ fontSize: 13, opacity: 0.78 }}>
-          {[PLACE_CATEGORY_LABELS[place.place_category], neighborhood, dist].filter(Boolean).join(" · ")}
+          {[PLACE_CATEGORY_LABELS[place.place_category], neighborhood, dist, hasPin(place) ? null : NO_PIN_LABEL].filter(Boolean).join(" · ")}
         </div>
         {/* Rating row */}
         <div className="flex items-center gap-3" style={{ fontSize: 12 }}>
@@ -148,12 +152,12 @@ export function PlaceCard({
   const dist = distanceLabel(place, userLocation);
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
 
-  // Meta: category · first HMO · neighborhood · distance
+  // Meta: category · neighborhood · distance (health funds are chips below — all of them)
   const metaParts = [
     PLACE_CATEGORY_LABELS[place.place_category],
-    place.hmo?.[0] ? HMO_LABELS[place.hmo[0]] : null,
     neighborhood,
     dist,
+    hasPin(place) ? null : NO_PIN_LABEL,
   ].filter(Boolean) as string[];
 
   // Tags
@@ -161,7 +165,7 @@ export function PlaceCard({
   if (place.kosher === "CERTIFIED") tags.push({ label: "כשר", variant: "green" });
   if (place.price_range === 1) tags.push({ label: "זול", variant: "green" });
   if (place.price_range === 3) tags.push({ label: "יקר", variant: "rose" });
-  place.hmo?.slice(0, 1).forEach((h) => {
+  place.hmo?.forEach((h) => {
     if (HMO_LABELS[h]) tags.push({ label: HMO_LABELS[h], variant: h === "clalit" ? "green" : h === "meuhedet" ? "gold" : "blue" });
   });
   const TAG_STYLES = {

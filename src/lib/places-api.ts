@@ -39,6 +39,21 @@ export async function fetchPlacesInBounds(
   return (await res.json()) as Place[];
 }
 
+/** Every place in the city, including ones without a pin (lat/lon null). */
+export async function fetchAllPlaces(): Promise<Place[]> {
+  const res = await fetch(`/api/places?all=1`, { cache: "no-store" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    const msg =
+      typeof err?.error === "string"
+        ? err.error
+        : `Failed to load places (${res.status})`;
+    console.error("[GiveMyTime] fetchAllPlaces error:", res.status, err);
+    throw new Error(msg);
+  }
+  return (await res.json()) as Place[];
+}
+
 export async function searchPlaces(
   q: string,
   options?: { limit?: number; categories?: string[] }

@@ -1,16 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, SlidersHorizontal, ChevronDown, Loader2, LogOut, LogIn } from "lucide-react";
-import type { Place, PlaceCategory, NeighborhoodGivatayim, KosherStatus } from "@/types/places";
-import {
-  PLACE_CATEGORY_COLORS, PLACE_CATEGORY_LABELS, NEIGHBORHOOD_LABELS, VISIBLE_CATEGORIES,
-} from "@/types/places";
-import type { PlaceFilters } from "@/types/place-filters";
-import { DEFAULT_PLACE_FILTERS } from "@/types/place-filters";
-import { applyPlaceFilters } from "@/lib/apply-place-filters";
+import { Search, X, ChevronDown, Loader2, LogOut, LogIn } from "lucide-react";
+import type { Place, PlaceCategory } from "@/types/places";
 import { searchPlaces } from "@/lib/places-api";
 import { PlaceCard } from "./PlaceCard";
+import { CategoryTabs, FilterPills } from "./CategoryFilterBar";
+import type { Facet } from "./filter-facets";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 
@@ -40,21 +36,6 @@ const SORT_OPTIONS: { id: SortOption; label: string; sub: string; icon: React.Re
     </svg>
   )},
 ];
-
-const ALL_CATEGORIES = VISIBLE_CATEGORIES;
-
-const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "🩺", clinic: "🏥", cafe: "☕", kids: "🧸", sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",
-};
-
-const HMO_LIST = [
-  { id: "maccabi",  label: "מכבי",   logo: "/hmo/maccabi.png"  },
-  { id: "clalit",   label: "כללית",  logo: "/hmo/clalit.png"   },
-  { id: "meuhedet", label: "מאוחדת", logo: "/hmo/meuhedet.png" },
-  { id: "leumit",   label: "לאומית", logo: "/hmo/leumit.png"   },
-];
-
-const ALL_NEIGHBORHOODS: NeighborhoodGivatayim[] = ["BOROCHOV","RAMBAM","SIRKIN","ARLOZOROV","GIVAT_RAMBAM"];
 
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
@@ -97,8 +78,16 @@ export interface PlaceFeedPanelProps {
   places: Place[];
   selectedPlaceId: string | null;
   onSelectPlace: (place: Place) => void;
-  filters: PlaceFilters;
-  onFiltersChange: (f: PlaceFilters) => void;
+  /** Desktop: hovering a card marks the place on the map (null when the pointer leaves). */
+  onHoverPlace?: (placeId: string | null) => void;
+  /** The one category shown (search ignores it and looks across all). */
+  category: PlaceCategory;
+  onSelectCategory: (c: PlaceCategory) => void;
+  facets: Facet[];
+  onFacetChange: (key: string, values: string[]) => void;
+  onClearFilters: () => void;
+  /** Desktop opens filter popovers under the pills; phone opens short bottom sheets. */
+  variant: "desktop" | "phone";
   userLocation?: { lon: number; lat: number } | null;
   isVisible: boolean;
   savedIds?: Set<string>;
@@ -163,459 +152,19 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
   );
 }
 
-// ─── Filter sheet helpers ─────────────────────────────────────────────────────
-
-function Section({ label, first, children }: { label: string; first?: boolean; children: React.ReactNode }) {
-  return (
-    <div style={{ paddingTop: 16, paddingBottom: 16, borderTop: first ? undefined : "1px solid #E5E9F0" }}>
-      <div className="font-hebrew" style={{ fontSize: 11, fontWeight: 800, color: "#8A95A8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function CategoryFilterGroup({
-  category, expanded, onToggle, children,
-}: {
-  category: PlaceCategory; expanded: boolean; onToggle: () => void; children: React.ReactNode;
-}) {
-  return (
-    <div style={{ paddingTop: 14 }}>
-      <button type="button" onClick={onToggle}
-        className="w-full flex items-center gap-2"
-        style={{ background: "none", border: "none", padding: "6px 0", cursor: "pointer" }}>
-        <span style={{ fontSize: 16 }}>{CATEGORY_EMOJI[category]}</span>
-        <h4 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, color: PLACE_CATEGORY_COLORS[category] }}>
-          פילטרים נוספים · {PLACE_CATEGORY_LABELS[category]}
-        </h4>
-        <div style={{ flex: 1, height: 1, background: "#E5E9F0" }} />
-        <ChevronDown style={{ width: 16, height: 16, color: "#8A95A8", transform: expanded ? "rotate(180deg)" : undefined, transition: "transform .15s" }} />
-      </button>
-      {expanded && <div style={{ paddingTop: 4 }}>{children}</div>}
-    </div>
-  );
-}
-
-function Chips({ items, active, onToggle }: { items: { id: string; label: string }[]; active: string[]; onToggle: (id: string) => void }) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {items.map(({ id, label }) => {
-        const isActive = active.includes(id);
-        return (
-          <button key={id} type="button" onClick={() => onToggle(id)} className="font-hebrew"
-            style={{ padding: "9px 14px", borderRadius: 12, background: isActive ? "#0A2B6B" : "#fff", color: isActive ? "#fff" : "#4A5568", border: "1px solid", borderColor: isActive ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Filter bottom sheet ──────────────────────────────────────────────────────
-
-export function FilterSheet({
-  filters, places, onApply, onClose,
-}: {
-  filters: PlaceFilters;
-  places: Place[];
-  onApply: (f: PlaceFilters) => void;
-  onClose: () => void;
-}) {
-  const [pending, setPending] = useState<PlaceFilters>({ ...filters });
-
-  // Category helpers
-  const cats = pending.categories ?? [];
-  const showAll = cats.length === 0;
-  // A category's own filters show whenever it's part of the active selection —
-  // not only when it's the sole category picked (user explicitly asked for this:
-  // filtering across several categories at once should still let you narrow each one).
-  const categoryActive = (c: PlaceCategory) => showAll || cats.includes(c);
-  const foodRelated = ["cafe", "food", "kids"] as PlaceCategory[];
-
-  const toggle = <T extends string | number>(key: keyof PlaceFilters, val: T) => {
-    const cur = (pending[key] as T[] | null) ?? [];
-    const next = cur.includes(val) ? cur.filter(x => x !== val) : [...cur, val];
-    setPending(prev => ({ ...prev, [key]: next.length ? next : null }));
-  };
-  const toggleCat = (cat: PlaceCategory) => toggle<PlaceCategory>("categories", cat);
-  const toggleHmo = (id: string) => toggle<string>("hmo", id);
-  const toggleNeighborhood = (n: NeighborhoodGivatayim) => toggle<NeighborhoodGivatayim>("neighborhoods", n);
-  const toggleKosher = (k: KosherStatus) => toggle<KosherStatus>("kosher", k);
-  const togglePrice = (p: 1 | 2 | 3) => toggle<1|2|3>("price_range", p);
-  const toggleBool = (key: keyof PlaceFilters) =>
-    setPending(prev => ({ ...prev, [key]: prev[key] ? null : true }));
-
-  // Per-category groups start collapsed behind "פילטרים נוספים" — except a category
-  // that already has an active filter set on it, so an existing choice stays visible.
-  const [expandedCats, setExpandedCats] = useState<Set<PlaceCategory>>(() => {
-    const s = new Set<PlaceCategory>();
-    if (filters.hmo?.length || filters.doctor_specialty?.length) s.add("doctor");
-    if (filters.cosmetics_specialty?.length) s.add("cosmetics");
-    if (
-      filters.kids_specialty?.length || filters.kids_gan_category?.length || filters.kids_age_track != null || filters.kids_max_price_nis != null ||
-      filters.kids_meal_type?.length || filters.kids_friday?.length || filters.kids_outdoor != null ||
-      filters.kids_vacancy?.length || filters.kids_languages?.length || filters.kids_has_mamad != null ||
-      filters.kids_has_cctv != null || filters.kids_first_aid != null || filters.kids_vegan_friendly != null ||
-      filters.kids_vegetarian_friendly != null || filters.kids_meat_served != null || filters.kids_allergy_friendly != null ||
-      filters.kids_chugim?.length
-    ) s.add("kids");
-    if (filters.sport_gender != null) s.add("sport");
-    if (filters.attraction_venue?.length) s.add("attraction");
-    return s;
-  });
-  const toggleCatExpanded = (c: PlaceCategory) =>
-    setExpandedCats(prev => {
-      const next = new Set(prev);
-      if (next.has(c)) next.delete(c); else next.add(c);
-      return next;
-    });
-
-  const kidsChugimOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of places) {
-      if (p.place_category !== "kids") continue;
-      const a = p.attributes as Record<string, unknown>;
-      const chugim = Array.isArray(a.chugim_types) ? (a.chugim_types as string[]) : [];
-      for (const c of chugim) {
-        const t = (c ?? "").trim();
-        if (t) set.add(t);
-      }
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
-  }, [places]);
-
-  const kidsSpecialtyOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of places) {
-      if (p.place_category !== "kids") continue;
-      const a = p.attributes as Record<string, unknown>;
-      const s = typeof a.specialty === "string" ? a.specialty.trim() : "";
-      if (s) set.add(s);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
-  }, [places]);
-  const doctorSpecialtyOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of places) {
-      if (p.place_category !== "doctor") continue;
-      const a = p.attributes as Record<string, unknown>;
-      const s = typeof a.specialty === "string" ? a.specialty.trim() : "";
-      if (s) set.add(s);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
-  }, [places]);
-  const cosmeticsSpecialtyOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of places) {
-      if (p.place_category !== "cosmetics") continue;
-      const a = p.attributes as Record<string, unknown>;
-      const s = typeof a.specialty === "string" ? a.specialty.trim() : "";
-      if (s) set.add(s);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
-  }, [places]);
-
-  const count = useMemo(() => applyPlaceFilters(places, pending).length, [places, pending]);
-
-  return (
-    <div className="fixed inset-0 z-[500]" style={{ background: "rgba(15,26,46,.4)", backdropFilter: "blur(2px)" }} onClick={onClose}>
-      <div className="absolute left-0 right-0 bottom-0 flex flex-col"
-        style={{ background: "#F6F9FE", borderRadius: "28px 28px 0 0", boxShadow: "0 -10px 30px rgba(10,43,107,.2)", maxHeight: "88%", overflow: "hidden" }}
-        onClick={e => e.stopPropagation()} dir="rtl">
-        {/* Handle */}
-        <div className="flex justify-center pt-2.5 pb-2 shrink-0">
-          <div style={{ width: 42, height: 5, borderRadius: 99, background: "#E5E9F0" }} />
-        </div>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pb-3 shrink-0">
-          <h3 className="font-hebrew" style={{ fontSize: 20, fontWeight: 800 }}>פילטרים</h3>
-          <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%", background: "#E8F0FB", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
-          </button>
-        </div>
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: "0 20px" }}>
-
-          {/* ── Neighborhood (always) ───────────────────────────────────────── */}
-          <Section label="שכונה" first>
-            <Chips items={ALL_NEIGHBORHOODS.map(n => ({ id: n, label: NEIGHBORHOOD_LABELS[n] }))}
-              active={pending.neighborhoods ?? []} onToggle={n => toggleNeighborhood(n as NeighborhoodGivatayim)} />
-          </Section>
-
-          {/* ── Price — kids has its own NIS price filter below, shown per-category */}
-          {(showAll || cats.some(c => c !== "kids")) && (
-            <Section label="מחיר">
-              <Chips items={([1,2,3] as (1|2|3)[]).map(p => ({ id: String(p), label: "₪".repeat(p) }))}
-                active={(pending.price_range ?? []).map(String)} onToggle={p => togglePrice(Number(p) as 1|2|3)} />
-            </Section>
-          )}
-
-          {/* ── Rating (always) ────────────────────────────────────────────── */}
-          <Section label="דירוג">
-            <label className="flex items-center gap-2 font-hebrew text-sm cursor-pointer mb-2">
-              <input type="checkbox" checked={pending.rated_only}
-                onChange={e => setPending(prev => ({ ...prev, rated_only: e.target.checked }))}
-                style={{ accentColor: "#0A2B6B" }} />
-              רק מדורגים
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="font-hebrew text-xs" style={{ color: "#8A95A8" }}>דירוג מינימום</span>
-              {([3,3.5,4,4.5] as number[]).map(v => {
-                const active = pending.min_rating === v;
-                return (
-                  <button key={v} type="button"
-                    onClick={() => setPending(prev => ({ ...prev, min_rating: active ? null : v }))}
-                    className="font-hebrew text-xs font-bold"
-                    style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", cursor: "pointer" }}>
-                    {v}+
-                  </button>
-                );
-              })}
-            </div>
-          </Section>
-
-          {/* ── Hours (always) ─────────────────────────────────────────────── */}
-          <Section label="שעות פעילות">
-            <input
-              type="text"
-              value={pending.hours_contains ?? ""}
-              onChange={e => setPending(prev => ({ ...prev, hours_contains: e.target.value.trim() ? e.target.value : null }))}
-              placeholder="לדוגמה: 7:30, 8:00, 16:00..."
-              className="w-full font-hebrew"
-              style={{ border: "1px solid #E5E9F0", borderRadius: 12, padding: "10px 12px", fontSize: 13, outline: "none" }}
-            />
-          </Section>
-
-          {/* ── Kosher — food-related categories or no filter ──────────────── */}
-          {(showAll || cats.some(c => foodRelated.includes(c))) && (
-            <Section label="כשרות">
-              <Chips items={[{ id: "CERTIFIED", label: "כשר" }, { id: "NOT_CERTIFIED", label: "לא כשר" }]}
-                active={pending.kosher ?? []} onToggle={k => toggleKosher(k as KosherStatus)} />
-            </Section>
-          )}
-
-          {/* ── Doctor group ──────────────────────────────────────────────── */}
-          {categoryActive("doctor") && (
-            <CategoryFilterGroup category="doctor" expanded={expandedCats.has("doctor")} onToggle={() => toggleCatExpanded("doctor")}>
-              <Section label="קופת חולים" first>
-                <div className="grid grid-cols-2 gap-2">
-                  {HMO_LIST.map(hmo => {
-                    const active = pending.hmo?.includes(hmo.id) ?? false;
-                    return (
-                      <button key={hmo.id} type="button" onClick={() => toggleHmo(hmo.id)}
-                        className="flex flex-col items-center"
-                        style={{ border: `1.5px solid ${active ? "#0A2B6B" : "#E5E9F0"}`, borderRadius: 14, padding: "10px 8px", background: active ? "#E8F0FB" : "#fff", cursor: "pointer", transition: "all .15s" }}>
-                        <img src={hmo.logo} alt={hmo.label} style={{ width: "100%", height: 36, objectFit: "contain" }} />
-                      </button>
-                    );
-                  })}
-                </div>
-              </Section>
-              {doctorSpecialtyOptions.length > 0 && (
-                <Section label="תחום התמחות">
-                  <Chips items={doctorSpecialtyOptions.map(s => ({ id: s, label: s }))}
-                    active={pending.doctor_specialty ?? []}
-                    onToggle={v => toggle<string>("doctor_specialty", v)} />
-                </Section>
-              )}
-            </CategoryFilterGroup>
-          )}
-
-          {/* ── Cosmetics group ───────────────────────────────────────────── */}
-          {categoryActive("cosmetics") && cosmeticsSpecialtyOptions.length > 0 && (
-            <CategoryFilterGroup category="cosmetics" expanded={expandedCats.has("cosmetics")} onToggle={() => toggleCatExpanded("cosmetics")}>
-              <Section label="תחום התמחות" first>
-                <Chips items={cosmeticsSpecialtyOptions.map(s => ({ id: s, label: s }))}
-                  active={pending.cosmetics_specialty ?? []}
-                  onToggle={v => toggle<string>("cosmetics_specialty", v)} />
-              </Section>
-            </CategoryFilterGroup>
-          )}
-
-          {/* ── Kids group ───────────────────────────────────────────────── */}
-          {categoryActive("kids") && (
-            <CategoryFilterGroup category="kids" expanded={expandedCats.has("kids")} onToggle={() => toggleCatExpanded("kids")}>
-            {kidsSpecialtyOptions.length > 0 && (
-              <Section label="סוג" first>
-                <Chips items={kidsSpecialtyOptions.map(s => ({ id: s, label: s }))}
-                  active={pending.kids_specialty ?? []}
-                  onToggle={v => toggle<string>("kids_specialty", v)} />
-              </Section>
-            )}
-            <Section label="סוג גן" first={kidsSpecialtyOptions.length === 0}>
-              <Chips items={[
-                { id: "MAON_SYMBOL",                    label: "מעון סמל" },
-                { id: "MISHPACHTON",                    label: "משפחתון" },
-                { id: "PRIVATE_GAN",                    label: "גן פרטי" },
-                { id: "MUNICIPAL_GAN",                  label: "גן עירוני" },
-                { id: "TZAHARON_MUNICIPAL",             label: "צהרון עירוני" },
-                { id: "TZAHARON_PRIVATE_SUPERVISED",    label: "צהרון פרטי מפוקח" },
-                { id: "TZAHARON_PRIVATE_UNSUPERVISED",  label: "צהרון פרטי ללא פיקוח" },
-              ]} active={pending.kids_gan_category ?? []}
-                onToggle={v => toggle<string>("kids_gan_category", v)} />
-            </Section>
-            <Section label="גיל הילד">
-              <Chips items={[{ id: "0-3", label: "עד גיל 3" }, { id: "3+", label: "מגיל 3" }]}
-                active={pending.kids_age_track ? [pending.kids_age_track] : []}
-                onToggle={v => setPending(prev => ({ ...prev, kids_age_track: prev.kids_age_track === v ? null : v as "0-3" | "3+" }))} />
-            </Section>
-            <Section label="מחיר חודשי מקסימלי">
-              <div className="flex flex-wrap gap-1.5">
-                {[1500, 2500, 4000, 6000, 8000].map(p => {
-                  const active = pending.kids_max_price_nis === p;
-                  return (
-                    <button key={p} type="button"
-                      onClick={() => setPending(prev => ({ ...prev, kids_max_price_nis: active ? null : p }))}
-                      className="font-hebrew"
-                      style={{ padding: "9px 14px", borderRadius: 12, background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", border: "1px solid", borderColor: active ? "#0A2B6B" : "#E5E9F0", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                      עד ₪{p.toLocaleString("he-IL")}
-                    </button>
-                  );
-                })}
-              </div>
-            </Section>
-            <Section label="סוג אוכל">
-              <Chips items={[
-                { id: "IN_HOUSE_COOK", label: "בישול במקום" },
-                { id: "EXTERNAL_CATERING", label: "קייטרינג" },
-                { id: "PARENTS_BRING", label: "הורים מביאים" },
-                { id: "MIXED", label: "מעורב" },
-              ]} active={pending.kids_meal_type ?? []}
-                onToggle={v => toggle<string>("kids_meal_type", v)} />
-            </Section>
-            <Section label="ימי שישי">
-              <Chips items={[
-                { id: "NONE", label: "ללא שישי" },
-                { id: "EVERY_FRIDAY", label: "כל שישי" },
-                { id: "EVERY_OTHER_FRIDAY", label: "שישי לסירוגין" },
-              ]} active={pending.kids_friday ?? []}
-                onToggle={v => toggle<string>("kids_friday", v)} />
-            </Section>
-            <Section label="שפות">
-              <Chips items={[
-                { id: "HEBREW", label: "עברית" },
-                { id: "ENGLISH", label: "אנגלית" },
-                { id: "RUSSIAN", label: "רוסית" },
-                { id: "ARABIC", label: "ערבית" },
-              ]} active={pending.kids_languages ?? []}
-                onToggle={v => toggle<string>("kids_languages", v)} />
-            </Section>
-            <Section label="תשתיות ובטיחות">
-              <Chips items={[
-                { id: "outdoor", label: "חצר חיצונית" },
-                { id: "mamad", label: 'ממ"ד' },
-                { id: "cctv", label: "מצלמות" },
-                { id: "firstaid", label: "עזרה ראשונה" },
-              ]}
-                active={[
-                  ...(pending.kids_outdoor === true ? ["outdoor"] : []),
-                  ...(pending.kids_has_mamad === true ? ["mamad"] : []),
-                  ...(pending.kids_has_cctv === true ? ["cctv"] : []),
-                  ...(pending.kids_first_aid === true ? ["firstaid"] : []),
-                ]}
-                onToggle={v => {
-                  if (v === "outdoor") setPending(prev => ({ ...prev, kids_outdoor: prev.kids_outdoor ? null : true }));
-                  else if (v === "mamad") setPending(prev => ({ ...prev, kids_has_mamad: prev.kids_has_mamad ? null : true }));
-                  else if (v === "cctv") setPending(prev => ({ ...prev, kids_has_cctv: prev.kids_has_cctv ? null : true }));
-                  else if (v === "firstaid") setPending(prev => ({ ...prev, kids_first_aid: prev.kids_first_aid ? null : true }));
-                }} />
-            </Section>
-            <Section label="תזונה">
-              <Chips items={[
-                { id: "vegan", label: "טבעוני" },
-                { id: "vegetarian", label: "צמחוני" },
-                { id: "meat", label: "מגיש בשר" },
-                { id: "allergy", label: "ידידותי לאלרגיות" },
-              ]}
-                active={[
-                  ...(pending.kids_vegan_friendly === true ? ["vegan"] : []),
-                  ...(pending.kids_vegetarian_friendly === true ? ["vegetarian"] : []),
-                  ...(pending.kids_meat_served === true ? ["meat"] : []),
-                  ...(pending.kids_allergy_friendly === true ? ["allergy"] : []),
-                ]}
-                onToggle={v => {
-                  if (v === "vegan") toggleBool("kids_vegan_friendly");
-                  else if (v === "vegetarian") toggleBool("kids_vegetarian_friendly");
-                  else if (v === "meat") toggleBool("kids_meat_served");
-                  else if (v === "allergy") toggleBool("kids_allergy_friendly");
-                }} />
-            </Section>
-            {kidsChugimOptions.length > 0 && (
-              <Section label="חוגים">
-                <Chips items={kidsChugimOptions.map(c => ({ id: c, label: c }))}
-                  active={pending.kids_chugim ?? []}
-                  onToggle={v => toggle<string>("kids_chugim", v)} />
-              </Section>
-            )}
-            <Section label="מקום פנוי">
-              <Chips items={[
-                { id: "Available", label: "יש מקום" },
-                { id: "Limited", label: "מוגבל" },
-                { id: "Full", label: "מלא" },
-              ]} active={pending.kids_vacancy ?? []}
-                onToggle={v => toggle<string>("kids_vacancy", v)} />
-            </Section>
-            </CategoryFilterGroup>
-          )}
-
-          {/* ── Sport-specific — hidden category (VISIBLE_CATEGORIES excludes it), so this
-               only ever renders if explicitly selected, never via the "show all" default. */}
-          {cats.includes("sport") && (
-            <CategoryFilterGroup category="sport" expanded={expandedCats.has("sport")} onToggle={() => toggleCatExpanded("sport")}>
-            <Section label="קהל יעד" first>
-              <Chips items={[
-                { id: "women_only", label: "נשים בלבד" },
-                { id: "men_only", label: "גברים בלבד" },
-              ]} active={pending.sport_gender ? [pending.sport_gender] : []}
-                onToggle={v => setPending(prev => ({ ...prev, sport_gender: prev.sport_gender === v ? null : v }))} />
-            </Section>
-            </CategoryFilterGroup>
-          )}
-
-          {/* ── Attraction-specific — hidden category, same reasoning as sport above. */}
-          {cats.includes("attraction") && (
-            <CategoryFilterGroup category="attraction" expanded={expandedCats.has("attraction")} onToggle={() => toggleCatExpanded("attraction")}>
-            <Section label="מיקום" first>
-              <Chips items={[
-                { id: "indoor", label: "פנים" },
-                { id: "outdoor", label: "חוץ" },
-                { id: "both", label: "פנים וחוץ" },
-              ]} active={pending.attraction_venue ?? []}
-                onToggle={v => toggle<string>("attraction_venue", v)} />
-            </Section>
-            </CategoryFilterGroup>
-          )}
-
-          <div style={{ height: 8 }} />
-        </div>
-        {/* Footer */}
-        <div className="shrink-0 flex gap-2.5" style={{ padding: "14px 18px calc(86px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)" }}>
-          <button type="button" onClick={() => { setPending({ ...DEFAULT_PLACE_FILTERS }); onApply({ ...DEFAULT_PLACE_FILTERS }); onClose(); }}
-            className="font-hebrew font-bold" style={{ flex: "0 0 35%", background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, padding: 14, fontSize: 14, color: "#4A5568", cursor: "pointer" }}>
-            נקה הכל
-          </button>
-          <button type="button" onClick={() => { onApply(pending); onClose(); }}
-            disabled={count === 0}
-            className="flex-1 flex items-center justify-center gap-2 font-hebrew font-bold"
-            style={{ background: count === 0 ? "#C5CDD8" : "#0A2B6B", color: "#fff", borderRadius: 16, padding: 14, fontSize: 14, border: "none", cursor: count === 0 ? "not-allowed" : "pointer" }}>
-            {count === 0 ? "אין תוצאות" : `הצג ${count} מקומות`}
-            {count > 0 && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 14, height: 14, transform: "scaleX(-1)" }}><path d="M5 12h14M13 5l7 7-7 7"/></svg>}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function PlaceFeedPanel({
   places,
   selectedPlaceId,
   onSelectPlace,
-  filters,
-  onFiltersChange,
+  onHoverPlace,
+  category,
+  onSelectCategory,
+  facets,
+  onFacetChange,
+  onClearFilters,
+  variant,
   userLocation = null,
   isVisible,
   savedIds = new Set(),
@@ -635,7 +184,6 @@ export function PlaceFeedPanel({
   const [apiSearchResults, setApiSearchResults] = useState<Place[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
-  const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -682,18 +230,7 @@ export function PlaceFeedPanel({
 
   const featuredPlace = useMemo(() => visiblePlaces.find(p => p.avg_rating != null) ?? null, [visiblePlaces]);
 
-  const activeFilterCount =
-    (filters.categories?.length ?? 0) +
-    (filters.neighborhoods?.length ?? 0) +
-    (filters.hmo?.length ?? 0) +
-    (filters.kosher?.length ?? 0) +
-    (filters.price_range?.length ?? 0);
-
-  const toggleCategory = (cat: PlaceCategory) => {
-    const current = filters.categories ?? [];
-    const next = current.includes(cat) ? current.filter(c => c !== cat) : [...current, cat];
-    onFiltersChange({ ...filters, categories: next.length ? next : null });
-  };
+  const searching = searchQuery.trim() !== "";
 
   if (!isVisible) return null;
 
@@ -756,7 +293,7 @@ export function PlaceFeedPanel({
         </div>
       </div>
 
-      {/* ── Search + filter ──────────────────────────────────────────────────── */}
+      {/* ── Search ───────────────────────────────────────────────────────────── */}
       <div style={{ background: "#fff", padding: "0 20px 12px", display: "flex", gap: 8, flexShrink: 0 }}>
         <div className="relative flex-1">
           <Search className="absolute pointer-events-none" style={{ width: 16, height: 16, color: "#8A95A8", top: "50%", transform: "translateY(-50%)", insetInlineStart: 14 }} />
@@ -773,32 +310,24 @@ export function PlaceFeedPanel({
             </button>
           )}
         </div>
-        {/* Filter button */}
-        <button type="button" onClick={() => setShowFilterSheet(true)}
-          className="relative flex items-center justify-center"
-          style={{ width: 44, height: 44, borderRadius: 14, background: "#fff", border: "1px solid #E5E9F0", color: "#0A2B6B", cursor: "pointer", boxShadow: "0 1px 3px rgba(10,43,107,.04)", flexShrink: 0 }}>
-          <SlidersHorizontal style={{ width: 16, height: 16 }} />
-          {activeFilterCount > 0 && (
-            <span className="absolute flex items-center justify-center" style={{ top: -4, insetInlineEnd: -4, width: 18, height: 18, borderRadius: "50%", background: "#C8A24B", fontSize: 10, fontWeight: 800, color: "#fff", border: "2px solid #F6F9FE" }}>
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
       </div>
 
-      {/* ── Category chips ───────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", flexWrap: "wrap", padding: "0 20px 14px", gap: 8, flexShrink: 0, background: "#fff" }}>
-        {ALL_CATEGORIES.map(cat => {
-          const active = filters.categories?.includes(cat) ?? false;
-          return (
-            <button key={cat} type="button" onClick={() => toggleCategory(cat)} aria-pressed={active}
-              className="flex items-center font-hebrew"
-              style={{ gap: 6, padding: "8px 14px", borderRadius: 999, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0, cursor: "pointer", border: "1px solid", transition: "background .15s, color .15s, border-color .15s", background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568", borderColor: active ? "#0A2B6B" : "#E5E9F0" }}>
-              <span style={{ fontSize: 13 }}>{CATEGORY_EMOJI[cat]}</span>
-              {PLACE_CATEGORY_LABELS[cat]}
-            </button>
-          );
-        })}
+      {/* ── Category tabs + filter pills ─────────────────────────────────────── */}
+      <div style={{ padding: "0 20px 12px", flexShrink: 0, background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
+        <CategoryTabs
+          active={category}
+          searching={searching}
+          onSelect={(c) => { if (searching) setSearchQuery(""); onSelectCategory(c); }}
+        />
+        {!searching && (
+          <FilterPills
+            facets={facets}
+            onChange={onFacetChange}
+            onClearAll={onClearFilters}
+            variant={variant}
+            resultCount={visiblePlaces.length}
+          />
+        )}
       </div>
 
       {/* ── Scrollable feed ──────────────────────────────────────────────────── */}
@@ -838,6 +367,7 @@ export function PlaceFeedPanel({
           <>
             {/* Featured card */}
             {featuredPlace && sort === "top" && apiSearchResults === null && (
+              <div onMouseEnter={() => onHoverPlace?.(featuredPlace.id)} onMouseLeave={() => onHoverPlace?.(null)}>
               <PlaceCard
                 place={featuredPlace}
                 isSelected={selectedPlaceId === featuredPlace.id}
@@ -847,20 +377,22 @@ export function PlaceFeedPanel({
                 isSaved={savedIds.has(featuredPlace.id)}
                 onToggleSave={onToggleSave}
               />
+              </div>
             )}
             {/* Regular cards */}
             {visiblePlaces
               .filter(p => !(sort === "top" && apiSearchResults === null && p.id === featuredPlace?.id))
               .map(place => (
-                <PlaceCard
-                  key={place.id}
-                  place={place}
-                  isSelected={selectedPlaceId === place.id}
-                  onSelect={onSelectPlace}
-                  userLocation={userLocation}
-                  isSaved={savedIds.has(place.id)}
-                  onToggleSave={onToggleSave}
-                />
+                <div key={place.id} onMouseEnter={() => onHoverPlace?.(place.id)} onMouseLeave={() => onHoverPlace?.(null)}>
+                  <PlaceCard
+                    place={place}
+                    isSelected={selectedPlaceId === place.id}
+                    onSelect={onSelectPlace}
+                    userLocation={userLocation}
+                    isSaved={savedIds.has(place.id)}
+                    onToggleSave={onToggleSave}
+                  />
+                </div>
               ))}
           </>
         )}
@@ -871,15 +403,6 @@ export function PlaceFeedPanel({
         <SortSheet sort={sort} onSelect={setSort} onClose={() => setShowSortSheet(false)} />
       )}
 
-      {/* ── Filter sheet ─────────────────────────────────────────────────────── */}
-      {showFilterSheet && (
-        <FilterSheet
-          filters={filters}
-          places={places}
-          onApply={onFiltersChange}
-          onClose={() => setShowFilterSheet(false)}
-        />
-      )}
     </div>
   );
 }

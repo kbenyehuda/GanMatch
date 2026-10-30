@@ -12,6 +12,7 @@ const supabaseUrl = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // GET /api/places?minLon=&minLat=&maxLon=&maxLat=&[categories=doctor,cafe]
+// GET /api/places?all=1 — every place in the city, including ones with no pin (lat/lon null)
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
@@ -20,6 +21,19 @@ export async function GET(request: NextRequest) {
       { error: "Supabase not configured" },
       { status: 400 }
     );
+  }
+
+  if (searchParams.get("all") === "1") {
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const { data, error } = await supabase.rpc("get_all_places", { p_limit: 5000 });
+    if (error) {
+      console.error("[API places] get_all_places RPC error:", error);
+      return NextResponse.json(
+        { error: error.message, code: error.code, details: error.details },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json((data ?? []) as Place[]);
   }
 
   const minLon = parseFloat(searchParams.get("minLon") ?? "");

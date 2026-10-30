@@ -92,6 +92,8 @@ function initialViewportFromFocus(focus: {
 interface MapContainerProps {
   places: Place[];
   selectedPlaceId: string | null;
+  /** Place hovered in the list — drawn as a raised pin on top of everything, even inside a cluster. */
+  highlightedPlaceId?: string | null;
   onSelectPlace: (place: Place | null) => void;
   onSelectCluster?: (places: Place[]) => void;
   onBoundsChange: (bounds: Bounds) => void;
@@ -112,6 +114,7 @@ interface MapContainerProps {
 export function MapContainer({
   places,
   selectedPlaceId,
+  highlightedPlaceId = null,
   onSelectPlace,
   onSelectCluster,
   onBoundsChange,
@@ -505,6 +508,38 @@ export function MapContainer({
                 }}
               >
                 {emoji}
+              </div>
+            </Marker>
+          );
+        })()}
+
+      {/* Hovered in the list — raised pin above clusters and other pins */}
+      {highlightedPlaceId &&
+        (() => {
+          const hp = places.find((p) => p.id === highlightedPlaceId);
+          if (!hp || hp.lat == null || hp.lon == null) return null;
+          const { color, emoji } = getPlacePinConfig(hp);
+          return (
+            <Marker
+              key={`highlight-${hp.id}`}
+              longitude={hp.lon}
+              latitude={hp.lat}
+              anchor="bottom"
+              style={{ zIndex: 20 }}
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+                onSelectPlace(hp);
+              }}
+              className="cursor-pointer"
+            >
+              <div className="flex flex-col items-center" title={hp.name}>
+                <div
+                  className="flex items-center justify-center rounded-full text-lg border-[3px] border-white shadow-xl"
+                  style={{ backgroundColor: color, width: "2.6rem", height: "2.6rem", outline: `4px solid ${color}55` }}
+                >
+                  {emoji}
+                </div>
+                <div style={{ width: 0, height: 0, borderInline: "7px solid transparent", borderTop: `9px solid ${color}`, marginTop: -2 }} />
               </div>
             </Marker>
           );

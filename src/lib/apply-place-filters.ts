@@ -1,6 +1,25 @@
 import type { Place } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
 
+export const KIDS_GAN_TYPE = "גני ילדים";
+
+/**
+ * The kids "type" of a place. Government-data ganim and צהרונים carry only a
+ * gan_category and no specialty, so they count as גני ילדים.
+ */
+export function kidsTypeOf(p: Place): string | null {
+  const a = p.attributes as Record<string, unknown>;
+  const s = typeof a.specialty === "string" ? a.specialty.trim() : "";
+  if (s) return s;
+  return a.gan_category ? KIDS_GAN_TYPE : null;
+}
+
+/** The three צהרון variants (municipal / supervised / unsupervised) filter as one "TZAHARON". */
+export function mergedGanCategory(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw) return null;
+  return raw.startsWith("TZAHARON") ? "TZAHARON" : raw;
+}
+
 export function applyPlaceFilters(
   places: Place[],
   filters: PlaceFilters,
@@ -33,14 +52,14 @@ export function applyPlaceFilters(
   if (filters.kids_specialty?.length)
     result = result.filter((p) => {
       if (p.place_category !== "kids") return true;
-      const a = p.attributes as Record<string, unknown>;
-      return filters.kids_specialty!.includes(String(a.specialty ?? ""));
+      return filters.kids_specialty!.includes(kidsTypeOf(p) ?? "");
     });
   if (filters.kids_gan_category?.length)
     result = result.filter((p) => {
       if (p.place_category !== "kids") return true;
       const a = p.attributes as Record<string, unknown>;
-      return filters.kids_gan_category!.includes(String(a.gan_category ?? ""));
+      const g = String(a.gan_category ?? "");
+      return filters.kids_gan_category!.some((v) => v === g || v === mergedGanCategory(g));
     });
   if (filters.kids_age_track != null)
     result = result.filter((p) => {
@@ -150,6 +169,12 @@ export function applyPlaceFilters(
       if (p.place_category !== "doctor") return true;
       const a = p.attributes as Record<string, unknown>;
       return filters.doctor_specialty!.includes(String(a.specialty ?? ""));
+    });
+  if (filters.doctor_for_children)
+    result = result.filter((p) => {
+      if (p.place_category !== "doctor") return true;
+      const a = p.attributes as Record<string, unknown>;
+      return a.for_children === true;
     });
   // Cosmetics-specific
   if (filters.cosmetics_specialty?.length)

@@ -285,8 +285,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const detailTags: { label: string; style: React.CSSProperties }[] = [
     { label: PLACE_CATEGORY_LABELS[place.place_category], style: { background: "#E8F0FB", color: "#0A2B6B" } },
   ];
-  if (place.hmo?.[0] && HMO_LABELS[place.hmo[0]]) {
-    detailTags.push({ label: HMO_LABELS[place.hmo[0]], style: { background: "#FBF1D8", color: "#9C7A21" } });
+  for (const h of place.hmo ?? []) {
+    if (HMO_LABELS[h]) detailTags.push({ label: HMO_LABELS[h], style: { background: "#FBF1D8", color: "#9C7A21" } });
   }
   if (place.kosher === "CERTIFIED") {
     detailTags.push({ label: "כשר", style: { background: "#DCF3E6", color: "#1D7F4F" } });

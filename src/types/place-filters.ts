@@ -29,6 +29,7 @@ export interface PlaceFilters {
   kids_chugim: string[] | null;
   // Doctor-specific
   doctor_specialty: string[] | null;
+  doctor_for_children: boolean | null; // "known to see children" — attributes.for_children === true
   // Cosmetics-specific
   cosmetics_specialty: string[] | null;
   // General — any category with an hours field
@@ -39,8 +40,11 @@ export interface PlaceFilters {
   attraction_venue: string[] | null;
 }
 
+/** The UI shows exactly one category at a time (search is the exception — it looks across all). */
+export const DEFAULT_CATEGORY: PlaceCategory = "kids";
+
 export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
-  categories: null,
+  categories: [DEFAULT_CATEGORY],
   neighborhoods: null,
   kosher: null,
   price_range: null,
@@ -66,11 +70,16 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   kids_allergy_friendly: null,
   kids_chugim: null,
   doctor_specialty: null,
+  doctor_for_children: null,
   cosmetics_specialty: null,
   hours_contains: null,
   sport_gender: null,
   attraction_venue: null,
 };
+
+export function activeCategory(f: PlaceFilters): PlaceCategory {
+  return f.categories?.[0] ?? DEFAULT_CATEGORY;
+}
 
 export function countActivePlaceFilters(f: PlaceFilters): number {
   let n = 0;
@@ -100,6 +109,7 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.kids_chugim != null && f.kids_chugim.length > 0) n++;
   if (f.kids_specialty != null && f.kids_specialty.length > 0) n++;
   if (f.doctor_specialty != null && f.doctor_specialty.length > 0) n++;
+  if (f.doctor_for_children != null) n++;
   if (f.cosmetics_specialty != null && f.cosmetics_specialty.length > 0) n++;
   if (f.hours_contains != null && f.hours_contains.trim() !== "") n++;
   if (f.sport_gender != null) n++;
