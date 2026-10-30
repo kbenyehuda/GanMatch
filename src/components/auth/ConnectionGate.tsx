@@ -123,9 +123,9 @@ export function ConnectionGate({
           ניתן להתחבר בכל עת.
           <br />
           בהתחברות אתם מסכימים ל
-          <Link href="/privacy" style={{ color: "rgba(255,255,255,.75)", textDecoration: "underline" }}>
-            מדיניות הפרטיות ותנאי השימוש
-          </Link>
+          <Link href="/terms" style={{ color: "rgba(255,255,255,.75)", textDecoration: "underline" }}>תנאי השימוש</Link>
+          {" "}ול
+          <Link href="/privacy" style={{ color: "rgba(255,255,255,.75)", textDecoration: "underline" }}>מדיניות הפרטיות</Link>
           .
         </p>
       </div>

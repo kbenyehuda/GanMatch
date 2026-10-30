@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MapPin, PencilLine, ShieldCheck, Baby, Stethoscope, Sparkles, Mail, MessageCircle } from "lucide-react";
 import { PLACE_CATEGORY_COLORS } from "@/types/places";
+import { CONTACT_EMAIL } from "@/lib/contact";
+import { LegalLinks } from "@/components/legal/LegalPage";
 
 export const metadata: Metadata = {
   title: "אודות | GiveMyTime",
-  description: "מה זה GiveMyTime, מאיפה המידע מגיע, ואיך אפשר לעזור.",
+  description: "מה זה GiveMyTime, איך זה עובד, מאיפה המידע מגיע, ואיך אפשר לעזור.",
 };
 
 const CATEGORY_CHIPS = [
@@ -27,8 +29,8 @@ const STEPS = [
   },
   {
     Icon: ShieldCheck,
-    title: "עובר בדיקת שכנות",
-    text: "כל ביקורת עוברת בדיקה קצרה לפני שהיא עולה, ככה שאפשר לסמוך על מה שכתוב שם.",
+    title: "נבדק לפני שעולה",
+    text: "כל המלצה חדשה עוברת בדיקה אוטומטית לפני שהיא עולה, ומה שהבדיקה עוצרת נבדק ידנית. ההמלצות מקבוצת הווטסאפ נבדקו אחת אחת.",
   },
 ];
 
@@ -149,6 +151,21 @@ export default function AboutPage() {
 
       {/* Body */}
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "58px 20px 80px" }}>
+        {/* "איך זה עובד" lives here now (merged with אודות, user 2026-10-30) */}
+        <h2 className="font-hebrew text-center" style={{ fontSize: 16, fontWeight: 800, color: "#0F1A2E", marginBottom: 12 }}>
+          ▶ איך זה עובד? <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 13 }}>45 שניות</span>
+        </h2>
+        <video
+          src="/video/givemytime-intro.mp4"
+          poster="/video/givemytime-intro.jpg"
+          controls
+          playsInline
+          muted
+          preload="none"
+          aria-label="סרטון: איך זה עובד"
+          style={{ display: "block", margin: "0 auto 40px", height: "min(70vh, 560px)", width: "auto", maxWidth: "100%", aspectRatio: "9 / 16", objectFit: "contain", borderRadius: 18, background: "#0A2B6B", boxShadow: "0 12px 32px rgba(10,43,107,.18)" }}
+        />
+
         <p
           className="font-hebrew text-center"
           style={{ fontSize: 14, color: "#5A6472", lineHeight: 1.85, maxWidth: 560, margin: "0 auto 40px" }}
@@ -213,6 +230,19 @@ export default function AboutPage() {
           </div>
         </div>
 
+        <div style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 18, padding: "20px 22px", marginBottom: 16 }}>
+          <h3 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, color: "#0F1A2E", marginBottom: 6 }}>מאיפה ההמלצות?</h3>
+          <p className="font-hebrew" style={{ fontSize: 13.5, color: "#5A6472", lineHeight: 1.75 }}>
+            חלק מההמלצות באתר נכתבו על ידי משתמשים כאן באתר. חלק אחר מבוסס על המלצות שהורים כתבו בקבוצת ווטסאפ שכונתית
+            בגבעתיים. את אלה ניסחנו מחדש בקצרה בעזרת כלי בינה מלאכותית ובדקנו אחת אחת לפני פרסום. הן מופיעות בלי שם ובלי
+            פרט מזהה, ומסומנות ככאלה. ההמלצות הן דעה אישית, וייתכן שאינן עדכניות, אז כדאי תמיד לבדוק ישירות מול המקום.
+            כתבתם המלצה ורוצים שתוסר? כתבו לנו ב-<a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "#1F5BB5", fontWeight: 700 }}>{CONTACT_EMAIL}</a>.
+          </p>
+          <p className="font-hebrew" style={{ fontSize: 12.5, color: "#8A95A8", lineHeight: 1.7, marginTop: 10 }}>
+            <strong>מקורות מידע:</strong> נתוני מעונות: data.gov.il. נתוני מפה וחלק מפרטי המקומות: © תורמי OpenStreetMap (רישיון ODbL). מפה: © Mapbox.
+          </p>
+        </div>
+
         <div
           className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-start"
           style={{
@@ -254,10 +284,12 @@ export default function AboutPage() {
         >
           <Mail style={{ width: 14, height: 14 }} />
           יש רעיון? מצאתם באג? יאללה תכתבו:{" "}
-          <a href="mailto:kbenyehuda2@gmail.com" style={{ color: "#1F5BB5", fontWeight: 700 }}>
-            kbenyehuda2@gmail.com
+          <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "#1F5BB5", fontWeight: 700 }}>
+            {CONTACT_EMAIL}
           </a>
         </div>
+
+        <LegalLinks />
       </div>
     </div>
   );
