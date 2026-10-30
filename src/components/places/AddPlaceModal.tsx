@@ -124,6 +124,11 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
   const [website, setWebsite] = useState("");
   const [hours, setHours] = useState("");
   const [showMoreFields, setShowMoreFields] = useState(false);
+  // A private person (babysitter, caregiver) is saved hidden until she agrees; we need a way to ask her
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [consentContact, setConsentContact] = useState("");
+  const [savedHidden, setSavedHidden] = useState(false);
+  const isPrivatePerson = category === "kids" && isPrivate;
 
   // Review
   const [showReview, setShowReview] = useState(false);
@@ -136,11 +141,12 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = name.trim().length > 0 && category !== null && resolvedLocation !== null && !submitting;
+  const canSubmit = name.trim().length > 0 && category !== null && !submitting
+    && (isPrivatePerson ? consentContact.trim().length > 0 : resolvedLocation !== null);
 
   const submit = useCallback(async () => {
     if (!canSubmit || !user || !session) return;
-    if (!resolvedLocation) { setError("נא לבחור מיקום"); return; }
+    if (!isPrivatePerson && !resolvedLocation) { setError("נא לבחור מיקום"); return; }
     setSubmitting(true);
     setError(null);
     try {
@@ -150,9 +156,9 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
         body: JSON.stringify({
           name: name.trim(),
           place_category: category,
-          lon: resolvedLocation.lon,
-          lat: resolvedLocation.lat,
-          address: address.trim() || locationLabel || null,
+          lon: isPrivatePerson ? null : resolvedLocation?.lon ?? null,
+          lat: isPrivatePerson ? null : resolvedLocation?.lat ?? null,
+          address: isPrivatePerson ? null : address.trim() || locationLabel || null,
           description: description.trim() || null,
           phone: phone.trim() || null,
           website: website.trim() || null,
@@ -161,23 +167,42 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
           review_text: showReview ? reviewText.trim() || null : null,
           review_is_anonymous: reviewAnonymous,
           reviewer_public_name: !reviewAnonymous ? reviewerName.trim() || null : null,
+          is_private_person: isPrivatePerson,
+          consent_contact: isPrivatePerson ? consentContact.trim() : null,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
+      if (data.hidden) { setSavedHidden(true); return; }
       onSuccess(data.place as Place);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "שגיאה");
     } finally {
       setSubmitting(false);
     }
-  }, [canSubmit, user, session, resolvedLocation, name, category, address, locationLabel, description, phone, website, hours, showReview, reviewRating, reviewText, reviewAnonymous, reviewerName, onSuccess]);
+  }, [canSubmit, user, session, resolvedLocation, name, category, address, locationLabel, description, phone, website, hours, showReview, reviewRating, reviewText, reviewAnonymous, reviewerName, isPrivatePerson, consentContact, onSuccess]);
 
   const inputStyle = {
     background: "#fff", border: "1px solid #E5E9F0", borderRadius: 12,
     padding: "11px 14px", fontSize: 14, color: "#0F1A2E", outline: "none",
     width: "100%", boxSizing: "border-box" as const,
   };
+
+  if (savedHidden) {
+    return (
+      <div className="flex flex-col h-full bg-white items-center justify-center text-center" dir="rtl" style={{ padding: 28 }}>
+        <span style={{ fontSize: 36 }}>🙏</span>
+        <h2 className="font-hebrew font-bold mt-3" style={{ fontSize: 17, color: "#0A2B6B" }}>תודה! ההמלצה נשמרה</h2>
+        <p className="font-hebrew mt-2" style={{ fontSize: 14, color: "#4A5568", lineHeight: 1.7, maxWidth: 320 }}>
+          נפנה אליה לבקש הסכמה, והיא תופיע באתר רק אחרי שתאשר.
+        </p>
+        <button type="button" onClick={onClose} className="font-hebrew font-bold mt-5"
+          style={{ padding: "11px 28px", borderRadius: 14, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", fontSize: 14, border: "none", cursor: "pointer" }}>
+          סגירה
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white" dir="rtl">
@@ -201,8 +226,8 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
       {/* Scrollable form */}
       <div className="flex-1 overflow-y-auto" style={{ padding: "20px 20px 48px" }}>
 
-        {/* ── Location ─────────────────────────────────────────────────────── */}
-        <div className="mb-4">
+        {/* ── Location (none for a private person: we never show where she lives) ── */}
+        {!isPrivatePerson && <div className="mb-4">
           <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8" }}>
             מיקום <span style={{ color: "#C53030" }}>*</span>
           </label>
@@ -261,7 +286,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* ── Name ─────────────────────────────────────────────────────────── */}
         <div className="mb-4">
@@ -295,15 +320,37 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
           </div>
         </div>
 
+        {/* ── Private person (kids only) ───────────────────────────────────── */}
+        {category === "kids" && (
+          <div className="mb-4 rounded-xl p-3" style={{ background: "#F6F9FE", border: "1px solid #E5E9F0" }}>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} style={{ accentColor: "#0A2B6B" }} />
+              <span className="font-hebrew text-sm font-semibold" style={{ color: "#0A2B6B" }}>זה אדם פרטי (בייביסיטר / מטפלת)</span>
+            </label>
+            {isPrivate && (
+              <>
+                <p className="font-hebrew text-xs mt-2" style={{ color: "#4A5568", lineHeight: 1.6 }}>
+                  אנחנו לא מפרסמים אנשים פרטיים בלי הסכמתם. ההמלצה תישמר, ונפנה אליה לבקש אישור לפני שתופיע באתר.
+                  לא צריך מיקום: לא נציג איפה היא גרה.
+                </p>
+                <input type="text" value={consentContact} onChange={(e) => setConsentContact(e.target.value)}
+                  placeholder="מייל או טלפון שלה, כדי שנבקש הסכמה *" dir="auto"
+                  className="w-full font-hebrew mt-2" style={inputStyle} />
+                <p className="font-hebrew mt-1" style={{ fontSize: 12, color: "#8A95A8" }}>הפרטים האלה נשארים אצלנו ולא מוצגים באתר.</p>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── More details toggle ───────────────────────────────────────────── */}
-        <button type="button" onClick={() => setShowMoreFields(!showMoreFields)}
+        {!isPrivatePerson && <button type="button" onClick={() => setShowMoreFields(!showMoreFields)}
           className="flex items-center gap-1.5 font-hebrew font-semibold mb-3 w-full"
           style={{ fontSize: 13, color: "#1F5BB5", background: "none", border: "none", cursor: "pointer", padding: "6px 0", borderTop: "1px solid #F0F3FA" }}>
           <ChevronDown style={{ width: 15, height: 15, transform: showMoreFields ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
           {showMoreFields ? "הסתר פרטים נוספים" : "הוסף פרטים (כתובת, טלפון, שעות...)"}
-        </button>
+        </button>}
 
-        {showMoreFields && (
+        {showMoreFields && !isPrivatePerson && (
           <div className="space-y-3 mb-4">
             {/* Address */}
             <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { publicEnv } from "@/lib/env/public";
 import { serverEnv } from "@/lib/env/server";
 import type { Place, PlaceCategory } from "@/types/places";
+import { escapeHtml, notifyAdmins } from "@/lib/admin-notify";
 
 const VALID_CATEGORIES: PlaceCategory[] = [
   "doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
@@ -107,7 +108,13 @@ export async function POST(request: NextRequest) {
   if (!name) return NextResponse.json({ error: "שם המקום נדרש" }, { status: 400 });
   if (!category || !VALID_CATEGORIES.includes(category))
     return NextResponse.json({ error: "קטגוריה לא תקינה" }, { status: 400 });
-  if (lon === null || lat === null || !isFinite(lon) || !isFinite(lat))
+  // A private person (babysitter, caregiver) is saved hidden until she agrees to be listed
+  // (place_consents, /admin/consents). She has no public location, and we need a way to ask her.
+  const isPrivatePerson = category === "kids" && body.is_private_person === true;
+  const consentContact = typeof body.consent_contact === "string" ? body.consent_contact.trim().slice(0, 200) : "";
+  if (isPrivatePerson && !consentContact)
+    return NextResponse.json({ error: "נא לכתוב מייל או טלפון כדי שנוכל לבקש את הסכמתה" }, { status: 400 });
+  if (!isPrivatePerson && (lon === null || lat === null || !isFinite(lon) || !isFinite(lat)))
     return NextResponse.json({ error: "מיקום נדרש" }, { status: 400 });
 
   // Optional fields
@@ -143,9 +150,9 @@ export async function POST(request: NextRequest) {
   const { data: inserted, error: insertErr } = await admin.rpc("insert_community_place", {
     p_name: name,
     p_category: category,
-    p_lon: lon,
-    p_lat: lat,
-    p_address: address,
+    p_lon: isPrivatePerson ? null : lon,
+    p_lat: isPrivatePerson ? null : lat,
+    p_address: isPrivatePerson ? null : address,
     p_description: description,
     p_phone: phone ? [phone] : null,
     p_website: website,
@@ -164,6 +171,18 @@ export async function POST(request: NextRequest) {
 
   const placeId = inserted as string;
 
+  if (isPrivatePerson) {
+    const { error: hideErr } = await admin.from("places")
+      .update({ is_hidden: true, attributes: { specialty: "בייביסיטר" } }).eq("id", placeId);
+    const { error: consentErr } = hideErr ? { error: hideErr } :
+      await admin.from("place_consents").insert({ place_id: placeId, contact: consentContact });
+    if (hideErr || consentErr) {
+      // Never leave a private person visible: undo the insert
+      await admin.from("places").delete().eq("id", placeId);
+      return NextResponse.json({ error: (hideErr ?? consentErr)?.message ?? "Failed to save" }, { status: 500 });
+    }
+  }
+
   // Optional review
   if (reviewRating !== null && reviewRating >= 1 && reviewRating <= 5) {
     await admin.from("place_reviews").insert({
@@ -174,6 +193,17 @@ export async function POST(request: NextRequest) {
       is_anonymous: reviewAnonymous,
       reviewer_public_name: reviewerName,
     });
+  }
+
+  if (isPrivatePerson) {
+    await notifyAdmins({
+      subject: `בקשת הסכמה חדשה: ${name}`,
+      html: `<h2>נוספה המלצה על אדם פרטי</h2>
+        <p><strong>${escapeHtml(name)}</strong> נשמרה מוסתרת עד שתסכים להופיע באתר.</p>
+        <p>פרטי קשר שנמסרו: ${escapeHtml(consentContact)}</p>
+        <p><a href="${new URL(request.url).origin}/admin/consents" style="display:inline-block;background:#0A2B6B;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:bold">לרשימת ההסכמות</a></p>`,
+    });
+    return NextResponse.json({ hidden: true }, { status: 201 });
   }
 
   // Return the new place as a full Place object

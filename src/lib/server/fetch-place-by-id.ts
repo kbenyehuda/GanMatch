@@ -69,6 +69,8 @@ export const getCachedPlaceById = cache(async (id: string): Promise<Place | null
   const restBase = url.replace(/\/+$/, "");
   const endpoint = new URL(`${restBase}/rest/v1/places`);
   endpoint.searchParams.set("id", `eq.${id}`);
+  // The service role skips RLS, so hidden places (private people without consent) are filtered here
+  endpoint.searchParams.set("is_hidden", "eq.false");
   endpoint.searchParams.set("select", COLUMNS);
 
   let rows: unknown;

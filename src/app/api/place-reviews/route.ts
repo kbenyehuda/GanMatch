@@ -60,6 +60,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ count: count ?? 0 });
   }
 
+  // The service role skips RLS: a hidden place's recommendations name the person, so none are returned
+  const { data: hiddenPlace } = await db.from("places").select("id").eq("id", placeId!).eq("is_hidden", true).maybeSingle();
+  if (hiddenPlace) return NextResponse.json({ reviews: [] });
+
   const { data, error } = await db
     .from("place_reviews")
     .select("id, user_id, rating, text, tags, is_anonymous, allow_contact, reviewer_public_name, created_at, check_status")
