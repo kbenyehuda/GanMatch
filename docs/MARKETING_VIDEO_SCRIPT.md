@@ -1,5 +1,14 @@
 # GiveMyTime — promo video (script + shot list)
 
+## Quick version (5 minutes, no editing app)
+
+1. Start your phone's screen recording.
+2. Open the site and slowly scroll the map of Giv'atayim (3 seconds).
+3. Tap a gan with several reviews (e.g. גן שקד) and scroll slowly through "מה ההורים אומרים" (8 seconds).
+4. Stop recording. Send it to the group with the WhatsApp text at the bottom of this file. The text does the explaining, so no captions or voice are needed.
+
+The full version below is only if you feel like it later.
+
 30–40 seconds, vertical (9:16), recorded on a phone. For WhatsApp status, Instagram reels and the parents' group.
 Record the screen of the live site, add the captions in CapCut/InShot, and use quiet, upbeat background music. The voice-over is optional; the captions carry the message even with the sound off.
 
