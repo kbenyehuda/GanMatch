@@ -163,8 +163,10 @@ export function PlaceCard({
 
   // Tags
   const tags: { label: string; variant: "blue" | "green" | "gold" | "rose" }[] = [];
-  // Gan facts (חצר, טבעוני…) come first; the card shows two chips.
-  placeFacts(place).slice(0, 2).forEach((f) => tags.push({ label: factLabel(f, place), variant: "blue" }));
+  // Gan facts (חצר, טבעוני…) come first; the card shows two chips plus "+N" for the rest.
+  const facts = placeFacts(place);
+  facts.slice(0, 2).forEach((f) => tags.push({ label: factLabel(f, place), variant: "blue" }));
+  const moreFacts = facts.length - 2;
   if (place.kosher === "CERTIFIED") tags.push({ label: "כשר", variant: "green" });
   if (place.price_range === 1) tags.push({ label: "זול", variant: "green" });
   if (place.price_range === 3) tags.push({ label: "יקר", variant: "rose" });
@@ -270,6 +272,12 @@ export function PlaceCard({
                   {tag.label}
                 </span>
               ))}
+              {moreFacts > 0 && (
+                <span className="font-hebrew" style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 6, background: "#F0F3F8", color: "#4A5568" }}
+                  aria-label={`ועוד ${moreFacts} פרטים`}>
+                  +{moreFacts}
+                </span>
+              )}
             </div>
           )}
         </div>

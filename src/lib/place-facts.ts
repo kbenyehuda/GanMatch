@@ -168,9 +168,11 @@ export function placeHasFact(place: Place, fact: PlaceFact): boolean {
   return (place.review_tags ?? []).some((t) => tagToFact(t, place.place_category) === fact);
 }
 
-/** Every fact a place has, in vocabulary order. */
+/** Every fact a place has: ones parents mention in reviews first, then field-only ones (vocabulary order within each). */
 export function placeFacts(place: Place): PlaceFact[] {
-  return factsFor(place.place_category).filter((f) => placeHasFact(place, f));
+  const mentioned = new Set((place.review_tags ?? []).map((t) => tagToFact(t, place.place_category)));
+  const facts = factsFor(place.place_category).filter((f) => placeHasFact(place, f));
+  return [...facts.filter((f) => mentioned.has(f)), ...facts.filter((f) => !mentioned.has(f))];
 }
 
 /** "מה ההורים אומרים": facts mentioned in reviews, most mentioned first. */
