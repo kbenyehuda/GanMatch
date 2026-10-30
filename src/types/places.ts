@@ -123,6 +123,8 @@ export interface PlaceReview {
   id: string;
   /** Set by /api/place-reviews from the caller's token; the writer's id itself is never sent. */
   is_mine?: boolean;
+  /** 'auto_ok' / 'approved' for app reviews that passed the check; null for WhatsApp ones (approved in triage). */
+  check_status?: "auto_ok" | "held" | "approved" | null;
   place_id: string;
   rating: number;
   text: string | null;

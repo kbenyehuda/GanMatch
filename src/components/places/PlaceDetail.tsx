@@ -124,8 +124,8 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
           </div>
           <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{date}</div>
         </div>
-        {/* Only WhatsApp recommendations are approved one by one in triage; app reviews publish directly */}
-        {review.reviewer_public_name === WHATSAPP_REVIEWER_NAME && (
+        {/* WhatsApp recommendations were approved one by one in triage; app reviews passed the automatic check or an admin */}
+        {(review.reviewer_public_name === WHATSAPP_REVIEWER_NAME || review.check_status === "auto_ok" || review.check_status === "approved") && (
           <span className="flex items-center gap-1" style={{ background: "#E8F0FB", color: "#0A2B6B", padding: "2px 6px", borderRadius: 5, fontSize: 12, fontWeight: 700 }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 9, height: 9 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
             אושרה לפרסום
@@ -310,6 +310,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitHeld, setSubmitHeld] = useState(false);
   const [hoverSend, setHoverSend] = useState(false);
 
   const submitReview = useCallback(async () => {
@@ -332,6 +333,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשליחה");
+      setSubmitHeld(Boolean(data.held));
       setSubmitSuccess(true); setShowForm(false);
       await loadReviews();
       // The server folds price/vacancy into places.attributes, but `place` is a prop
@@ -343,8 +345,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         if (formVacancy) nextAttrs.vacancy_status = formVacancy;
         onPlaceUpdated?.({ ...place, attributes: nextAttrs });
       }
-      // 1–2 star reviews are saved hidden for now (is_hidden), so say why it doesn't appear in the list
-      onShowToast?.(formRating <= 2 ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה 🙏");
+      // A held review (flagged by the check, or 1–2 stars) doesn't appear in the list yet, so say why
+      onShowToast?.(data.held ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה 🙏");
     } catch (e) { setSubmitError(e instanceof Error ? e.message : "שגיאה בשליחה"); }
     finally { setSubmitting(false); }
   }, [formRating, formText, formAnonymous, formName, formPrice, formVacancy, place, user, session, loadReviews, onShowToast, onPlaceUpdated]);
@@ -626,7 +628,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
             {submitSuccess && (
               <div className="font-hebrew text-sm text-center py-3 rounded-xl mb-3" style={{ background: "#DCF3E6", color: "#1D7F4F", fontWeight: 600 }}>
-                {formRating <= 2 ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה רבה 🙏"}
+                {submitHeld ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה רבה 🙏"}
               </div>
             )}
 

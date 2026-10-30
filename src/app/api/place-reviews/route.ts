@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
+import { checkReview } from "@/lib/review-check";
+import { HOLD_REASON_LABELS } from "@/lib/hold-reasons";
+import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
 
 function supabaseAdmin() {
   const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await db
     .from("place_reviews")
-    .select("id, user_id, rating, text, tags, is_anonymous, allow_contact, reviewer_public_name, created_at")
+    .select("id, user_id, rating, text, tags, is_anonymous, allow_contact, reviewer_public_name, created_at, check_status")
     .eq("place_id", placeId!)
     .eq("is_hidden", false)
     .order("created_at", { ascending: false });
@@ -145,6 +148,11 @@ export async function POST(req: NextRequest) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
+  // Automatic check before publishing: anything flagged, or a 1–2 star rating, waits for an admin
+  const { data: placeRow } = await admin.from("places").select("name").eq("id", placeId).maybeSingle();
+  const placeName = String(placeRow?.name ?? "");
+  const check = await checkReview({ placeName, rating, text });
+
   // Upsert — unique constraint (user_id, place_id) means one review per user per place
   const { data: inserted, error: insertErr } = await admin
     .from("place_reviews")
@@ -156,8 +164,9 @@ export async function POST(req: NextRequest) {
         text,
         is_anonymous: isAnonymous,
         reviewer_public_name: reviewerPublicName,
-        // Negative recommendations aren't displayed for now (see migration 20261030000300)
-        is_hidden: rating <= 2,
+        is_hidden: !check.publish,
+        check_status: check.publish ? "auto_ok" : "held",
+        hold_reasons: check.publish ? null : check.reasons,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,place_id" }
@@ -182,5 +191,16 @@ export async function POST(req: NextRequest) {
     await admin.from("places").update({ attributes: attrs, updated_at: new Date().toISOString() }).eq("id", placeId);
   }
 
-  return NextResponse.json({ success: true, id: inserted.id });
+  if (!check.publish) {
+    const reasons = check.reasons.map((r) => HOLD_REASON_LABELS[r]).join(", ");
+    await notifyAdmins({
+      subject: `המלצה ממתינה לאישור: ${placeName}`,
+      html: `<p>המלצה חדשה על <b>${escapeHtml(placeName)}</b> נשמרה מוסתרת: ${escapeHtml(reasons)}.</p>
+        <p>דירוג: ${rating} מתוך 5</p>
+        ${text ? `<blockquote style="border-inline-start:3px solid #ccc;padding-inline-start:8px">${escapeHtml(text)}</blockquote>` : ""}
+        ${requestLinksHtml(req.nextUrl.origin, "held-reviews", inserted.id)}`,
+    });
+  }
+
+  return NextResponse.json({ success: true, id: inserted.id, held: !check.publish });
 }
