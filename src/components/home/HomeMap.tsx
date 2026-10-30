@@ -6,6 +6,7 @@ import { AuthButton } from "@/components/auth/AuthButton";
 import { ConnectionGate, SKIP_LOGIN_STORAGE_KEY } from "@/components/auth/ConnectionGate";
 import { signInWithGoogle, takeReturnPath } from "@/lib/sign-in";
 import { IntroOverlay, INTRO_SEEN_STORAGE_KEY } from "@/components/home/IntroOverlay";
+import { IntroVideoModal } from "@/components/home/IntroVideoModal";
 import { PlaceFeedPanel } from "@/components/places/PlaceFeedPanel";
 import { CategoryTabs, FilterPills } from "@/components/places/CategoryFilterBar";
 import { buildFacets, setFacetValues, clearCategoryFilters } from "@/components/places/filter-facets";
@@ -30,7 +31,7 @@ import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
   ChevronRight, Send, Shield, Info, Check,
-  ClipboardCheck,
+  ClipboardCheck, Play,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -303,6 +304,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   // A shared /place/<id> link opens that place's window directly.
   const [detailPlace, setDetailPlace] = useState<Place | null>(() => seedPlace ?? null);
   const [shareBannerClosed, setShareBannerClosed] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
   const [selectedClusterPlaces, setSelectedClusterPlaces] = useState<Place[] | null>(null);
   const [filters, setFilters] = useState<PlaceFilters>(DEFAULT_PLACE_FILTERS);
   const [fitToAddress, setFitToAddress] = useState<{
@@ -823,6 +825,14 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             )}
             <button
               type="button"
+              onClick={() => setVideoOpen(true)}
+              className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+              style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
+            >
+              ▶ איך זה עובד?
+            </button>
+            <button
+              type="button"
               onClick={() => (window.location.href = "/about")}
               className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
               style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
@@ -891,6 +901,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             savedIds={savedIds}
             isAdmin={isAdmin}
             onGoSaved={() => setActiveTab("saved")}
+            onOpenVideo={() => setVideoOpen(true)}
             onLogout={async () => {
               await supabase?.auth.signOut();
               try { window.localStorage.removeItem(SKIP_LOGIN_STORAGE_KEY); } catch {}
@@ -1135,6 +1146,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
         </>
       )}
 
+      {/* "How it works" promo video — from the desktop header or the profile screen */}
+      {videoOpen && <IntroVideoModal onClose={() => setVideoOpen(false)} />}
+
       {/* Error banner */}
       {fetchError && (
         <div className="fixed top-20 inset-x-4 z-50 bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2 rounded-2xl text-sm font-hebrew">
@@ -1264,12 +1278,13 @@ function SavedScreen({
 // ─── ProfileScreen ────────────────────────────────────────────────────────────
 
 function ProfileScreen({
-  user, savedIds, isAdmin = false, onGoSaved, onLogout,
+  user, savedIds, isAdmin = false, onGoSaved, onOpenVideo, onLogout,
 }: {
   user: { id?: string; email?: string | null; created_at?: string } | null;
   savedIds: Set<string>;
   isAdmin?: boolean;
   onGoSaved: () => void;
+  onOpenVideo: () => void;
   onLogout: () => void;
 }) {
   const displayName = user?.email?.split("@")[0] ?? "אורח";
@@ -1343,6 +1358,13 @@ function ProfileScreen({
         <div className="font-hebrew flex items-center justify-between" style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E", margin: "18px 0 10px" }}>
           כללי
         </div>
+        <ProfileListCard
+          icon={<Play style={{ width: 18, height: 18 }} />}
+          iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)"
+          title="איך זה עובד?"
+          sub="סרטון קצר, 45 שניות"
+          onClick={onOpenVideo}
+        />
         <ProfileListCard
           icon={<Info style={{ width: 18, height: 18 }} />}
           iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)"

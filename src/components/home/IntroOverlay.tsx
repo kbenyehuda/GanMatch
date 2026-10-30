@@ -1,8 +1,13 @@
 "use client";
 
+import { useState } from "react";
+import { IntroVideoModal } from "@/components/home/IntroVideoModal";
+
 export const INTRO_SEEN_STORAGE_KEY = "gmt_seen_intro";
 
 export function IntroOverlay({ onContinue }: { onContinue: () => void }) {
+  const [videoOpen, setVideoOpen] = useState(false);
+
   return (
     <div
       className="min-h-[100dvh] w-full flex flex-col"
@@ -69,8 +74,30 @@ export function IntroOverlay({ onContinue }: { onContinue: () => void }) {
           >
             יאללה, מתחילים
           </button>
+
+          {/* Optional promo video — secondary, never required */}
+          <button
+            type="button"
+            onClick={() => setVideoOpen(true)}
+            className="w-full font-hebrew"
+            style={{
+              marginTop: 10,
+              padding: "8px 12px",
+              borderRadius: 12,
+              border: "none",
+              background: "none",
+              color: "#1F5BB5",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            ▶ איך זה עובד? (45 שניות)
+          </button>
         </div>
       </div>
+
+      {videoOpen && <IntroVideoModal onClose={() => setVideoOpen(false)} />}
     </div>
   );
 }

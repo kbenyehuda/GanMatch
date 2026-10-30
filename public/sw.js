@@ -30,6 +30,8 @@ self.addEventListener("fetch", (event) => {
   // Always bypass for Next.js internal requests.
   const url = new URL(req.url);
   if (url.pathname.startsWith("/_next/")) return;
+  // Video uses range requests (206); let the browser stream it directly.
+  if (url.pathname.startsWith("/video/")) return;
 
   event.respondWith(
     (async () => {
