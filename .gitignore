@@ -53,3 +53,6 @@ scripts/gov_import/__pycache__
 
 # Reference files used during development
 pivot_import_context/
+
+# local pre-deploy builds (NEXT_DIST_DIR)
+/.next-build/

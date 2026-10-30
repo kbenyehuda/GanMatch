@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { getCachedPlaceById } from "@/lib/server/fetch-place-by-id";
+import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
 
 // POST /api/places/location-request — request a pin-location change for an
 // existing place. Always pending; an admin must approve before the place's
@@ -78,6 +79,17 @@ export async function POST(req: Request) {
   if (insertErr || !inserted) {
     return NextResponse.json({ error: insertErr?.message ?? "שגיאה בשמירת הבקשה" }, { status: 500 });
   }
+
+  const maps = (la: number, lo: number) => `https://www.google.com/maps?q=${la},${lo}`;
+  await notifyAdmins({
+    subject: `בקשת שינוי מיקום: ${place.name}`,
+    html: `<h2>בקשה חדשה לשינוי מיקום</h2>
+      <p>מישהו ביקש להזיז את <strong>${escapeHtml(place.name)}</strong>:</p>
+      <p>עכשיו: ${place.lat != null && place.lon != null ? `<a href="${maps(place.lat, place.lon)}">${escapeHtml(place.address ?? "על המפה")}</a>` : "ללא מיקום"}</p>
+      <p>מבוקש: <a href="${maps(lat, lon)}">${escapeHtml(address ?? "על המפה")}</a></p>
+      ${note ? `<p>הערה: ${escapeHtml(note)}</p>` : ""}
+      ${requestLinksHtml(new URL(req.url).origin, "place-location-requests", inserted.id)}`,
+  });
 
   return NextResponse.json({
     success: true,

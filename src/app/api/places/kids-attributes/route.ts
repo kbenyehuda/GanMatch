@@ -1,37 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
-import { Resend } from "resend";
+import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
 import { KIDS_FIELD_LABELS, diffKidsChanges, formatKidsValue, parseKidsChanges, type KidsChanges } from "@/lib/kids-attributes";
 
-const escapeHtml = (s: string) =>
-  s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-
-/** Emails the admins that a "ערכו פרטים" request is waiting. Never throws: the request is already saved. */
-async function notifyAdmins(args: { placeName: string; changes: KidsChanges; previous: KidsChanges; reviewUrl: string }) {
-  const { RESEND_API_KEY: key, RESEND_FROM_EMAIL: from, ADMIN_EMAILS } = serverEnv;
-  const to = Array.from(ADMIN_EMAILS);
-  if (!key || !from || to.length === 0) return;
-  const rows = Object.entries(args.changes).map(([k, v]) =>
-    `<tr><td style="padding:4px 8px"><strong>${escapeHtml(KIDS_FIELD_LABELS[k] ?? k)}</strong></td>` +
-    `<td style="padding:4px 8px;color:#888">${escapeHtml(formatKidsValue(k, args.previous[k]))}</td>` +
-    `<td style="padding:4px 8px;color:#1D7F4F">${escapeHtml(formatKidsValue(k, v))}</td></tr>`).join("");
-  try {
-    const { error } = await new Resend(key).emails.send({
-      from,
-      to,
-      subject: `בקשת עדכון פרטים: ${args.placeName}`,
-      html: `<div dir="rtl" style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>בקשה חדשה לעדכון פרטים</h2>
-        <p>מישהו ביקש לעדכן פרטים ב<strong>${escapeHtml(args.placeName)}</strong>:</p>
-        <table style="border-collapse:collapse"><tr><th style="text-align:right;padding:4px 8px">שדה</th><th style="text-align:right;padding:4px 8px">עכשיו</th><th style="text-align:right;padding:4px 8px">מבוקש</th></tr>${rows}</table>
-        <p><a href="${args.reviewUrl}">לאישור או דחייה</a></p>
-      </div>`,
-    });
-    if (error) console.error("[kids-attributes] admin email failed:", error);
-  } catch (e) {
-    console.error("[kids-attributes] admin email threw:", e);
-  }
+function changesTableHtml(changes: KidsChanges, previous: KidsChanges): string {
+  const cell = "padding:4px 8px;text-align:right";
+  const rows = Object.entries(changes).map(([k, v]) =>
+    `<tr><td style="${cell}"><strong>${escapeHtml(KIDS_FIELD_LABELS[k] ?? k)}</strong></td>` +
+    `<td style="${cell};color:#888">${escapeHtml(formatKidsValue(k, previous[k]))}</td>` +
+    `<td style="${cell};color:#1D7F4F">${escapeHtml(formatKidsValue(k, v))}</td></tr>`).join("");
+  return `<table style="border-collapse:collapse"><tr><th style="${cell}">שדה</th><th style="${cell}">עכשיו</th><th style="${cell}">מבוקש</th></tr>${rows}</table>`;
 }
 
 // POST /api/places/kids-attributes
@@ -91,21 +70,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "לא שיניתם אף פרט" }, { status: 400 });
   }
 
-  const { error: insertErr } = await admin.from("place_detail_requests").insert({
+  const { data: inserted, error: insertErr } = await admin.from("place_detail_requests").insert({
     place_id: placeId,
     user_id: userData.user.id,
     changes,
     previous,
-  });
-  if (insertErr) {
-    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  }).select("id").single();
+  if (insertErr || !inserted) {
+    return NextResponse.json({ error: insertErr?.message ?? "שגיאה בשמירת הבקשה" }, { status: 500 });
   }
 
   await notifyAdmins({
-    placeName: place.name,
-    changes,
-    previous,
-    reviewUrl: `${new URL(req.url).origin}/admin/place-detail-requests`,
+    subject: `בקשת עדכון פרטים: ${place.name}`,
+    html: `<h2>בקשה חדשה לעדכון פרטים</h2>
+      <p>מישהו ביקש לעדכן פרטים ב<strong>${escapeHtml(place.name)}</strong>:</p>
+      ${changesTableHtml(changes, previous)}
+      ${requestLinksHtml(new URL(req.url).origin, "place-detail-requests", inserted.id)}`,
   });
 
   return NextResponse.json({ success: true, pending: true, changed: Object.keys(changes).length });

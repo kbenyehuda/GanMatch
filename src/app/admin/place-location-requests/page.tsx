@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase";
 
 type QueueStatus = "pending" | "approved" | "rejected";
 
+const HIDDEN_KEY = "gmt_admin_hidden_location_requests";
+
 type QueueItem = {
   id: string;
   place_id: string;
@@ -57,6 +59,27 @@ export default function AdminPlaceLocationRequestsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
   const [reloading, setReloading] = useState(false);
+  // ?id=<request> (the link in the admin email) shows just that request.
+  const [focusId, setFocusId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("id"));
+  // "דילוג": hide a request from this browser's queue without deciding on it.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(window.localStorage.getItem(HIDDEN_KEY) ?? "[]")); } catch { return new Set(); }
+  });
+  const [showHidden, setShowHidden] = useState(false);
+  const toggleHidden = useCallback((id: string) => {
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { window.localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  }, []);
+  const showAll = useCallback(() => {
+    setFocusId(null);
+    setStatus("pending");
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   const loadQueue = useCallback(async () => {
     if (!supabase || !user) return;
@@ -65,7 +88,7 @@ export default function AdminPlaceLocationRequestsPage() {
     try {
       const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
       if (!token) throw new Error("Missing access token");
-      const res = await fetch(`/api/admin/place-location-requests?status=${status}&limit=200`, {
+      const res = await fetch(`/api/admin/place-location-requests?status=${focusId ? "all" : status}&limit=200`, {
         headers: { authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
@@ -77,7 +100,7 @@ export default function AdminPlaceLocationRequestsPage() {
     } finally {
       setReloading(false);
     }
-  }, [status, user]);
+  }, [status, user, focusId]);
 
   useEffect(() => {
     if (!user) return;
@@ -101,19 +124,20 @@ export default function AdminPlaceLocationRequestsPage() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Decision failed");
         setItems((prev) => prev.filter((i) => i.id !== itemId));
+        if (focusId === itemId) showAll();
       } catch (e: any) {
         setError(typeof e?.message === "string" ? e.message : "Decision failed");
       } finally {
         setBusyId(null);
       }
     },
-    [reasonById, user]
+    [reasonById, user, focusId, showAll]
   );
 
   const title = useMemo(() => {
-    if (status === "pending") return "Pending";
-    if (status === "approved") return "Approved";
-    return "Rejected";
+    if (status === "pending") return "ממתינות";
+    if (status === "approved") return "אושרו";
+    return "נדחו";
   }, [status]);
 
   if (loading) return <div className="p-6">Loading...</div>;
@@ -123,8 +147,8 @@ export default function AdminPlaceLocationRequestsPage() {
     <main className="mx-auto max-w-5xl p-4 md:p-6 space-y-4" dir="rtl">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold font-hebrew">Place Location Requests</h1>
-        <a href="/" className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50" title="Back to site">
-          Back to site
+        <a href="/" className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50" title="חזרה לאתר">
+          חזרה לאתר
         </a>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -132,22 +156,22 @@ export default function AdminPlaceLocationRequestsPage() {
           className={`px-3 py-1.5 rounded border text-sm ${status === "pending" ? "bg-black text-white" : "bg-white"}`}
           onClick={() => setStatus("pending")}
         >
-          Pending
+          ממתינות
         </button>
         <button
           className={`px-3 py-1.5 rounded border text-sm ${status === "approved" ? "bg-black text-white" : "bg-white"}`}
           onClick={() => setStatus("approved")}
         >
-          Approved
+          אושרו
         </button>
         <button
           className={`px-3 py-1.5 rounded border text-sm ${status === "rejected" ? "bg-black text-white" : "bg-white"}`}
           onClick={() => setStatus("rejected")}
         >
-          Rejected
+          נדחו
         </button>
         <button className="px-3 py-1.5 rounded border text-sm bg-white" onClick={loadQueue} disabled={reloading}>
-          {reloading ? "Refreshing..." : "Refresh"}
+          {reloading ? "מרענן..." : "רענון"}
         </button>
         <span className="text-sm text-gray-600">{title}: {items.length}</span>
       </div>
@@ -155,7 +179,20 @@ export default function AdminPlaceLocationRequestsPage() {
       {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="space-y-4">
-        {items.map((item) => (
+        {focusId && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border bg-blue-50 px-3 py-2 text-sm font-hebrew">
+            <span>מוצגת בקשה אחת מהמייל</span>
+            <button className="px-3 py-1.5 rounded border bg-white text-sm" onClick={showAll}>לכל הבקשות הממתינות</button>
+          </div>
+        )}
+        {!focusId && status === "pending" && hiddenIds.size > 0 && (
+          <button className="text-sm text-gray-600 underline font-hebrew" onClick={() => setShowHidden((v) => !v)}>
+            {showHidden ? "הסתרת המדולגות" : `הצגת מדולגות (${items.filter((i) => hiddenIds.has(i.id)).length})`}
+          </button>
+        )}
+        {items
+          .filter((item) => (focusId ? item.id === focusId : status !== "pending" || showHidden || !hiddenIds.has(item.id)))
+          .map((item) => (
           <section key={item.id} className="rounded-xl border bg-white p-4 space-y-3 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
               <div className="space-y-1">
@@ -198,10 +235,10 @@ export default function AdminPlaceLocationRequestsPage() {
               </div>
             </div>
 
-            {status === "pending" ? (
+            {item.status === "pending" ? (
               <div className="flex flex-col gap-2">
                 <textarea
-                  placeholder="Reason (optional)"
+                  placeholder="סיבה (לא חובה)"
                   value={reasonById[item.id] ?? ""}
                   onChange={(e) => setReasonById((prev) => ({ ...prev, [item.id]: e.target.value }))}
                   className="w-full rounded border p-2 text-sm"
@@ -213,14 +250,20 @@ export default function AdminPlaceLocationRequestsPage() {
                     disabled={busyId === item.id}
                     onClick={() => decide(item.id, "approve")}
                   >
-                    Approve
+                    אישור
                   </button>
                   <button
                     className="px-3 py-1.5 rounded bg-rose-600 text-white text-sm disabled:opacity-60"
                     disabled={busyId === item.id}
                     onClick={() => decide(item.id, "reject")}
                   >
-                    Reject
+                    דחייה
+                  </button>
+                  <button
+                    className="px-3 py-1.5 rounded border text-sm bg-white"
+                    onClick={() => toggleHidden(item.id)}
+                  >
+                    {hiddenIds.has(item.id) ? "החזרה לתור" : "דילוג (הסתרה)"}
                   </button>
                 </div>
               </div>
