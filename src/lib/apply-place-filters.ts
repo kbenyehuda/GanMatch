@@ -204,9 +204,11 @@ export function applyPlaceFilters(
       const a = p.attributes as Record<string, unknown>;
       return filters.attraction_venue!.includes(String(a.indoor_outdoor ?? ""));
     });
+  // Keep the open place visible even if a filter hides it — but only within the current
+  // category, or a gan opened earlier shows up in the doctors list.
   if (selectedPlaceId && !result.find((p) => p.id === selectedPlaceId)) {
     const sel = places.find((p) => p.id === selectedPlaceId);
-    if (sel) result = [...result, sel];
+    if (sel && (!filters.categories?.length || filters.categories.includes(sel.place_category))) result = [...result, sel];
   }
   return result;
 }
