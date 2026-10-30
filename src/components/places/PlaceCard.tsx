@@ -17,16 +17,6 @@ const HMO_LABELS: Record<string, string> = {
 };
 
 
-// Lighten a hex color by mixing toward white (match HTML lighten function)
-function lightenColor(hex: string, t = 0.35): string {
-  const n = parseInt(hex.replace("#", ""), 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  const mix = (x: number) => Math.round(x + (255 - x) * t);
-  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
-}
-
 /** Most WhatsApp recommendations (babysitters, private teachers…) have no address to pin. */
 const NO_PIN_LABEL = "ללא מיקום מדויק";
 const hasPin = (p: Place) => p.lat != null && p.lon != null;
@@ -67,7 +57,6 @@ export function PlaceCard({
   onToggleSave,
 }: PlaceCardProps) {
   const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
-  const lightColor = lightenColor(color);
   const dist = distanceLabel(place, userLocation);
   const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
 
@@ -124,33 +113,17 @@ export function PlaceCard({
         position: "relative",
       }}
     >
-      {/* Thumbnail */}
-      <div
-        className="relative flex-shrink-0 overflow-hidden"
-        style={{
-          width: 68, height: 68, borderRadius: 14,
-          background: `linear-gradient(135deg, ${color} 0%, ${lightColor} 100%)`,
-          position: "relative",
-          flexShrink: 0,
-        }}
-      >
-        {/* Category pill */}
-        <span
-          className="absolute font-hebrew"
-          style={{
-            top: 5, insetInlineStart: 4,
-            background: "rgba(255,255,255,.95)", color: "#0A2B6B",
-            fontSize: 12, fontWeight: 700, padding: "1px 4px", whiteSpace: "nowrap",
-            borderRadius: 6, }}
-        >
-          {PLACE_CATEGORY_LABELS[place.place_category]}
-        </span>
-      </div>
+      {/* Photo, only when the place has one. The old colored square only repeated the category. */}
+      {place.photos?.[0] && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={place.photos[0]} alt="" className="flex-shrink-0"
+          style={{ width: 68, height: 68, borderRadius: 14, objectFit: "cover" }} />
+      )}
 
       {/* Content */}
-      <div className="flex-1 min-w-0 flex flex-col" style={{ minHeight: 68 }}>
+      <div className="flex-1 min-w-0 flex flex-col" style={{ minHeight: place.photos?.[0] ? 68 : undefined }}>
         {/* Name */}
-        <div className="flex items-center gap-1.5 mb-0.5">
+        <div className="flex items-center gap-1.5 mb-0.5" style={{ paddingInlineEnd: onToggleSave ? 24 : 0 }}>
           <h5
             className="font-hebrew flex-1 line-clamp-1"
             style={{

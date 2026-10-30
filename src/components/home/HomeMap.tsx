@@ -18,7 +18,6 @@ import { useAllPlaces } from "@/hooks/useAllPlaces";
 import type { Bounds } from "@/lib/places-api";
 import type { Place, PlaceCategory } from "@/types/places";
 import {
-  PLACE_CATEGORY_COLORS,
   PLACE_CATEGORY_LABELS,
   NEIGHBORHOOD_LABELS,
   VISIBLE_CATEGORIES,
@@ -54,30 +53,6 @@ const CATEGORY_STORAGE_KEY = "gmt_category";
 /** Filters that live in shared PlaceFilters fields but mean something different per category. */
 type CategoryScopedFilters = Pick<PlaceFilters, "neighborhoods" | "hmo">;
 
-const CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  doctor: "🩺", clinic: "🏥", cafe: "☕", kids: "🧸",
-  sport: "⚽", attraction: "🎭", food: "🍴", cosmetics: "💄",
-};
-
-// ─── Helpers shared by map components ────────────────────────────────────────
-
-function lightenHex(hex: string, t = 0.35): string {
-  const n = parseInt(hex.replace("#", ""), 16);
-  const r = (n >> 16) & 255; const g = (n >> 8) & 255; const b = n & 255;
-  const mix = (x: number) => Math.round(x + (255 - x) * t);
-  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
-}
-
-const CATEGORY_ICONS_MAP: Record<string, React.ReactNode> = {
-  doctor: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,
-  cafe:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="M2 8h15v8a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V8z"/><path d="M17 11h2a3 3 0 0 1 0 6h-2"/></svg>,
-  kids:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/></svg>,
-  wellness: <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 18, height: 18 }}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>,
-  attraction: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
-  food:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="M18 8h1a4 4 0 1 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg>,
-  cosmetics: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></svg>,
-};
-
 // ─── Map peek sheet ───────────────────────────────────────────────────────────
 
 function MapPeekSheet({
@@ -86,9 +61,6 @@ function MapPeekSheet({
   place: Place; onClose: () => void; onOpenDetail: () => void;
   userLocation: { lon: number; lat: number } | null;
 }) {
-  const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
-  const lightColor = lightenHex(color);
-
   const dist = useMemo(() => {
     if (!userLocation || place.lat == null || place.lon == null) return null;
     const R = 6371e3;
@@ -127,21 +99,11 @@ function MapPeekSheet({
           <X style={{ width: 11, height: 11, color: "#4A5568" }} />
         </button>
 
-        {/* Thumbnail — 56×56, colored gradient + icon */}
-        <div
-          className="relative shrink-0 overflow-hidden flex items-flex-end"
-          style={{
-            width: 56, height: 56, borderRadius: 14, flexShrink: 0,
-            background: `linear-gradient(135deg, ${color} 0%, ${lightColor} 100%)`,
-            display: "flex", alignItems: "flex-end", padding: 6, color: "#fff",
-          }}
-        >
-          {/* Category pill */}
-          <span className="absolute font-hebrew" style={{ top: 5, insetInlineStart: 5, background: "rgba(255,255,255,.95)", color: "#0A2B6B", fontSize: 8, fontWeight: 800, padding: "1px 5px", borderRadius: 5 }}>
-            {PLACE_CATEGORY_LABELS[place.place_category]}
-          </span>
-          {CATEGORY_ICONS_MAP[place.place_category]}
-        </div>
+        {/* Photo only when the place has one (the colored square only repeated the category) */}
+        {place.photos?.[0] && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={place.photos[0]} alt="" className="shrink-0" style={{ width: 56, height: 56, borderRadius: 14, objectFit: "cover" }} />
+        )}
 
         {/* Info */}
         <div className="flex-1 min-w-0">
@@ -215,8 +177,6 @@ function PlaceClusterList({
       </div>
       <ul className="overflow-y-auto divide-y divide-[#EEF1F6]" style={{ maxHeight: "min(46vh, 340px)" }}>
         {places.map((p) => {
-          const color = PLACE_CATEGORY_COLORS[p.place_category] ?? "#8A95A8";
-          const lightColor = lightenHex(color);
           return (
             <li key={p.id}>
               <button
@@ -225,15 +185,6 @@ function PlaceClusterList({
                 className="w-full flex items-center gap-3 px-4 hover:bg-[#F5F6FA] text-start"
                 style={{ paddingTop: 12, paddingBottom: 12 }}
               >
-                <div
-                  className="flex items-center justify-center shrink-0"
-                  style={{
-                    width: 42, height: 42, borderRadius: 12, color: "#fff",
-                    background: `linear-gradient(135deg, ${color} 0%, ${lightColor} 100%)`,
-                  }}
-                >
-                  {CATEGORY_ICONS_MAP[p.place_category] ?? <span className="text-base">{CATEGORY_EMOJI[p.place_category] ?? "📍"}</span>}
-                </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-hebrew font-bold truncate" style={{ fontSize: 14, color: "#0F1A2E" }}>
                     {p.name}
