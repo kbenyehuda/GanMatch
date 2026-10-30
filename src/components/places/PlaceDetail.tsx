@@ -296,7 +296,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         if (formVacancy) nextAttrs.vacancy_status = formVacancy;
         onPlaceUpdated?.({ ...place, attributes: nextAttrs });
       }
-      onShowToast?.("ההמלצה נשלחה! תודה 🙏");
+      // 1–2 star reviews are saved hidden for now (is_hidden), so say why it doesn't appear in the list
+      onShowToast?.(formRating <= 2 ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה 🙏");
     } catch (e) { setSubmitError(e instanceof Error ? e.message : "שגיאה בשליחה"); }
     finally { setSubmitting(false); }
   }, [formRating, formText, formAnonymous, formName, formPrice, formVacancy, place, user, session, loadReviews, onShowToast, onPlaceUpdated]);
@@ -578,7 +579,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
             {submitSuccess && (
               <div className="font-hebrew text-sm text-center py-3 rounded-xl mb-3" style={{ background: "#DCF3E6", color: "#1D7F4F", fontWeight: 600 }}>
-                ההמלצה נשלחה! תודה רבה 🙏
+                {formRating <= 2 ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה רבה 🙏"}
               </div>
             )}
 
