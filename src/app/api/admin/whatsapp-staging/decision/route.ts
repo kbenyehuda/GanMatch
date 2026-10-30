@@ -5,6 +5,7 @@ import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { summarizeRecommendation, getCategoryTags, getCategorySpecialties, recordNewTags, PHONE_REGEX, applyKidsFieldsToPlace, applyPlaceExtras, pickKidsStructuredFields, toHmoCodes, type Rating, type PlaceExtras } from "@/lib/whatsapp-summarize";
 import { geocodeHint, extractAddressFromText, parseStoredHint, serializeHint, formatHintForDisplay, type BilingualExtractedAddress } from "@/lib/whatsapp-geocode";
 import { findSimilarPlace } from "@/lib/dedupe";
+import { isPrivatePersonEntry } from "@/lib/private-person";
 import * as crypto from "crypto";
 
 function contactEmail(reviewerName: string): string {
@@ -27,9 +28,9 @@ async function getOrCreateContactUser(admin: any, reviewerName: string): Promise
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await admin.auth.admin.createUser({
       email,
-      password: `WA!${email}`,
+      // Nobody signs in as these users; a random password keeps it that way.
+      password: crypto.randomBytes(32).toString("base64url"),
       email_confirm: true,
-      user_metadata: { whatsapp_name: reviewerName },
     });
     if (res?.data?.user?.id) return String(res.data.user.id);
     lastError = String(res?.error?.message ?? "");
@@ -191,6 +192,8 @@ export async function POST(req: Request) {
     }
   }
 
+  const privatePerson = isPrivatePersonEntry(row.category, row.specialty, row.place_name);
+
   if (!placeId) {
     let hint: BilingualExtractedAddress | null = parseStoredHint(row.address_hint as string | null);
     let extractionFailed = false;
@@ -220,7 +223,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const coords = (row.lat && row.lon)
+    // A private person gets no pin or address: we never show where she lives
+    const coords = privatePerson ? null : (row.lat && row.lon)
       ? { lat: row.lat as number, lon: row.lon as number }
       : hint
         ? await geocodeHint(row.place_name, hint, textToSearch)
@@ -231,7 +235,7 @@ export async function POST(req: Request) {
       p_category:    row.category,
       p_lon:         coords?.lon ?? null,
       p_lat:         coords?.lat ?? null,
-      p_address:     hint ? formatHintForDisplay(hint) : null,
+      p_address:     hint && !privatePerson ? formatHintForDisplay(hint) : null,
       p_description: null,
       p_phone:       null,
       p_website:     null,
@@ -248,7 +252,7 @@ export async function POST(req: Request) {
     // failed (not "found nothing", but the call itself errored), leave lat/lon
     // as-is (null) so the retroactive-geocode tool retries this row later
     // instead of it being wrongly marked unresolvable forever.
-    if (!(row.lat && row.lon) && !extractionFailed) {
+    if (!(row.lat && row.lon) && !extractionFailed && !privatePerson) {
       await admin.from("whatsapp_import_staging").update(
         coords && hint
           ? { address_hint: serializeHint(hint), lat: coords.lat, lon: coords.lon }
@@ -258,6 +262,7 @@ export async function POST(req: Request) {
 
     // Mark as whatsapp-sourced and carry enrichment fields for new places
     const newPlaceUpdate: Record<string, unknown> = { source: "whatsapp", is_verified: false };
+    if (privatePerson) newPlaceUpdate.is_hidden = true;
     const newAttrs: Record<string, unknown> = {};
     if (row.specialty) newAttrs.specialty = row.specialty;
     if (row.for_children != null) newAttrs.for_children = row.for_children;
@@ -268,7 +273,7 @@ export async function POST(req: Request) {
     // Existing place with no pin yet (e.g. the 2nd+ recommendation in an "approve all" group,
     // whose first one didn't mention an address): try this recommendation's text for one.
     const { data: current } = await admin.from("places").select("location, address").eq("id", placeId).single();
-    if (current && !current.location && serverEnv.OPENAI_API_KEY) {
+    if (current && !current.location && serverEnv.OPENAI_API_KEY && !privatePerson) {
       const textToSearch = [
         ...(Array.isArray(row.source_messages) ? row.source_messages : []),
         row.recommendation_text ?? "",
@@ -305,6 +310,16 @@ export async function POST(req: Request) {
 
   if (row.category === "kids") await applyKidsFieldsToPlace(admin, placeId, kidsFields);
   await applyPlaceExtras(admin, placeId, placeExtras);
+
+  // A private person stays hidden until she agrees (/admin/consents), unless she already did
+  if (privatePerson) {
+    const { data: consent } = await admin.from("place_consents").select("status").eq("place_id", placeId).maybeSingle();
+    if (consent?.status !== "given") {
+      const { error: hideErr } = await admin.from("places").update({ is_hidden: true }).eq("id", placeId);
+      if (hideErr) return NextResponse.json({ error: hideErr.message }, { status: 500 });
+      if (!consent) await admin.from("place_consents").insert({ place_id: placeId });
+    }
+  }
 
   // 2. Create synthetic auth user for reviewer (deterministic per reviewer_name)
   let reviewerUserId: string;
