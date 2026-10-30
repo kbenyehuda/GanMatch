@@ -8,7 +8,36 @@ Read `CLAUDE.md` first. It describes the older `ganim_v2` app; the live app is t
 
 **Ganim come first** (user, 2026-10-30; also in `CLAUDE.md`). They are the most important part of the app. Prioritize gan data and gan UX.
 
-### Done (now on `whatsapp-review-triage`, not pushed)
+### Deployed 2026-10-30, then built while the user was away (committed, NOT pushed)
+
+Deployed to production: everything up to `ada3139`. After that, the user asked Claude to "continue with everything else" while away and to follow up on questions afterwards. Commits `c007452` … `ed936be` (not pushed):
+
+- `c007452` **Items 5–7.** Shared `/place/<id>` links skip the intro and sign-in screens and open the place window. Signed-out visitors get a dismissible banner ("התחברו כדי לכתוב המלצה ולשמור מקומות"). `signInWithGoogle` (`src/lib/sign-in.ts`) returns to the starting page: OAuth still lands on the origin, and the path is kept in `sessionStorage`. The guest review text is now a sign-in button that returns to the same place. `/og/<category>` is a 1200×630 preview image (app icon on the category color, no text because the renderer has no Hebrew font). `metadataBase` comes from `NEXT_PUBLIC_SITE_URL`, else `VERCEL_PROJECT_PRODUCTION_URL`.
+- `a37dc22` **Items 8–9.** `placeTypeLabel` (`src/lib/place-type.ts`) leads each card's meta line in the category color (משפחתון, חוג קפוארה, רופא עור · לילדים) and shows as "סוג" in the place window for kids. Polish: 12px minimum text, no uppercase letter-spacing, plural or neutral wording instead of slash forms, `aria-label` on the mobile "+".
+- `683271f` **Doctor and cosmetics facts** (ids `dr_*`, `cos_*`), drafted from the real review tags. Coverage: doctors 150/159, cosmetics 37/40, kids 5/175.
+- `c1e36fb` **The summarizer picks tags from the facts list** for kids, doctors and cosmetics (closed list in the prompt and the tool schema). Each fact also fills its field (`factsToAttributes`).
+- `d3009b0` **"🏷️ עובדות לגנים" button** in WhatsApp triage. It re-reads only kids recommendations, fills empty fact fields and adds fact tags to the published reviews. **Not run** (one OpenAI call per approved kids row).
+- `ed936be` **Bug fix: shared links to places without a pin returned 404** (120 of 159 doctors). Launch-critical; found while testing og tags.
+
+**Decisions Claude made for the user (review these):**
+1. Doctor facts: מקבל ילדים, מתאים להריון, קשוב וסבלני, תור קצר, זמינות אונליין, ביקורי בית, פרטי. Left out: "מקבל חיות מחמד" (8 tags; probably vets filed as doctors), "מחיר נוח" (too vague). "תינוקות" and "ילדים" count as מקבל ילדים.
+2. Cosmetics facts: services (`attributes.services`: לק ג'ל, מניקור, פדיקור, גבות, חורים באוזניים, טיפול פנים, צבע שיער, תלתלים, החלקה / קראטין, איפור) plus הגעה לבית, מתאים לילדים, ללא תור, תורים פנויים.
+3. Every category's cards show 2 chips + "+N". Kids lead with facts; doctors and cosmetics lead with health funds. Doctor cards skip "מקבל ילדים" because the type line already says "· לילדים".
+4. Review chips show only facts in all three categories. Generic praise, health funds and locations no longer show under reviews.
+5. The doctor "לילדים" pill stays separate and now counts parents' tags too, so 130 doctors instead of 48.
+6. The shared-link banner appears only to signed-out visitors who never chose "המשך כאורח".
+7. Facts that stay tag-only (not written to fields): פתוח בשישי (every vs every other Friday is unclear), שעות ארוכות (derived from hours), יש מקום פנוי (goes stale).
+8. A tags → fields backfill from old review tags was skipped: the UI already counts tags as facts, so it adds nothing visible.
+
+**Waiting on the user:**
+- Push `c007452`…`ed936be` to production (the build passes locally).
+- Press "🏷️ עובדות לגנים" in triage (OpenAI cost) to get real gan facts.
+- Check `metadataBase` resolves to the real domain on Vercel; otherwise set `NEXT_PUBLIC_SITE_URL`. The production URL isn't known in this session.
+- `decision/route.ts` still writes the reviewer name "חבר/ה מהשכונה" (a slash form) on every WhatsApp review; changing it needs a DB update for existing rows.
+- The profile screen shows a hard-coded "באפליקציה מאז 2024".
+- `neighborhood` is still null everywhere (filling it is a data task); possible duplicate `גן "שקד"` / `גן שקד`.
+
+### Done earlier (deployed in `ada3139`)
 
 - `5d1ade2` **Cap fix (ship to production soon, independent of the UI work).** `/api/places` capped `get_places_in_bbox` at 200 rows ordered by rating, so every unrated (newly approved) place disappeared once the city passed 200 pinned places. Cap is now 2000.
 - `3737588` **Items 1, 2 and 4 plus Google-Maps-style map:**
@@ -58,7 +87,7 @@ The user also asked about phones: hover is desktop-only. The phone equivalent of
 
 ### Still open from the original list
 
-Items 5–9 below: shared `/place/[id]` links skip the intro and sign-in screens (launch-critical), og:image, the guest review CTA button, type chips on cards, and polish.
+Items 5–9 are done (see above). Remaining: the "waiting on the user" list above.
 
 ## How to run
 
