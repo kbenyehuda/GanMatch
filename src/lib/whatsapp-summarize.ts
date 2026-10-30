@@ -27,6 +27,9 @@ const SYSTEM_PROMPT = `אתה כותב סיכומים קצרים של המלצו
 א. summary — סיכום קצר (משפט אחד או שניים), בעברית יומיומית וקלילה, שמעביר את כל המידע הרלוונטי על המקום/נותן השירות — איכות, מחיר, שירות, זמן המתנה, התאמה לילדים, חיות מחמד, וכל פרט ספציפי אחר.
 - אל תעתיק משפטים כמו שהם מהמקור — תמיד תנסח מחדש במילים שלך.
 - אל תכלול שום מידע על מי שכתב את ההמלצה (שם, מספר טלפון, ניחוש לזהות, רמזים מזהים מכל סוג) — הסיכום חייב להישאר אנונימי לחלוטין.
+- נסח כדעה וחוויה של הכותב ("לדבריה", "היא הרגישה", "הם היו מרוצים"), לא כעובדה מוחלטת.
+- אל תכלול האשמות או טענות עובדתיות חמורות על אנשים (הזנחה, אלימות, עבירה, חוסר מקצועיות). אם ההמלצה כוללת כאלה, כתוב רק שהחוויה הייתה שלילית, בלי הפרטים.
+- אל תכלול פרטים על ילדים: שמות, גיל מדויק של ילד מסוים, מצב בריאותי או אבחנות. מותר לכתוב באופן כללי מאיזה גיל המקום מקבל.
 - אם אין שום מידע נוסף מעבר לשם המקום עצמו — החזר מחרוזת ריקה.
 - לפני שאתה משיב, עבור שוב על כל ההודעות (גם הודעת המקור) ובדוק שלא פספסת פרט רלוונטי על המקום — אם כן, הוסף אותו לסיכום.
 
@@ -382,18 +385,24 @@ export function pickKidsStructuredFields(result: SummarizeResult): KidsStructure
 }
 
 export async function applyKidsFieldsToPlace(admin: any, placeId: string, fields: KidsStructuredFields): Promise<void> {
-  const update: Record<string, unknown> = {};
-  if (fields.kosher != null) update.kosher = fields.kosher;
-  if (fields.hours != null) update.hours = fields.hours;
+  // Fill only what the place doesn't have yet: one parent's message must not overwrite a fact
+  // (ממ"ד, cameras, kosher) that another source already set (legal review)
+  const wanted = fields.kosher != null || fields.hours != null
+    || fields.friday_schedule != null || fields.has_mamad != null || fields.has_cctv != null;
+  if (!wanted) return;
+  const { data: place } = await admin.from("places").select("attributes, kosher, hours").eq("id", placeId).single();
+  if (!place) return;
 
-  if (fields.friday_schedule != null || fields.has_mamad != null || fields.has_cctv != null) {
-    const { data: existing } = await admin.from("places").select("attributes").eq("id", placeId).single();
-    const attrs = { ...((existing?.attributes as Record<string, unknown>) ?? {}) };
-    if (fields.friday_schedule != null) attrs.friday_schedule = fields.friday_schedule;
-    if (fields.has_mamad != null) attrs.has_mamad = fields.has_mamad;
-    if (fields.has_cctv != null) attrs.has_cctv = fields.has_cctv;
-    update.attributes = attrs;
+  const update: Record<string, unknown> = {};
+  if (fields.kosher != null && place.kosher == null) update.kosher = fields.kosher;
+  if (fields.hours != null && !place.hours) update.hours = fields.hours;
+
+  const attrs = { ...((place.attributes as Record<string, unknown>) ?? {}) };
+  let attrsChanged = false;
+  for (const key of ["friday_schedule", "has_mamad", "has_cctv"] as const) {
+    if (fields[key] != null && attrs[key] == null) { attrs[key] = fields[key]; attrsChanged = true; }
   }
+  if (attrsChanged) update.attributes = attrs;
 
   if (Object.keys(update).length > 0) await admin.from("places").update(update).eq("id", placeId);
 }

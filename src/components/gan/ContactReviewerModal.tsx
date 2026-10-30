@@ -121,15 +121,16 @@ export function ContactReviewerModal({
 
       <div style={{ marginBottom: 14 }}>
         <label className="font-hebrew font-bold" style={{ fontSize: 11, color: "#8A95A8", letterSpacing: ".06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
-          האימייל שלך (נשלח כ-Reply-To)
+          התשובה תגיע לאימייל של החשבון שלך
         </label>
+        {/* Read-only: the server always replies to the account's own email */}
         <input
           value={senderEmail}
-          onChange={(e) => setSenderEmail(e.target.value)}
+          readOnly
           type="email"
+          dir="ltr"
           className="font-hebrew"
-          style={inputStyle}
-          placeholder="your@email.com"
+          style={{ ...inputStyle, background: "#F6F9FE", color: "#4A5568" }}
         />
       </div>
 
