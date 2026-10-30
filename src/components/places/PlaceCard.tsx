@@ -51,86 +51,8 @@ export interface PlaceCardProps {
   isSelected?: boolean;
   onSelect: (place: Place) => void;
   userLocation?: { lon: number; lat: number } | null;
-  featured?: boolean;
   isSaved?: boolean;
   onToggleSave?: (id: string) => void;
-}
-
-// ─── Featured card ────────────────────────────────────────────────────────────
-
-function FeaturedCard({ place, onSelect, userLocation, isSaved, onToggleSave }: PlaceCardProps) {
-  const dist = distanceLabel(place, userLocation ?? null);
-  const neighborhood = place.neighborhood ? NEIGHBORHOOD_LABELS[place.neighborhood] : null;
-
-  return (
-    <div className="relative">
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => onSelect(place)}
-        onKeyDown={(e) => e.key === "Enter" && onSelect(place)}
-        className="w-full text-start relative overflow-hidden cursor-pointer"
-        style={{
-          background: "linear-gradient(135deg, #0A2B6B 0%, #1F5BB5 100%)",
-          borderRadius: 20,
-          padding: 16,
-          marginBottom: 14,
-          color: "#fff",
-          boxShadow: "0 10px 28px rgba(10,43,107,.25)",
-          display: "block",
-        }}
-      >
-        {/* Gold radial */}
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: "radial-gradient(300px 200px at 90% 100%, rgba(200,162,75,.3), transparent 60%)",
-        }} />
-        {/* Eyebrow */}
-        <div className="flex items-center gap-1.5 mb-2.5" style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: ".12em",
-          color: "#E8D49F", textTransform: "uppercase",
-        }}>
-          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 11, height: 11 }}>
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
-          </svg>
-          המומלץ ביותר · השבוע
-        </div>
-        {/* Name */}
-        <h4 className="font-hebrew mb-1" style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.15 }}>
-          {place.name}
-        </h4>
-        {/* Sub */}
-        <div className="font-hebrew mb-3.5" style={{ fontSize: 13, opacity: 0.78 }}>
-          {[PLACE_CATEGORY_LABELS[place.place_category], neighborhood, dist, hasPin(place) ? null : NO_PIN_LABEL].filter(Boolean).join(" · ")}
-        </div>
-        {/* Rating row */}
-        <div className="flex items-center gap-3" style={{ fontSize: 12 }}>
-          {place.avg_rating != null && (
-            <div className="flex items-center gap-1" style={{ fontWeight: 700 }}>
-              <svg viewBox="0 0 24 24" fill="#C8A24B" style={{ width: 13, height: 13 }}>
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
-              </svg>
-              {place.avg_rating.toFixed(1)}
-              <span style={{ opacity: 0.7, fontWeight: 500 }}>· {place.rec_count} המלצות</span>
-            </div>
-          )}
-        </div>
-      </div>
-      {/* Heart — sibling, not nested */}
-      {onToggleSave && (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={(e) => { e.stopPropagation(); onToggleSave(place.id); }}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onToggleSave(place.id); } }}
-          className="absolute cursor-pointer"
-          style={{ top: 14, insetInlineEnd: 14, background: "rgba(255,255,255,.15)", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
-          aria-label={isSaved ? "הסר מהמועדפים" : "שמור למועדפים"}
-        >
-          <Heart style={{ width: 16, height: 16, color: isSaved ? "#D86B7D" : "rgba(255,255,255,.7)", fill: isSaved ? "#D86B7D" : "none" }} />
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ─── Regular recommendation card ──────────────────────────────────────────────
@@ -140,14 +62,9 @@ export function PlaceCard({
   isSelected = false,
   onSelect,
   userLocation = null,
-  featured = false,
   isSaved = false,
   onToggleSave,
 }: PlaceCardProps) {
-  if (featured) {
-    return <FeaturedCard place={place} isSelected={isSelected} onSelect={onSelect} userLocation={userLocation} isSaved={isSaved} onToggleSave={onToggleSave} />;
-  }
-
   const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
   const lightColor = lightenColor(color);
   const dist = distanceLabel(place, userLocation);

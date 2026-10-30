@@ -228,8 +228,6 @@ export function PlaceFeedPanel({
     return sortPlaces(result, sort, userLocation);
   }, [places, sort, searchQuery, apiSearchResults, userLocation]);
 
-  const featuredPlace = useMemo(() => visiblePlaces.find(p => p.avg_rating != null) ?? null, [visiblePlaces]);
-
   const searching = searchQuery.trim() !== "";
 
   if (!isVisible) return null;
@@ -365,23 +363,8 @@ export function PlaceFeedPanel({
           </div>
         ) : (
           <>
-            {/* Featured card */}
-            {featuredPlace && sort === "top" && apiSearchResults === null && (
-              <div onMouseEnter={() => onHoverPlace?.(featuredPlace.id)} onMouseLeave={() => onHoverPlace?.(null)}>
-              <PlaceCard
-                place={featuredPlace}
-                isSelected={selectedPlaceId === featuredPlace.id}
-                onSelect={onSelectPlace}
-                userLocation={userLocation}
-                featured
-                isSaved={savedIds.has(featuredPlace.id)}
-                onToggleSave={onToggleSave}
-              />
-              </div>
-            )}
-            {/* Regular cards */}
+            {/* The top-rated place is simply first in the list (sort "top"), with no special card */}
             {visiblePlaces
-              .filter(p => !(sort === "top" && apiSearchResults === null && p.id === featuredPlace?.id))
               .map(place => (
                 <div key={place.id} onMouseEnter={() => onHoverPlace?.(place.id)} onMouseLeave={() => onHoverPlace?.(null)}>
                   <PlaceCard
