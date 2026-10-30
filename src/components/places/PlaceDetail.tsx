@@ -12,6 +12,7 @@ import { useSession } from "@/lib/useSession";
 import { signInWithGoogle } from "@/lib/sign-in";
 import { placeTypeLabel } from "@/lib/place-type";
 import { isApproximateLocation } from "@/lib/place-location";
+import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME } from "@/lib/contact";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 import { GAN_APPROACH_LABELS, displayTags, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
@@ -58,6 +59,48 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
 
 const AVA_COLORS = ["#1F5BB5","#E59A2C","#2EA86B","#D86B7D","#9C5BBD"];
 
+/** (?) next to "חבר/ה מהשכונה": where WhatsApp recommendations come from. Hover on desktop, tap on phones. */
+function ReviewSourceInfo() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-review-source-info]")) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => { document.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onDown); };
+  }, [open]);
+
+  return (
+    <span className="relative inline-flex" data-review-source-info
+      onMouseEnter={() => { if (window.matchMedia("(hover: hover)").matches) setOpen(true); }}
+      onMouseLeave={() => { if (window.matchMedia("(hover: hover)").matches) setOpen(false); }}>
+      <button type="button" aria-label="מאיפה ההמלצה הזו?" aria-expanded={open} onClick={() => setOpen(o => !o)}
+        style={{ background: "none", border: 0, padding: 2, cursor: "pointer", color: "#8A95A8", display: "inline-flex" }}>
+        <HelpCircle style={{ width: 14, height: 14 }} />
+      </button>
+      {open && (
+        <span role="tooltip" className="font-hebrew absolute top-full start-0 z-20 block text-start"
+          style={{ marginTop: 4, width: 270, background: "#0F1A2E", color: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 12, fontWeight: 400, lineHeight: 1.55, boxShadow: "0 6px 20px rgba(10,43,107,.25)" }}>
+          <strong className="block" style={{ fontSize: 13, marginBottom: 4 }}>מאיפה ההמלצה הזו?</strong>
+          <span className="block">ההמלצה נכתבה במקור על ידי הורה בקבוצת ווטסאפ של הורים בגבעתיים.</span>
+          <span className="block" style={{ marginTop: 4 }}>
+            כדי לשמור על פרטיות הכותבים, ההמלצות <strong>סוכמו ונוסחו מחדש באופן אוטומטי</strong> (בעזרת בינה מלאכותית). לכן הניסוח אינו ציטוט מדויק, וייתכנו אי-דיוקים.
+          </span>
+          <span className="block" style={{ marginTop: 4 }}>זו דעה אישית של מי שכתב אותה, ולא בדיקה מקצועית או המלצה של GiveMyTime.</span>
+          <span className="block" style={{ marginTop: 4 }}>
+            כתבתם את ההמלצה ורוצים לתקן או להסיר אותה, או שזה העסק שלכם?{" "}
+            <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("בקשה לגבי המלצה ב-GiveMyTime")}`}
+              style={{ color: "#9EC5FF", fontWeight: 700, textDecoration: "underline" }}>פנו אלינו</a>
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onContact }: { review: PlaceReview; place: Place; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void }) {
   // Same-meaning tags merge (מקבלת ילדים → מקבל ילדים); type words, health funds and praise are dropped.
   const tags = displayTags(review.tags, place);
@@ -77,6 +120,7 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
         <div className="flex-1">
           <div className="flex items-center gap-1.5">
             <span className="font-hebrew font-bold" style={{ fontSize: 13, color: "#0F1A2E" }}>{name}</span>
+            {review.reviewer_public_name === WHATSAPP_REVIEWER_NAME && <ReviewSourceInfo />}
           </div>
           <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{date}</div>
         </div>
