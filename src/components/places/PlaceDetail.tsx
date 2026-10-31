@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail, HelpCircle, Flag } from "lucide-react";
 import type { Place, PlaceReview, SpokenLanguage } from "@/types/places";
 import {
@@ -59,31 +60,66 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
 
 const AVA_COLORS = ["#1F5BB5","#E59A2C","#2EA86B","#D86B7D","#9C5BBD"];
 
-/** (?) next to "חבר/ה מהשכונה": where WhatsApp recommendations come from. Hover on desktop, tap on phones. */
+/**
+ * (?) next to "חבר/ה מהשכונה": where WhatsApp recommendations come from. Hover on desktop, tap on phones.
+ * The tooltip is portaled to <body> with fixed position, clamped to the screen: inside the review list
+ * (overflow hidden) it was cut off.
+ */
 function ReviewSourceInfo() {
-  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<React.CSSProperties | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const open = pos != null;
+
+  const show = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = Math.min(270, window.innerWidth - 16);
+    // Right edge under the (?) (RTL), kept at least 8px inside the screen on both sides
+    const right = Math.min(Math.max(window.innerWidth - r.right, 8), window.innerWidth - width - 8);
+    const below = r.bottom < window.innerHeight * 0.55;
+    setPos({ width, right, ...(below ? { top: r.bottom + 4 } : { bottom: window.innerHeight - r.top + 4 }) });
+  }, []);
+  const hide = useCallback(() => setPos(null), []);
+  // Leaving the (?) for the tooltip (to click "פנו אלינו") must not close it on the way
+  const hideSoon = useCallback(() => { closeTimer.current = setTimeout(hide, 150); }, [hide]);
+  const keep = useCallback(() => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  const hasHover = () => window.matchMedia("(hover: hover)").matches;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") hide(); };
     const onDown = (e: PointerEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-review-source-info]")) setOpen(false);
+      if (!(e.target as HTMLElement).closest("[data-review-source-info]")) hide();
     };
+    // Fixed position doesn't follow scrolling, so close instead of floating away from the (?)
+    const onScroll = (e: Event) => { if (!(e.target as HTMLElement)?.closest?.("[data-review-source-info]")) hide(); };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown);
-    return () => { document.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onDown); };
-  }, [open]);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", hide);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", hide);
+    };
+  }, [open, hide]);
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
   return (
-    <span className="relative inline-flex" data-review-source-info
-      onMouseEnter={() => { if (window.matchMedia("(hover: hover)").matches) setOpen(true); }}
-      onMouseLeave={() => { if (window.matchMedia("(hover: hover)").matches) setOpen(false); }}>
-      <button type="button" aria-label="מאיפה ההמלצה הזו?" aria-expanded={open} onClick={() => setOpen(o => !o)}
+    <span className="inline-flex" data-review-source-info
+      onMouseEnter={() => { if (hasHover()) show(); }}
+      onMouseLeave={() => { if (hasHover()) hideSoon(); }}>
+      <button ref={btnRef} type="button" aria-label="מאיפה ההמלצה הזו?" aria-expanded={open} onClick={() => (open ? hide() : show())}
         style={{ background: "none", border: 0, padding: 2, cursor: "pointer", color: "#8A95A8", display: "inline-flex" }}>
         <HelpCircle style={{ width: 14, height: 14 }} />
       </button>
-      {open && (
-        <span role="tooltip" className="font-hebrew absolute top-full start-0 z-20 block text-start"
-          style={{ marginTop: 4, width: 270, background: "#0F1A2E", color: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 12, fontWeight: 400, lineHeight: 1.55, boxShadow: "0 6px 20px rgba(10,43,107,.25)" }}>
+      {open && createPortal(
+        <span role="tooltip" dir="rtl" data-review-source-info className="font-hebrew block text-start"
+          onMouseEnter={keep} onMouseLeave={() => { if (hasHover()) hideSoon(); }}
+          style={{ position: "fixed", zIndex: 2000, ...pos, background: "#0F1A2E", color: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 12, fontWeight: 400, lineHeight: 1.55, boxShadow: "0 6px 20px rgba(10,43,107,.25)" }}>
           <strong className="block" style={{ fontSize: 13, marginBottom: 4 }}>מאיפה ההמלצה הזו?</strong>
           <span className="block">ההמלצה נכתבה במקור על ידי הורה בקבוצת ווטסאפ של הורים בגבעתיים.</span>
           <span className="block" style={{ marginTop: 4 }}>
@@ -95,7 +131,8 @@ function ReviewSourceInfo() {
             <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("בקשה לגבי המלצה ב-GiveMyTime")}`}
               style={{ color: "#9EC5FF", fontWeight: 700, textDecoration: "underline" }}>פנו אלינו</a>
           </span>
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );
