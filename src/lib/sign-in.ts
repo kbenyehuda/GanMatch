@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
+import { track, SIGNING_IN_KEY } from "@/lib/analytics";
 
 /**
  * Google sign-in that comes back to the page the user started on.
@@ -17,7 +18,9 @@ export async function signInWithGoogle(returnTo?: string): Promise<void> {
   const here = typeof returnTo === "string" ? returnTo : window.location.pathname + window.location.search;
   try {
     if (here !== "/") window.sessionStorage.setItem(RETURN_KEY, here);
+    window.sessionStorage.setItem(SIGNING_IN_KEY, "1");
   } catch {}
+  track("sign_in_click", undefined, null);
   await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin },

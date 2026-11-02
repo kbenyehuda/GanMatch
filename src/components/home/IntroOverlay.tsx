@@ -78,7 +78,7 @@ export function IntroOverlay({ onContinue }: { onContinue: () => void }) {
           {/* Optional promo video — secondary, never required */}
           <button
             type="button"
-            onClick={() => setVideoOpen(true)}
+            onClick={() => setVideoOpen(true)} data-track="intro_video"
             className="w-full font-hebrew"
             style={{
               marginTop: 10,

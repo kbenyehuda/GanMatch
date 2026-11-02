@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail, HelpCircle, Flag } from "lucide-react";
@@ -190,7 +191,7 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
       )}
       {/* Footer */}
       <div className="flex items-center gap-3.5 mt-2.5" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 600 }}>
-        <button type="button" onClick={() => onHelpful(review.id)}
+        <button type="button" data-track="helpful" onClick={() => onHelpful(review.id)}
           className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: isHelpful ? "#1F5BB5" : "#8A95A8", fontWeight: 600, fontSize: 12 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 13, height: 13 }}>
             <path d="M14 9V5a3 3 0 0 0-6 0v4H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-3z"/>
@@ -198,13 +199,13 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
           מועיל
         </button>
         {currentUserId && !review.is_mine && review.allow_contact && (
-          <button type="button" onClick={() => onContact(review.id)}
+          <button type="button" data-track="contact_reviewer" onClick={() => onContact(review.id)}
             className="flex items-center gap-1" style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", fontWeight: 600, fontSize: 12 }}>
             <Mail style={{ width: 13, height: 13 }} />
             שליחת הודעה
           </button>
         )}
-        <a href={reportReviewMailto(place, review.id)}
+        <a href={reportReviewMailto(place, review.id)} data-track="report"
           className="flex items-center gap-1 ms-auto" style={{ color: "#8A95A8", fontWeight: 600, fontSize: 12, textDecoration: "none" }}>
           <Flag style={{ width: 12, height: 12 }} />
           דיווח
@@ -356,6 +357,22 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const [submitHeld, setSubmitHeld] = useState(false);
   const [hoverSend, setHoverSend] = useState(false);
 
+  // Analytics: the reviews section scrolled into view (once per place, only when there are reviews).
+  const reviewsRef = useRef<HTMLDivElement | null>(null);
+  const reviewsSeenFor = useRef<string | null>(null);
+  useEffect(() => {
+    const el = reviewsRef.current;
+    if (!el || reviews.length === 0 || reviewsSeenFor.current === place.id || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver((entries) => {
+      if (!entries.some(en => en.isIntersecting) || reviewsSeenFor.current === place.id) return;
+      reviewsSeenFor.current = place.id;
+      track("reviews_seen", { name: place.name, category: place.place_category, count: reviews.length }, place.id);
+      obs.disconnect();
+    }, { threshold: 0.2 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [place.id, place.name, place.place_category, reviews.length]);
+
   const submitReview = useCallback(async () => {
     if (formRating === 0) { setSubmitError("יש לבחור דירוג כוכבים תחילה"); return; }
     if (!user || !session) return;
@@ -378,6 +395,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשליחה");
       setSubmitHeld(Boolean(data.held));
       setSubmitSuccess(true); setShowForm(false);
+      track("review_submitted", { rating: formRating, name: place.name, category: place.place_category }, place.id);
       await loadReviews();
       // The server folds price/vacancy into places.attributes, but `place` is a prop
       // snapshot — mirror that same merge locally so it shows immediately instead of
@@ -437,7 +455,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         {/* Action buttons */}
         <div className="absolute flex gap-2" style={{ top: "calc(var(--safe-top, 0px) + 14px)", insetInlineEnd: 14, zIndex: 5 }}>
           {/* Share */}
-          <button type="button"
+          <button type="button" data-track="share"
             onClick={() => {
               if (navigator.share) navigator.share({ title: place.name, url: location.href }).catch(() => {});
               else { navigator.clipboard?.writeText(location.href).catch(() => {}); onShowToast?.("קישור הועתק"); }
@@ -452,7 +470,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {/* Save */}
           {onToggleSave && (
             <button type="button"
-              onClick={() => { onToggleSave(); onShowToast?.(isSaved ? "הוסר מהמועדפים" : "נשמר למועדפים"); }}
+              onClick={() => { if (!isSaved) track("save"); onToggleSave(); onShowToast?.(isSaved ? "הוסר מהמועדפים" : "נשמר למועדפים"); }}
               className="flex items-center justify-center"
               style={{ width: 38, height: 38, borderRadius: 14, background: isSaved ? "#D86B7D" : "rgba(255,255,255,.95)", border: 0, cursor: "pointer", boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}>
               <svg viewBox="0 0 24 24" fill={isSaved ? "#fff" : "none"} stroke={isSaved ? "#fff" : "#0A2B6B"} strokeWidth="2" style={{ width: 16, height: 16 }}>
@@ -520,7 +538,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             </div>
           )}
           {place.phone?.map(p => (
-            <a key={p} href={`tel:${p}`} className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
+            <a key={p} href={`tel:${p}`} data-track="call" className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
               <Phone style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div>
                 <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>טלפון</span>
@@ -546,7 +564,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                   <span className="font-hebrew block" style={{ marginTop: 2, fontSize: 12, color: "#8A95A8" }}>מיקום משוער: הרחוב ידוע, מספר הבית לא</span>
                 )}
                 {user && onRequestLocationChange && (
-                  <button type="button" onClick={() => onRequestLocationChange(place)}
+                  <button type="button" data-track="location_change_open" onClick={() => onRequestLocationChange(place)}
                     className="font-hebrew font-semibold block"
                     style={{ marginTop: 4, fontSize: 12, color: "#1F5BB5", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
                     המיקום לא מדויק? בקשו עדכון ←
@@ -556,7 +574,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             </div>
           )}
           {place.website && (
-            <a href={/^https?:\/\//i.test(place.website) ? place.website : `https://${place.website}`} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
+            <a href={/^https?:\/\//i.test(place.website) ? place.website : `https://${place.website}`} target="_blank" rel="noopener noreferrer" data-track="website" className="flex items-start gap-3 block" style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0", textDecoration: "none" }}>
               <Globe style={{ width: 18, height: 18, color: "#1F5BB5", flexShrink: 0, marginTop: 1 }} />
               <div>
                 <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>אתר</span>
@@ -597,7 +615,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               <div className="flex items-center gap-1.5 mb-2">
                 <span className="font-hebrew" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700 }}>פרטים נוספים</span>
                 {Object.keys(attrs).length > 0 && (
-                  <button type="button" onClick={() => setShowIconLegend(true)} aria-label="מה הסמלים אומרים"
+                  <button type="button" data-track="legend_open" onClick={() => setShowIconLegend(true)} aria-label="מה הסמלים אומרים"
                     className="flex items-center justify-center" style={{ background: "none", border: 0, padding: 0, cursor: "pointer", color: "#8A95A8" }}>
                     <HelpCircle style={{ width: 13, height: 13 }} />
                   </button>
@@ -610,7 +628,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 if (attrs.vacancy_status == null || attrs.vacancy_status === "UNKNOWN") missing.push("מקום פנוי");
                 if (attrs.min_age_months == null) missing.push("טווח גילאים");
                 return (
-                  <button type="button" onClick={() => setShowAttrEdit(true)}
+                  <button type="button" data-track="edit_attrs_open" onClick={() => setShowAttrEdit(true)}
                     className="font-hebrew text-start w-full"
                     style={{ marginTop: 8, fontSize: 12, color: "#8A95A8", background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
                     {missing.length > 0 ? (
@@ -652,7 +670,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           )}
 
           {/* Reviews section */}
-          <div style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
+          <div ref={reviewsRef} style={{ paddingTop: 16, borderTop: "1px solid #E5E9F0", marginTop: 6 }}>
             <h4 className="font-hebrew" style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>
               המלצות {reviews.length > 0 && <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 12 }}>{reviews.length}</span>}
             </h4>
@@ -676,7 +694,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             )}
 
             {!submitSuccess && user && !showForm && (
-              <button type="button" onClick={() => setShowForm(true)}
+              <button type="button" data-track="review_start" onClick={() => setShowForm(true)}
                 className="w-full font-hebrew font-bold flex items-center justify-center gap-2"
                 style={{ padding: "13px 0", borderRadius: 14, marginTop: 4, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", fontSize: 14, border: "none", cursor: "pointer", boxShadow: "0 6px 16px rgba(10,43,107,.25)" }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15 }}>
@@ -757,9 +775,9 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
           {/* Owners and reports: by email for now (CONTACT_EMAIL) */}
           <div className="font-hebrew flex flex-wrap items-center justify-center gap-x-3 gap-y-1" style={{ paddingTop: 16, marginTop: 14, borderTop: "1px solid #E5E9F0", fontSize: 12, color: "#8A95A8" }}>
-            <a href={ownerMailto(place)} style={{ color: "#1F5BB5", fontWeight: 700, textDecoration: "none" }}>זה העסק שלכם?</a>
+            <a href={ownerMailto(place)} data-track="owner_claim" style={{ color: "#1F5BB5", fontWeight: 700, textDecoration: "none" }}>זה העסק שלכם?</a>
             <span aria-hidden>·</span>
-            <a href={reportPlaceMailto(place)} style={{ color: "#8A95A8", fontWeight: 600, textDecoration: "underline" }}>דיווח על טעות או בקשת הסרה</a>
+            <a href={reportPlaceMailto(place)} data-track="report" style={{ color: "#8A95A8", fontWeight: 600, textDecoration: "underline" }}>דיווח על טעות או בקשת הסרה</a>
           </div>
 
         </div>
@@ -773,7 +791,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         {/* Directions */}
         {place.lat != null && place.lon != null ? (
           <button type="button"
-            onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lon}`, "_blank")}
+            data-track="navigate" onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lon}`, "_blank")}
             className="flex-1 flex items-center justify-center gap-2 font-hebrew font-bold"
             style={{ padding: 14, borderRadius: 16, background: "#0A2B6B", color: "#fff", fontSize: 14, border: "none", cursor: "pointer", boxShadow: "0 10px 22px rgba(10,43,107,.3)" }}>
             <Navigation style={{ width: 16, height: 16 }} />
@@ -788,7 +806,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         )}
         {/* Call */}
         {place.phone?.[0] && (
-          <a href={`tel:${place.phone[0]}`}
+          <a href={`tel:${place.phone[0]}`} data-track="call"
             className="flex items-center justify-center"
             style={{ width: 52, background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, textDecoration: "none" }}>
             <Phone style={{ width: 18, height: 18, color: "#0A2B6B" }} />

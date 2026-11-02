@@ -26,11 +26,12 @@ import { DEFAULT_PLACE_FILTERS, activeCategory, type PlaceFilters } from "@/type
 import { applyPlaceFilters } from "@/lib/apply-place-filters";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
+import { track, setAnalyticsPlace } from "@/lib/analytics";
 import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
   ChevronRight, Send, Shield, Info, Check,
-  ClipboardCheck,
+  ClipboardCheck, BarChart3,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -492,6 +493,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
 
   // Open add modal immediately — no pin-picking required first
   const startAddFlow = useCallback(() => {
+    track("add_place_open", undefined, null);
     setShowAddModal(true);
   }, []);
 
@@ -546,6 +548,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   // sense for a gan, not for a dermatologist (and hmo would empty any non-doctor list).
   const selectCategory = useCallback((next: PlaceCategory) => {
     if (next === category) return;
+    track("category_selected", { category: next }, null);
     scopedByCategoryRef.current[category] = { neighborhoods: filters.neighborhoods, hmo: filters.hmo };
     const restored = scopedByCategoryRef.current[next] ?? { neighborhoods: null, hmo: null };
     setFilters({ ...filters, categories: [next], ...restored });
@@ -564,6 +567,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     () => applyPlaceFilters(places, effectiveFilters, selectedPlace?.id ?? null),
     [places, effectiveFilters, selectedPlace?.id]
   );
+  const filteredCountRef = useRef(0);
+  filteredCountRef.current = filteredPlaces.length;
 
   // ── Filter facets (pills) ─────────────────────────────────────────────────────
   const facets = useMemo(
@@ -572,9 +577,40 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   );
 
   const handleFacetChange = useCallback(
-    (key: string, values: string[]) => setFilters(f => setFacetValues(f, key, values)),
-    []
+    (key: string, values: string[]) => {
+      // Only what was switched on (removals aren't demand), with the labels people saw.
+      const facet = facets.find(f => f.key === key);
+      const added = values.filter(v => !facet?.selected.includes(v));
+      if (added.length) {
+        track("filter_changed", {
+          category, key, label: facet?.label ?? key, values: added,
+          labels: added.map(v => facet?.options.find(o => o.id === v)?.label ?? v),
+        }, null);
+      }
+      setFilters(f => setFacetValues(f, key, values));
+    },
+    [category, facets]
   );
+
+  // ── Analytics: which places people look at, what they search, which category ──
+  useEffect(() => {
+    if (!selectedPlace || selectedPlace.id === detailPlace?.id) return;
+    track("place_preview", { name: selectedPlace.name, category: selectedPlace.place_category }, selectedPlace.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlace?.id]);
+  useEffect(() => {
+    setAnalyticsPlace(detailPlace && { id: detailPlace.id, name: detailPlace.name, category: detailPlace.place_category });
+    if (detailPlace) track("place_opened", { name: detailPlace.name, category: detailPlace.place_category }, detailPlace.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailPlace?.id]);
+  useEffect(() => {
+    const q = mapSearchQuery.trim();
+    if (q.length < 2) return;
+    // Only what they stopped typing at; results = 0 feeds the "zero-result searches" list.
+    const t = setTimeout(() => track("search", { q, results: filteredCountRef.current }, null), 1500);
+    return () => clearTimeout(t);
+  }, [mapSearchQuery]);
+
   const handleClearFilters = useCallback(
     () => setFilters(f => clearCategoryFilters(f, activeCategory(f))),
     []
@@ -818,6 +854,14 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                   style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
                 >
                   טריאז&apos; גנים
+                </button>
+                <button
+                  type="button"
+                  onClick={() => (window.location.href = "/admin/analytics")}
+                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+                  style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
+                >
+                  מי נכנס ומה לחצו
                 </button>
               </>
             )}
@@ -1340,6 +1384,7 @@ function ProfileScreen({
               ניהול
             </div>
             <ProfileListCard icon={<Send style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' WhatsApp" sub="אישור המלצות שחולצו מוואטסאפ" onClick={() => (window.location.href = "/admin/whatsapp")} />
+            <ProfileListCard icon={<BarChart3 style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="מי נכנס ומה לחצו" sub="כניסות, לחיצות, ומאיזה קישור הגיעו" onClick={() => (window.location.href = "/admin/analytics")} />
             <ProfileListCard icon={<Shield style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' גנים" sub="עריכות והמלצות ממתינות" onClick={() => (window.location.href = "/admin/triage")} />
             <ProfileListCard icon={<MapPin style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות שינוי מיקום" sub="אישור עדכוני מיקום ממשתמשים" onClick={() => (window.location.href = "/admin/place-location-requests")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות עדכון פרטים" sub="אישור פרטים שהורים מילאו בגנים" onClick={() => (window.location.href = "/admin/place-detail-requests")} />

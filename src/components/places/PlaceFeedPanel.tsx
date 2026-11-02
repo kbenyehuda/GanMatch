@@ -338,7 +338,7 @@ export function PlaceFeedPanel({
               )}
             </h3>
             {/* Sort button */}
-            <button type="button" onClick={() => setShowSortSheet(true)}
+            <button type="button" data-track="sort_open" onClick={() => setShowSortSheet(true)}
               className="flex items-center gap-1 font-hebrew"
               style={{ fontSize: 12, fontWeight: 700, color: "#1F5BB5", background: "none", border: 0, cursor: "pointer", padding: "4px 0" }}>
               {SORT_OPTIONS.find(o => o.id === sort)?.label ?? "מומלצים"}

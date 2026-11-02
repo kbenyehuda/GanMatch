@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Heebo, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
+import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -61,6 +62,7 @@ export default function RootLayout({
     <html lang="he" dir="rtl" className={`${inter.variable} ${heebo.variable} ${jakartaSans.variable}`}>
       <body className="font-sans antialiased min-h-screen bg-background text-foreground">
         <ServiceWorkerRegister />
+        <AnalyticsTracker />
         {children}
       </body>
     </html>
