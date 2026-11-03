@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, Filter, Search, SlidersHorizontal, X } from "lucide-react";
 import type { PlaceCategory } from "@/types/places";
 import { PLACE_CATEGORY_LABELS, VISIBLE_CATEGORIES } from "@/types/places";
 import type { Facet } from "./filter-facets";
@@ -135,6 +135,15 @@ export function FilterPills({
         className="flex items-center overflow-x-auto scrollbar-hide font-hebrew"
         style={{ gap: 6, paddingBlock: 2, paddingInlineEnd: 16 }}
       >
+        {/* Says what the chips are: visitors read "סוג ▾" as a field, not as a filter */}
+        {(primary.length > 0 || secondary.length > 0) && (
+          <span className="flex items-center gap-1 shrink-0" aria-hidden
+            style={{ fontSize: 13, fontWeight: 700, color: "#4A5568", whiteSpace: "nowrap",
+              ...(floating ? { background: "#fff", padding: "7px 10px", borderRadius: 999, boxShadow: "0 2px 8px rgba(10,43,107,.10)" } : { paddingInline: 2 }) }}>
+            <Filter style={{ width: 13, height: 13 }} />
+            סינון:
+          </span>
+        )}
         {primary.map((f) => {
           const active = f.selected.length > 0;
           if (f.mode === "toggle") {

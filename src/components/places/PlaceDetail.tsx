@@ -126,6 +126,9 @@ function ReviewSourceInfo() {
           <span className="block" style={{ marginTop: 4 }}>
             כדי לשמור על פרטיות הכותבים, ההמלצות <strong>סוכמו ונוסחו מחדש באופן אוטומטי</strong> (בעזרת בינה מלאכותית). לכן הניסוח אינו ציטוט מדויק, וייתכנו אי-דיוקים.
           </span>
+          <span className="block" style={{ marginTop: 4 }}>
+            <strong>גם מספר הכוכבים נקבע אוטומטית</strong> לפי מה שנכתב, ולא על ידי ההורה עצמו, וייתכן שההורה היה נותן דירוג אחר.
+          </span>
           <span className="block" style={{ marginTop: 4 }}>זו דעה אישית של מי שכתב אותה, ולא בדיקה מקצועית או המלצה של GiveMyTime.</span>
           <span className="block" style={{ marginTop: 4 }}>
             כתבתם את ההמלצה ורוצים לתקן או להסיר אותה, או שזה העסק שלכם?{" "}
@@ -172,12 +175,18 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
         )}
       </div>
       {/* Stars */}
-      <div className="flex gap-0.5 mb-1.5" dir="ltr">
-        {[1,2,3,4,5].map(n => (
-          <svg key={n} viewBox="0 0 24 24" style={{ width: 12, height: 12, fill: review.rating >= n ? "#C8A24B" : "none", color: review.rating >= n ? "#C8A24B" : "#E5E9F0" }}>
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
-          </svg>
-        ))}
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <div className="flex gap-0.5" dir="ltr">
+          {[1,2,3,4,5].map(n => (
+            <svg key={n} viewBox="0 0 24 24" style={{ width: 12, height: 12, fill: review.rating >= n ? "#C8A24B" : "none", color: review.rating >= n ? "#C8A24B" : "#E5E9F0" }}>
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/>
+            </svg>
+          ))}
+        </div>
+        {/* WhatsApp stars were set automatically from the text, not by the parent who wrote it */}
+        {review.reviewer_public_name === WHATSAPP_REVIEWER_NAME && (
+          <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>דירוג משוער</span>
+        )}
       </div>
       {/* Text */}
       {review.text && <p className="font-hebrew" style={{ fontSize: 13, lineHeight: 1.5, color: "#4A5568" }}>&ldquo;{review.text}&rdquo;</p>}
@@ -625,20 +634,22 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 )}
               </div>
               {Object.keys(attrs).length > 0 && <KidsAttributeChips attrs={attrs} />}
-              {user && (() => {
+              {(() => {
                 const missing: string[] = [];
                 if (attrs.monthly_price_nis == null) missing.push("מחיר");
                 if (attrs.vacancy_status == null || attrs.vacancy_status === "UNKNOWN") missing.push("מקום פנוי");
                 if (attrs.min_age_months == null) missing.push("טווח גילאים");
+                // Shown to guests too: they didn't know they could help, or that it needs a Google login
+                const cta = user
+                  ? (missing.length > 0 ? "עזרו לנו למלא ←" : "ערכו פרטים ←")
+                  : (missing.length > 0 ? "התחברו עם Google כדי לעזור למלא ←" : "התחברו עם Google כדי לעדכן פרטים ←");
                 return (
-                  <button type="button" data-track="edit_attrs_open" onClick={() => setShowAttrEdit(true)}
+                  <button type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"}
+                    onClick={() => (user ? setShowAttrEdit(true) : signInWithGoogle(`/place/${place.id}`))}
                     className="font-hebrew text-start w-full"
                     style={{ marginTop: 8, fontSize: 12, color: "#8A95A8", background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
-                    {missing.length > 0 ? (
-                      <>עדיין אין לנו מידע על: {missing.join(", ")} — האפליקציה יודעת לשמור את זה, רק צריך שמישהו יעדכן. <span style={{ color: "#1F5BB5", fontWeight: 700 }}>עזרו לנו למלא ←</span></>
-                    ) : (
-                      <span style={{ color: "#1F5BB5", fontWeight: 700 }}>ערכו פרטים ←</span>
-                    )}
+                    {missing.length > 0 && <>עדיין אין לנו מידע על: {missing.join(", ")} — האפליקציה יודעת לשמור את זה, רק צריך שמישהו יעדכן. </>}
+                    <span style={{ color: "#1F5BB5", fontWeight: 700 }}>{cta}</span>
                   </button>
                 );
               })()}
