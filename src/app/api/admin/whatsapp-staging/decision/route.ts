@@ -7,6 +7,7 @@ import { geocodeHint, extractAddressFromText, parseStoredHint, serializeHint, fo
 import { findSimilarPlace } from "@/lib/dedupe";
 import { isPrivatePersonEntry } from "@/lib/private-person";
 import * as crypto from "crypto";
+import { kindFieldFor } from "@/lib/chugim-types";
 
 function contactEmail(reviewerName: string): string {
   const hash = crypto.createHash("md5").update(reviewerName.trim()).digest("hex").slice(0, 16);
@@ -309,9 +310,16 @@ export async function POST(req: Request) {
   }
 
   if (row.category === "kids") await applyKidsFieldsToPlace(admin, placeId, kidsFields);
-  // The class kind picked in triage wins over the AI's guess (kids "חוגים" rows).
-  if (Array.isArray(row.chugim_types) && row.chugim_types.length > 0) {
-    placeExtras = { ...(placeExtras ?? {}), attributes: { ...(placeExtras?.attributes ?? {}), chugim_types: row.chugim_types } };
+  // The class/workshop kind picked in triage wins over the AI's guess (kids "חוגים" / "סדנאות" rows).
+  const kind = row.category === "kids" ? kindFieldFor(row.specialty) : null;
+  if (kind?.attr === "workshop_types" && placeExtras?.attributes) {
+    // a workshop isn't a class: drop any class kind the AI guessed
+    const { chugim_types: _drop, ...rest } = placeExtras.attributes as Record<string, unknown>;
+    placeExtras = { ...placeExtras, attributes: rest };
+  }
+  const picked = kind && Array.isArray(row.chugim_types) ? row.chugim_types.filter((c: unknown) => kind.options.includes(c as string)) : [];
+  if (kind && picked.length > 0) {
+    placeExtras = { ...(placeExtras ?? {}), attributes: { ...(placeExtras?.attributes ?? {}), [kind.attr]: picked } };
   }
   await applyPlaceExtras(admin, placeId, placeExtras);
 

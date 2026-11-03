@@ -6,7 +6,7 @@ import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS } from "@/types/places";
 import type { PlaceCategory } from "@/types/places";
-import { CHUGIM_TYPES } from "@/lib/chugim-types";
+import { kindFieldFor } from "@/lib/chugim-types";
 
 const PAGE_SIZE = 100;
 const BUILTIN_CATEGORIES: (PlaceCategory | "other")[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics", "other"];
@@ -1066,6 +1066,14 @@ export default function WhatsAppStagingPage() {
                           {effectiveSpecialty}
                         </span>
                       )}
+                      {effectiveCat === "kids" && kindFieldFor(effectiveSpecialty) && (() => {
+                        const chosen = chugimById[item.id] ?? item.chugim_types ?? [];
+                        return (
+                          <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${chosen.length ? "bg-[#0A2B6B] text-white" : "border border-dashed text-gray-400"}`}>
+                            {chosen.length ? chosen.join(" · ") : "תחום: לא נבחר"}
+                          </span>
+                        );
+                      })()}
                       {String(item.source_messages?.[0] ?? "").startsWith("⚠️") && (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0"
                           title={String(item.source_messages?.[0])}>⚠️ חלש</span>
@@ -1171,14 +1179,15 @@ export default function WhatsAppStagingPage() {
                       )}
                     </div>
 
-                    {/* Kind of class, for kids "חוגים" rows → places.attributes.chugim_types on approval */}
-                    {effectiveCat === "kids" && effectiveSpecialty === "חוגים" && (() => {
-                      const chosen = chugimById[item.id] ?? item.chugim_types ?? [];
+                    {/* Kind of class / workshop (kids "חוגים" / "סדנאות") → places.attributes.chugim_types / workshop_types on approval */}
+                    {effectiveCat === "kids" && kindFieldFor(effectiveSpecialty) && (() => {
+                      const kind = kindFieldFor(effectiveSpecialty)!;
+                      const chosen = (chugimById[item.id] ?? item.chugim_types ?? []).filter(c => kind.options.includes(c));
                       return (
                         <div className="flex items-start gap-2">
                           <span className="text-xs text-gray-500 w-14 shrink-0 pt-1">תחום:</span>
                           <div className="flex flex-wrap gap-1">
-                            {CHUGIM_TYPES.map(c => {
+                            {kind.options.map(c => {
                               const on = chosen.includes(c);
                               return (
                                 <button key={c} type="button" disabled={!isPending}

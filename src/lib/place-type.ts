@@ -28,6 +28,8 @@ export function placeTypeLabel(place: Place): string | null {
     }
     const chugim = Array.isArray(a.chugim_types) ? (a.chugim_types as unknown[]).map(str).filter(Boolean) : [];
     if (type === "חוגים" && chugim.length) return `חוג ${chugim[0]}`;
+    const workshops = Array.isArray(a.workshop_types) ? (a.workshop_types as unknown[]).map(str).filter(Boolean) : [];
+    if (type === "סדנאות" && workshops.length) return `סדנת ${workshops[0]}`;
     return type;
   }
   if (place.place_category === "doctor") {

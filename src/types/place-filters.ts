@@ -27,6 +27,7 @@ export interface PlaceFilters {
   kids_meat_served: boolean | null;
   kids_allergy_friendly: boolean | null;
   kids_chugim: string[] | null;
+  kids_workshops: string[] | null; // kind of workshop (kids "סדנאות")
   /** Fact ids from src/lib/place-facts.ts; a place must have all of them (field or review tag). */
   kids_facts: string[] | null;
   // Doctor-specific
@@ -73,6 +74,7 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   kids_meat_served: null,
   kids_allergy_friendly: null,
   kids_chugim: null,
+  kids_workshops: null,
   kids_facts: null,
   doctor_specialty: null,
   doctor_for_children: null,
@@ -114,6 +116,7 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.kids_meat_served != null) n++;
   if (f.kids_allergy_friendly != null) n++;
   if (f.kids_chugim != null && f.kids_chugim.length > 0) n++;
+  if (f.kids_workshops != null && f.kids_workshops.length > 0) n++;
   if (f.kids_facts != null && f.kids_facts.length > 0) n++;
   if (f.kids_specialty != null && f.kids_specialty.length > 0) n++;
   if (f.doctor_specialty != null && f.doctor_specialty.length > 0) n++;

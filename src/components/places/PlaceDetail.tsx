@@ -267,6 +267,9 @@ function KidsAttributeChips({ attrs }: { attrs: Record<string, unknown> }) {
   if (Array.isArray(attrs.chugim_types) && attrs.chugim_types.length > 0) {
     chips.push({ key: "chugim", text: `חוגים: ${(attrs.chugim_types as string[]).join(", ")}` });
   }
+  if (Array.isArray(attrs.workshop_types) && attrs.workshop_types.length > 0) {
+    chips.push({ key: "workshops", text: `סדנה: ${(attrs.workshop_types as string[]).join(", ")}` });
+  }
   if (!chips.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">

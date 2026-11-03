@@ -86,7 +86,7 @@ const FACET_DEFS: FacetDef[] = [
     valuesOf: (p) => { const t = kidsTypeOf(p); return t ? [t] : []; },
     get: (f) => f.kids_specialty ?? [],
     // Changing type drops the sub-filters that belonged to the previous type.
-    set: (f, v) => ({ ...f, kids_specialty: arrayOrNull(v), kids_gan_category: null, kids_age_track: null, kids_max_price_nis: null, kids_chugim: null, kids_facts: null }),
+    set: (f, v) => ({ ...f, kids_specialty: arrayOrNull(v), kids_gan_category: null, kids_age_track: null, kids_max_price_nis: null, kids_chugim: null, kids_workshops: null, kids_facts: null }),
   },
   {
     key: "kids_gan_category", category: "kids", label: "סוג גן", mode: "multi", primary: true,
@@ -133,6 +133,16 @@ const FACET_DEFS: FacetDef[] = [
     },
     get: (f) => f.kids_chugim ?? [],
     set: (f, v) => ({ ...f, kids_chugim: arrayOrNull(v) }),
+  },
+  {
+    key: "kids_workshops", category: "kids", label: "תחום", mode: "multi", primary: true,
+    visible: (f) => kidsTypeIs(f, "סדנאות"),
+    valuesOf: (p) => {
+      const w = attrs(p).workshop_types;
+      return Array.isArray(w) ? w.map(str).filter(Boolean) : [];
+    },
+    get: (f) => f.kids_workshops ?? [],
+    set: (f, v) => ({ ...f, kids_workshops: arrayOrNull(v) }),
   },
   {
     ...factsFacet("kids_facts", "kids", (f) => f.kids_facts ?? [], (f, v) => ({ ...f, kids_facts: arrayOrNull(v) })),

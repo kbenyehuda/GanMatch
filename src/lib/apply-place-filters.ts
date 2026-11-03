@@ -160,6 +160,13 @@ export function applyPlaceFilters(
       const chugim = Array.isArray(a.chugim_types) ? (a.chugim_types as string[]) : [];
       return filters.kids_chugim!.some((c) => chugim.includes(c));
     });
+  if (filters.kids_workshops?.length)
+    result = result.filter((p) => {
+      if (p.place_category !== "kids") return true;
+      const a = p.attributes as Record<string, unknown>;
+      const kinds = Array.isArray(a.workshop_types) ? (a.workshop_types as string[]) : [];
+      return filters.kids_workshops!.some((c) => kinds.includes(c));
+    });
   // Facts (field or review tag), per category; every picked fact is required.
   for (const [category, ids] of [["kids", filters.kids_facts], ["doctor", filters.doctor_facts], ["cosmetics", filters.cosmetics_facts]] as const) {
     if (!ids?.length) continue;
