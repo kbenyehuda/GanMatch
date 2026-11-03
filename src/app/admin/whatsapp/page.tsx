@@ -351,6 +351,9 @@ export default function WhatsAppStagingPage() {
     } catch { /* non-critical */ }
   }, [getToken]);
 
+  // Rows whose approval is queued or running: a reload must not show them again (they are still
+  // "pending" on the server until their turn comes), and they can't be sent a second time.
+  const inFlightRef = useRef<Set<string>>(new Set());
   const loadItems = useCallback(async () => {
     if (!supabase || !user) return;
     setReloading(true);
@@ -370,7 +373,7 @@ export default function WhatsAppStagingPage() {
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Failed to load");
-      setItems(Array.isArray(data?.items) ? data.items : []);
+      setItems(Array.isArray(data?.items) ? (data.items as StagingItem[]).filter(i => !inFlightRef.current.has(i.id)) : []);
       setTotal(typeof data?.total === "number" ? data.total : 0);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load");
@@ -638,6 +641,8 @@ export default function WhatsAppStagingPage() {
 
   const decide = useCallback(async (id: string, action: "approve" | "reject", overrides?: { link_to_place_id?: string; force_new?: boolean }) => {
     if (!supabase || !user) return;
+    if (inFlightRef.current.has(id)) return;
+    inFlightRef.current.add(id);
     setBusyId(id);
     setError(null);
     try {
@@ -672,6 +677,7 @@ export default function WhatsAppStagingPage() {
     } catch (e: any) {
       setError(e?.message ?? "Decision failed");
     } finally {
+      inFlightRef.current.delete(id);
       setBusyId(null);
     }
   }, [reasonById, user, getToken, includeTextById, items, summaryById, showToast]);
@@ -692,8 +698,9 @@ export default function WhatsAppStagingPage() {
     groupId: string, rows: StagingItem[], answer?: { link_to_place_id?: string; force_new?: boolean }
   ) => {
     if (!supabase || !user) return;
-    const queue = rows.filter(r => !skipInGroup.has(r.id));
+    const queue = rows.filter(r => !skipInGroup.has(r.id) && !inFlightRef.current.has(r.id));
     if (queue.length === 0) return;
+    for (const r of queue) inFlightRef.current.add(r.id);
     setError(null);
     const queueIds = new Set(queue.map(r => r.id));
     setItems(prev => prev.filter(i => !queueIds.has(i.id)));
@@ -738,6 +745,7 @@ export default function WhatsAppStagingPage() {
       const back = queue.filter(r => !approved.has(r.id));
       setItems(prev => [...back, ...prev.filter(i => !back.some(b => b.id === i.id))]);
     } finally {
+      for (const r of queue) inFlightRef.current.delete(r.id);
       setTotal(prev => Math.max(0, prev - approved.size));
       setGroupJobs(prev => { const next = { ...prev }; delete next[groupId]; return next; });
       release();
