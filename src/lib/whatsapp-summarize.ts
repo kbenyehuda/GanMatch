@@ -47,12 +47,8 @@ const SYSTEM_PROMPT = `אתה כותב סיכומים קצרים של המלצו
 
 החזר רק את הערכים המבוקשים בכלי. בלי מירכאות, בלי הקדמות, בלי הערות.`;
 
-// Fixed list so the map's chugim filter doesn't fragment into "חוג ציור" / "חוג ציור לילדים"…
-// Keeps the values already on places (מוזיקה, ספורט).
-export const CHUGIM_TYPES = [
-  "התעמלות", "כדורגל", "ספורט", "נינג'ה", "קפוארה", "ג'ודו ואומנויות לחימה", "שחייה", "ריקוד ובלט",
-  "דרמה ותיאטרון", "מוזיקה", "יצירה ואומנות", "אנגלית", "מדע ורובוטיקה", "שחמט", "בישול", "הורה וילד",
-];
+export { CHUGIM_TYPES } from "@/lib/chugim-types";
+import { CHUGIM_TYPES } from "@/lib/chugim-types";
 // Kids-category recommendations can also state structured facts (kosher, hours,
 // fridays, mamad, cameras) that have a fixed slot instead of a freeform tag.
 const KIDS_FIELDS_PROMPT = `

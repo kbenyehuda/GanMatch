@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
+import { CHUGIM_TYPES } from "@/lib/chugim-types";
 
 function parseLimit(raw: string | null, fallback = 50000): number {
   const n = Number(raw);
@@ -123,6 +124,11 @@ export async function PATCH(req: Request) {
   }
   if (body?.specialty !== undefined) {
     update.specialty = typeof body.specialty === "string" && body.specialty ? body.specialty : null;
+  }
+  if (body?.chugim_types !== undefined) {
+    if (!Array.isArray(body.chugim_types)) return NextResponse.json({ error: "chugim_types must be array" }, { status: 400 });
+    const picked = (body.chugim_types as unknown[]).filter((c): c is string => typeof c === "string" && CHUGIM_TYPES.includes(c));
+    update.chugim_types = picked.length ? picked : null;
   }
   if (body?.hmo !== undefined) {
     if (!Array.isArray(body.hmo)) return NextResponse.json({ error: "hmo must be array" }, { status: 400 });

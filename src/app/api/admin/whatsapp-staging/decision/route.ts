@@ -309,6 +309,10 @@ export async function POST(req: Request) {
   }
 
   if (row.category === "kids") await applyKidsFieldsToPlace(admin, placeId, kidsFields);
+  // The class kind picked in triage wins over the AI's guess (kids "חוגים" rows).
+  if (Array.isArray(row.chugim_types) && row.chugim_types.length > 0) {
+    placeExtras = { ...(placeExtras ?? {}), attributes: { ...(placeExtras?.attributes ?? {}), chugim_types: row.chugim_types } };
+  }
   await applyPlaceExtras(admin, placeId, placeExtras);
 
   // A private person stays hidden until she agrees (/admin/consents), unless she already did

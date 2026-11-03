@@ -6,6 +6,7 @@ import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { PLACE_CATEGORY_LABELS, PLACE_CATEGORY_COLORS } from "@/types/places";
 import type { PlaceCategory } from "@/types/places";
+import { CHUGIM_TYPES } from "@/lib/chugim-types";
 
 const PAGE_SIZE = 100;
 const BUILTIN_CATEGORIES: (PlaceCategory | "other")[] = ["doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics", "other"];
@@ -61,6 +62,7 @@ function syncUrl(status: string, category: string, page: number) {
 
 type StagingItem = {
   id: string;
+  chugim_types?: string[] | null;
   place_name: string;
   category: string;
   address_hint: string | null;
@@ -257,6 +259,7 @@ export default function WhatsAppStagingPage() {
 
   // Enrichment fields — local overrides on top of DB values
   const [specialtyById, setSpecialtyById] = useState<Record<string, string>>({});
+  const [chugimById, setChugimById] = useState<Record<string, string[]>>({});
   const [hmoById, setHmoById] = useState<Record<string, string[]>>({});
   const [forChildrenById, setForChildrenById] = useState<Record<string, boolean | null>>({});
 
@@ -657,7 +660,7 @@ export default function WhatsAppStagingPage() {
       if (!res.ok && res.status !== 409) throw new Error(data?.error ?? "Decision failed");
       if (data?.possible_duplicate && data?.candidate) {
         setDupCandidateById(prev => ({ ...prev, [id]: data.candidate }));
-        return;
+        return "dup" as const;
       }
       setDupCandidateById(prev => { const next = { ...prev }; delete next[id]; return next; });
       setItems(prev => prev.filter(i => i.id !== id));
@@ -1041,11 +1044,13 @@ export default function WhatsAppStagingPage() {
                       דלגי עליה באישור הקבוצה (נשארת בהמתנה)
                     </label>
                   )}
-                  {/* Summary row — always visible, click to expand */}
+                  {/* Summary row — always visible, click to expand. A single-recommender row also gets a
+                      quick approve here; a possible-duplicate answer opens the row to choose. */}
+                  <div className="flex items-stretch">
                   <button
                     type="button"
                     onClick={() => toggleExpanded(item.id)}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 text-start"
+                    className="flex-1 min-w-0 flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 text-start"
                   >
                     <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -1061,6 +1066,10 @@ export default function WhatsAppStagingPage() {
                           {effectiveSpecialty}
                         </span>
                       )}
+                      {String(item.source_messages?.[0] ?? "").startsWith("⚠️") && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0"
+                          title={String(item.source_messages?.[0])}>⚠️ חלש</span>
+                      )}
                       <span className="text-sm shrink-0">{ENTHUSIASM_STARS[item.enthusiasm]}</span>
                       <span className="text-xs text-gray-400 shrink-0">
                         {formatRowDates(item.message_date, item.created_at)}
@@ -1072,6 +1081,19 @@ export default function WhatsAppStagingPage() {
                     </div>
                     <span className="text-gray-400 text-xs shrink-0">{isExpanded ? "▲ סגור" : "▼ פתח"}</span>
                   </button>
+                  {!groupId && isPending && !isExpanded && (
+                    <div className="flex items-center pe-3">
+                      <button type="button" disabled={busyId === item.id}
+                        onClick={async () => {
+                          const r = await decide(item.id, "approve");
+                          if (r === "dup") setExpandedItems(prev => new Set(prev).add(item.id));
+                        }}
+                        className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm font-semibold whitespace-nowrap disabled:opacity-50">
+                        {busyId === item.id ? "..." : "✓ אשרי"}
+                      </button>
+                    </div>
+                  )}
+                  </div>
 
                   {isExpanded && (
                   <div className="px-4 pb-4 space-y-3 border-t">
@@ -1148,6 +1170,32 @@ export default function WhatsAppStagingPage() {
                         <span className="text-xs text-gray-700">{effectiveSpecialty || "—"}</span>
                       )}
                     </div>
+
+                    {/* Kind of class, for kids "חוגים" rows → places.attributes.chugim_types on approval */}
+                    {effectiveCat === "kids" && effectiveSpecialty === "חוגים" && (() => {
+                      const chosen = chugimById[item.id] ?? item.chugim_types ?? [];
+                      return (
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs text-gray-500 w-14 shrink-0 pt-1">תחום:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {CHUGIM_TYPES.map(c => {
+                              const on = chosen.includes(c);
+                              return (
+                                <button key={c} type="button" disabled={!isPending}
+                                  onClick={() => {
+                                    const next = on ? chosen.filter(x => x !== c) : [...chosen, c];
+                                    setChugimById(prev => ({ ...prev, [item.id]: next }));
+                                    patchField(item.id, { chugim_types: next });
+                                  }}
+                                  className={`text-xs px-2 py-0.5 rounded-full border ${on ? "bg-[#0A2B6B] text-white border-[#0A2B6B]" : "bg-white text-gray-700"}`}>
+                                  {c}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* HMO checkboxes */}
                     {showHmoSection && (
