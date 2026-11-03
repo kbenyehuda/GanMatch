@@ -132,7 +132,8 @@ export function FilterPills({
   return (
     <>
       <div
-        className="flex items-center overflow-x-auto scrollbar-hide font-hebrew"
+        // Over the map (phone) the row scrolls sideways to save map space; in the panel the chips wrap so none hide past the edge.
+        className={`flex items-center font-hebrew ${floating ? "overflow-x-auto scrollbar-hide" : "flex-wrap"}`}
         style={{ gap: 6, paddingBlock: 2, paddingInlineEnd: 16 }}
       >
         {/* Says what the chips are: visitors read "סוג ▾" as a field, not as a filter */}

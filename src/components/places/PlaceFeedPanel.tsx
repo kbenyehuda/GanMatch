@@ -13,7 +13,7 @@ import { signInWithGoogle } from "@/lib/sign-in";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-type SortOption = "top" | "rating" | "nearest" | "newest";
+type SortOption = "top" | "rating" | "most_recs" | "nearest" | "newest";
 
 const SORT_OPTIONS: { id: SortOption; label: string; sub: string; icon: React.ReactNode }[] = [
   { id: "top", label: "מומלצים", sub: "מותאם לשכונה שלך", icon: (
@@ -24,6 +24,11 @@ const SORT_OPTIONS: { id: SortOption; label: string; sub: string; icon: React.Re
   { id: "rating", label: "דירוג גבוה", sub: "הציונים הטובים ביותר", icon: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
       <path d="M20 7l-8 8-4-4-6 6"/><path d="M14 7h6v6"/>
+    </svg>
+  )},
+  { id: "most_recs", label: "הכי הרבה המלצות", sub: "לפי מספר ההמלצות", icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   )},
   { id: "nearest", label: "הכי קרובים", sub: "הכי קרוב אליך", icon: (
@@ -44,6 +49,8 @@ function sortPlaces(places: Place[], sort: SortOption, userLoc: { lon: number; l
   const arr = [...places];
   switch (sort) {
     case "rating": return arr.sort((a, b) => (b.avg_rating ?? -1) - (a.avg_rating ?? -1));
+    case "most_recs":
+      return arr.sort((a, b) => (b.rec_count - a.rec_count) || ((b.avg_rating ?? -1) - (a.avg_rating ?? -1)));
     case "nearest":
       if (!userLoc) return arr;
       return arr.sort((a, b) => {
