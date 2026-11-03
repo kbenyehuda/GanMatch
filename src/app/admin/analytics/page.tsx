@@ -143,7 +143,17 @@ export default function AdminAnalyticsPage() {
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
-  const [personFilter, setPersonFilter] = useState<string | null>(null);
+  const [openPeople, setOpenPeople] = useState<Set<string>>(new Set());
+  const togglePerson = (person: string) =>
+    setOpenPeople((prev) => {
+      const next = new Set(prev);
+      if (next.has(person)) next.delete(person); else next.add(person);
+      return next;
+    });
+  const jumpToPerson = (person: string) => {
+    setOpenPeople((prev) => new Set(prev).add(person));
+    setTimeout(() => document.getElementById(`actions-${person}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
   const [tag, setTag] = useState("");
   const [target, setTarget] = useState("");
   const [copied, setCopied] = useState(false);
@@ -219,7 +229,17 @@ export default function AdminAnalyticsPage() {
   const maxDay = Math.max(0, ...(data?.by_day ?? []).map((d) => d.people));
   const hours = Array.from({ length: 24 }, (_, h) => data?.by_hour.find((x) => x.hour === h)?.visits ?? 0);
   const maxHour = Math.max(0, ...hours);
-  const recent = (data?.recent ?? []).filter((r) => !personFilter || r.person === personFilter);
+  // Recent actions grouped per person; newest action first inside a group, most recently active person first.
+  const recentGroups = (() => {
+    const byPerson = new Map<string, Recent[]>();
+    for (const r of [...(data?.recent ?? [])].sort((a, b) => b.at.localeCompare(a.at))) {
+      const list = byPerson.get(r.person) ?? [];
+      list.push(r);
+      byPerson.set(r.person, list);
+    }
+    return Array.from(byPerson.entries()).map(([person, actions]) => ({ person, actions }));
+  })();
+  const allOpen = recentGroups.length > 0 && recentGroups.every((g) => openPeople.has(g.person));
   const q = data?.queue;
 
   return (
@@ -496,7 +516,7 @@ export default function AdminAnalyticsPage() {
             </Section>
           </div>
 
-          <Section title="People" hint="Click a row to see only that person's actions below">
+          <Section title="People" hint="Click a row to open that person's actions below">
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
@@ -508,8 +528,8 @@ export default function AdminAnalyticsPage() {
                 </thead>
                 <tbody>
                   {data.people.map((pr) => (
-                    <tr key={pr.person} onClick={() => setPersonFilter(personFilter === pr.person ? null : pr.person)}
-                      className={`border-t cursor-pointer hover:bg-blue-50 ${personFilter === pr.person ? "bg-blue-50" : ""}`}>
+                    <tr key={pr.person} onClick={() => jumpToPerson(pr.person)}
+                      className={`border-t cursor-pointer hover:bg-blue-50 ${openPeople.has(pr.person) ? "bg-blue-50" : ""}`}>
                       <td className="py-1">
                         <span className="font-semibold" dir="auto">{who(pr.person)}</span>
                         {!pr.person.startsWith("v:") && data.users[pr.person]?.email && data.users[pr.person]?.name
@@ -527,13 +547,30 @@ export default function AdminAnalyticsPage() {
             </div>
           </Section>
 
-          <Section title={personFilter ? `Actions by ${who(personFilter)}` : "Recent actions"}
-            right={personFilter ? <button className="text-xs text-[#1F5BB5] underline" onClick={() => setPersonFilter(null)}>Show everyone</button> : null}>
-            <ul className="divide-y text-sm">
-              {recent.map((r, i) => (
-                <li key={`${r.at}-${i}`} className="py-1 flex flex-wrap gap-x-2">
+          <Section title="Recent actions" hint="Most recently active first; click a person to open or close their actions"
+            right={recentGroups.length ? (
+              <button className="text-xs text-[#1F5BB5] underline"
+                onClick={() => setOpenPeople(allOpen ? new Set() : new Set(recentGroups.map((g) => g.person)))}>
+                {allOpen ? "Close all" : "Open all"}
+              </button>
+            ) : null}>
+            <div className="divide-y text-sm">
+              {recentGroups.map(({ person, actions }) => {
+                const open = openPeople.has(person);
+                return (
+                  <div key={person} id={`actions-${person}`} className="scroll-mt-4">
+                    <button onClick={() => togglePerson(person)}
+                      className={`w-full py-2 flex items-center gap-2 text-left hover:bg-blue-50 ${open ? "bg-blue-50" : ""}`}>
+                      <span className="w-4 text-gray-500">{open ? "▾" : "▸"}</span>
+                      <span className="text-xs text-gray-500 w-24 shrink-0">{when(actions[0].at)}</span>
+                      <span className="font-semibold" dir="auto">{who(person)}</span>
+                      <span className="text-xs text-gray-500">· {actions.length} {actions.length === 1 ? "action" : "actions"}</span>
+                    </button>
+                    {open ? (
+                      <ul className="pb-2 pl-6">
+              {actions.map((r, i) => (
+                <li key={`${r.at}-${i}`} className="py-1 flex flex-wrap gap-x-2 border-t border-gray-100">
                   <span className="text-xs text-gray-500 w-24 shrink-0">{when(r.at)}</span>
-                  {!personFilter && <span className="font-semibold" dir="auto">{who(r.person)}</span>}
                   <span>{eventLabel(r.event)}</span>
                   {r.meta?.name ? <span className="text-gray-600" dir="auto">· {r.meta.name}</span> : null}
                   {r.meta?.q ? <span className="text-gray-600" dir="auto">· &quot;{r.meta.q}&quot;{r.meta.results === 0 ? " (no results)" : ""}</span> : null}
@@ -542,9 +579,14 @@ export default function AdminAnalyticsPage() {
                   {r.event === "app_open" && (r.meta?.src || r.meta?.ref) ? <span className="text-gray-600" dir="auto">· from {r.meta.src || r.meta.ref}</span> : null}
                 </li>
               ))}
-              {recent.length === 0 && <li className="py-2 text-gray-500">No actions in this range.</li>}
-            </ul>
-            {!personFilter && data.recent.length >= 200 ? <p className="text-xs text-gray-500">Showing the latest 200 actions.</p> : null}
+                      </ul>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {recentGroups.length === 0 && <div className="py-2 text-gray-500">No actions in this range.</div>}
+            </div>
+            {data.recent.length >= 200 ? <p className="text-xs text-gray-500">Showing the latest 200 actions.</p> : null}
           </Section>
         </>
       ) : null}
