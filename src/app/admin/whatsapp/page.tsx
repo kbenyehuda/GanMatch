@@ -37,6 +37,87 @@ function formatAddressHintDisplay(raw: string | null): string | null {
   }
   return raw;
 }
+type PlaceContext = {
+  place: { id: string; name: string; category: string; specialty: string | null; address: string | null; phone: string[] | null;
+    website: string | null; description: string | null; has_pin: boolean; is_hidden: boolean };
+  reviews: { text: string | null; rating: number | null; created_at: string }[];
+  sources: { place_name: string; recommendation_text: string | null; source_messages: string[] | null; message_date: string | null; status: string }[];
+};
+
+// "Is this the same place?": the new row(s) next to the existing place, with the full text of both,
+// so the admin can decide before linking. The decision buttons are passed in as children.
+function DupCompare({ placeId, rows, getToken, children }: {
+  placeId: string; rows: { id: string; place_name: string; address_hint: string | null; recommendation_text: string;
+    source_messages: string[] | null; message_date: string | null; specialty: string | null }[];
+  getToken: () => Promise<string | null>; children: React.ReactNode;
+}) {
+  const [ctx, setCtx] = useState<PlaceContext | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch(`/api/admin/whatsapp-staging/place-context?id=${placeId}`, { headers: { authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error ?? "שגיאה");
+        if (alive) setCtx(data);
+      } catch (e: any) { if (alive) setErr(e?.message ?? "שגיאה"); }
+    })();
+    return () => { alive = false; };
+  }, [placeId, getToken]);
+  const label = "text-xs text-gray-500 mt-2";
+  const box = "rounded border bg-white p-2 text-sm whitespace-pre-line";
+  return (
+    <div className="w-full rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900 space-y-2">
+      <div className="font-semibold">אולי זה מקום שכבר קיים באתר. השווי ובחרי:</div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <div className="space-y-1">
+          <div className="font-semibold text-gray-800">חדש (מהטריאז׳)</div>
+          {rows.map(r => (
+            <div key={r.id} className={box}>
+              <div className="font-medium">{r.place_name}{r.specialty ? ` · ${r.specialty}` : ""}</div>
+              {formatAddressHintDisplay(r.address_hint) && <div className="text-gray-600">כתובת: {formatAddressHintDisplay(r.address_hint)}</div>}
+              {r.message_date && <div className="text-gray-500 text-xs">נכתב {r.message_date}</div>}
+              <div className={label}>ההמלצה:</div>
+              <div>{r.recommendation_text}</div>
+              <div className={label}>השאלה בקבוצה:</div>
+              <div>{(r.source_messages ?? []).join("\n") || "—"}</div>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-1">
+          <div className="font-semibold text-gray-800">קיים באתר</div>
+          {err && <div className="text-red-700">{err}</div>}
+          {!ctx && !err && <div className="text-gray-500">טוען…</div>}
+          {ctx && (
+            <div className={box}>
+              <div className="font-medium">
+                <a href={`/place/${ctx.place.id}`} target="_blank" rel="noreferrer" className="underline">{ctx.place.name}</a>
+                {ctx.place.specialty ? ` · ${ctx.place.specialty}` : ""}{ctx.place.is_hidden ? " · (מוסתר)" : ""}
+              </div>
+              <div className="text-gray-600">כתובת: {ctx.place.address || "—"} · {ctx.place.has_pin ? "יש נעץ" : "אין נעץ"}</div>
+              {ctx.place.phone?.length ? <div className="text-gray-600">טלפון: {ctx.place.phone.join(", ")}</div> : null}
+              {ctx.place.description && <div className="text-gray-600">{ctx.place.description}</div>}
+              <div className={label}>ביקורות באתר ({ctx.reviews.length}):</div>
+              {ctx.reviews.length ? ctx.reviews.map((rv, i) => <div key={i} className="border-t pt-1 mt-1">{rv.rating ? `${rv.rating}★ ` : ""}{rv.text || "(כוכבים בלבד)"}</div>) : <div>—</div>}
+              <div className={label}>הטקסטים המקוריים מוואטסאפ ({ctx.sources.length}):</div>
+              {ctx.sources.length ? ctx.sources.map((s, i) => (
+                <div key={i} className="border-t pt-1 mt-1">
+                  <div className="text-xs text-gray-500">{s.place_name}{s.message_date ? ` · ${s.message_date}` : ""}{s.status === "pending" ? " · ממתין" : ""}</div>
+                  <div>{s.recommendation_text}</div>
+                  {s.source_messages?.length ? <div className="text-gray-600">שאלה: {s.source_messages.join(" / ")}</div> : null}
+                </div>
+              )) : <div>—</div>}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </div>
+  );
+}
+
 const HMO_OPTIONS = ["מכבי", "כללית", "מאוחדת", "לאומית"];
 const HMO_CATEGORIES = new Set(["doctor", "clinic"]);
 
@@ -987,10 +1068,7 @@ export default function WhatsAppStagingPage() {
                   ⚠️ קבוצת מיזוג אפשרית — {sectionItems.length} רשומות עשויות להתייחס לאותו מקום
                 </div>
                 {status === "pending" && groupDupById[groupId] && (
-                  <div className="w-full rounded border border-amber-300 bg-white p-2 text-sm text-amber-900">
-                    נמצא מקום דומה במסד: <strong>{groupDupById[groupId].name}</strong>
-                    {groupDupById[groupId].address && <span> · {groupDupById[groupId].address}</span>}
-                    <div className="flex gap-2 mt-1.5">
+                  <DupCompare placeId={groupDupById[groupId].id} rows={sectionItems.filter(i => !skipInGroup.has(i.id))} getToken={getToken}>
                       <button onClick={() => approveGroup(groupId, sectionItems, { link_to_place_id: groupDupById[groupId].id })}
                         className="px-3 py-1 rounded bg-amber-600 text-white text-xs font-semibold">
                         זה אותו מקום — קשרי ואשרי את כולן
@@ -999,8 +1077,7 @@ export default function WhatsAppStagingPage() {
                         className="px-3 py-1 rounded bg-white border border-amber-400 text-amber-800 text-xs font-semibold">
                         מקום אחר — צרי חדש ואשרי את כולן
                       </button>
-                    </div>
-                  </div>
+                  </DupCompare>
                 )}
                 {status === "pending" && (() => {
                   const toApprove = sectionItems.filter(i => !skipInGroup.has(i.id)).length;
@@ -1445,22 +1522,18 @@ export default function WhatsAppStagingPage() {
                   {isPending && (
                     <div className="flex flex-col gap-2 pt-1">
                       {dupCandidateById[item.id] && (
-                        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
-                          נמצא מקום דומה במסד: <strong>{dupCandidateById[item.id].name}</strong>
-                          {dupCandidateById[item.id].address && <span> · {dupCandidateById[item.id].address}</span>}
-                          <div className="flex gap-2 mt-1.5">
+                        <DupCompare placeId={dupCandidateById[item.id].id} rows={[item]} getToken={getToken}>
                             <button disabled={busyId === item.id}
                               onClick={() => decide(item.id, "approve", { link_to_place_id: dupCandidateById[item.id].id })}
                               className="px-3 py-1 rounded bg-amber-600 text-white text-xs font-semibold disabled:opacity-50">
-                              קשר לקיים
+                              זה אותו מקום — קשרי
                             </button>
                             <button disabled={busyId === item.id}
                               onClick={() => decide(item.id, "approve", { force_new: true })}
                               className="px-3 py-1 rounded bg-white border border-amber-400 text-amber-800 text-xs font-semibold disabled:opacity-50">
-                              זה מקום אחר — צור חדש
+                              מקום אחר — צרי חדש
                             </button>
-                          </div>
-                        </div>
+                        </DupCompare>
                       )}
                       <textarea placeholder="סיבה (אופציונלי)" value={reasonById[item.id] ?? ""}
                         onChange={e => setReasonById(prev => ({ ...prev, [item.id]: e.target.value }))}
