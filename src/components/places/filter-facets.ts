@@ -53,6 +53,12 @@ interface FacetDef {
   matchAll?: boolean;
 }
 
+/** Extra option on every choice filter: places whose value for that field isn't known yet. */
+export const UNKNOWN_OPTION = "__unknown__";
+const UNKNOWN_LABEL = "לא ידוע עדיין";
+/** Toggles and "מה חשוב לכם" lists are about having a fact, so "unknown" means nothing there. */
+const hasUnknownOption = (def: FacetDef) => def.mode !== "toggle" && !def.matchAll;
+
 const attrs = (p: Place) => p.attributes as Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 const arrayOrNull = <T,>(v: T[]) => (v.length ? v : null);
@@ -249,32 +255,73 @@ export function buildFacets(
       for (const v of values) freq.set(v, (freq.get(v) ?? 0) + 1);
     }
     // Keep an active facet visible even if the data under it shrank, so it can be cleared.
-    if (placesWithField < MIN_PLACES_FOR_FILTER && selected.length === 0) continue;
+    const unknownPicked = hasUnknownOption(def) && (filters.unknown_facets ?? []).includes(def.key);
+    if (placesWithField < MIN_PLACES_FOR_FILTER && selected.length === 0 && !unknownPicked) continue;
 
     for (const v of selected) if (!freq.has(v)) freq.set(v, 0);
     const ids = def.fixedOrder
       ? def.fixedOrder.filter((id) => freq.has(id))
       : Array.from(freq.keys()).sort((a, b) => (freq.get(b)! - freq.get(a)!) || a.localeCompare(b, "he"));
 
+    // Each option's count is "this option alone" (or added to the picked ones for AND facets).
     const options = ids.map((id) => ({
       id,
       label: def.optionLabel?.(id) ?? id,
-      count: applyPlaceFilters(loaded, def.set(filters, def.matchAll ? Array.from(new Set([...selected, id])) : [id])).length,
+      count: applyFacetFilters(loaded, setFacetValues(filters, def.key, def.matchAll ? Array.from(new Set([...selected, id])) : [id])).length,
     }));
 
-    facets.push({ key: def.key, label: def.label, mode: def.mode, primary: def.primary, options, selected });
+    if (hasUnknownOption(def)) {
+      const count = applyFacetFilters(loaded, setFacetValues(filters, def.key, [UNKNOWN_OPTION])).length;
+      if (count > 0 || unknownPicked) options.push({ id: UNKNOWN_OPTION, label: UNKNOWN_LABEL, count });
+    }
+
+    facets.push({
+      key: def.key, label: def.label, mode: def.mode, primary: def.primary, options,
+      selected: unknownPicked ? [...selected, UNKNOWN_OPTION] : selected,
+    });
   }
   return facets;
 }
 
 export function setFacetValues(filters: PlaceFilters, key: string, values: string[]): PlaceFilters {
   const def = FACET_DEFS.find((d) => d.key === key);
-  return def ? def.set(filters, values) : filters;
+  if (!def) return filters;
+  const next = def.set(filters, values.filter((v) => v !== UNKNOWN_OPTION));
+  const others = (filters.unknown_facets ?? []).filter((k) => k !== key);
+  const unknown = values.includes(UNKNOWN_OPTION) && hasUnknownOption(def) ? [...others, key] : others;
+  // A facet that is no longer shown (e.g. "סוג גן" after the type changed) drops its "unknown" pick too.
+  const stillShown = unknown.filter((k) => {
+    const d = FACET_DEFS.find((x) => x.key === k);
+    return d && (!d.visible || d.visible(next));
+  });
+  return { ...next, unknown_facets: stillShown.length ? stillShown : null };
 }
 
 /** Clears every filter of a category, keeping the category itself and the search. */
 export function clearCategoryFilters(filters: PlaceFilters, category: PlaceCategory): PlaceFilters {
-  return FACET_DEFS.filter((d) => d.category === category).reduce((f, d) => d.set(f, []), filters);
+  return FACET_DEFS.filter((d) => d.category === category).reduce((f, d) => setFacetValues(f, d.key, []), filters);
+}
+
+/**
+ * applyPlaceFilters plus the "לא ידוע עדיין" picks: for such a facet a place passes when it has
+ * no value for that field, or one of the values picked next to it.
+ */
+export function applyFacetFilters(places: Place[], filters: PlaceFilters, selectedPlaceId: string | null = null): Place[] {
+  const defs = (filters.unknown_facets ?? [])
+    .map((k) => FACET_DEFS.find((d) => d.key === k))
+    .filter((d): d is FacetDef => !!d);
+  if (!defs.length) return applyPlaceFilters(places, filters, selectedPlaceId);
+  const picked = defs.map((d) => ({ d, values: d.get(filters) }));
+  // Clearing via set() is safe: the only set() with side effects is kids_type, which is single-choice,
+  // so when its "unknown" is picked it has no other value and its sub-filters are already cleared.
+  const base = defs.reduce((f, d) => d.set(f, []), filters);
+  return applyPlaceFilters(places, base, selectedPlaceId).filter((p) =>
+    p.id === selectedPlaceId ||
+    picked.every(({ d, values }) => {
+      const has = d.valuesOf(p);
+      return has.length === 0 || values.some((v) => has.includes(v));
+    }),
+  );
 }
 
 export function countSelected(facets: Facet[]): number {

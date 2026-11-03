@@ -8,7 +8,7 @@ import { signInWithGoogle, takeReturnPath } from "@/lib/sign-in";
 import { IntroOverlay, INTRO_SEEN_STORAGE_KEY } from "@/components/home/IntroOverlay";
 import { PlaceFeedPanel } from "@/components/places/PlaceFeedPanel";
 import { CategoryTabs, FilterPills } from "@/components/places/CategoryFilterBar";
-import { buildFacets, setFacetValues, clearCategoryFilters } from "@/components/places/filter-facets";
+import { buildFacets, setFacetValues, clearCategoryFilters, applyFacetFilters } from "@/components/places/filter-facets";
 import { PlaceDetail } from "@/components/places/PlaceDetail";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { AddPlaceModal } from "@/components/places/AddPlaceModal";
@@ -23,7 +23,6 @@ import {
   VISIBLE_CATEGORIES,
 } from "@/types/places";
 import { DEFAULT_PLACE_FILTERS, activeCategory, type PlaceFilters } from "@/types/place-filters";
-import { applyPlaceFilters } from "@/lib/apply-place-filters";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { track, setAnalyticsPlace } from "@/lib/analytics";
@@ -564,7 +563,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   );
 
   const filteredPlaces = useMemo(
-    () => applyPlaceFilters(places, effectiveFilters, selectedPlace?.id ?? null),
+    () => applyFacetFilters(places, effectiveFilters, selectedPlace?.id ?? null),
     [places, effectiveFilters, selectedPlace?.id]
   );
   const filteredCountRef = useRef(0);
