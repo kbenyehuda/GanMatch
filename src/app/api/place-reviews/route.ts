@@ -68,7 +68,9 @@ export async function GET(req: NextRequest) {
     .from("place_reviews")
     .select("id, user_id, rating, text, tags, is_anonymous, allow_contact, reviewer_public_name, created_at, check_status")
     .eq("place_id", placeId!)
-    .eq("is_hidden", false)
+    // Published ones, plus the caller's own one that still waits for an admin (shown only to them, with a badge).
+    // `me` is a user id from the verified token, so it's a plain uuid.
+    .or(me ? `is_hidden.eq.false,and(user_id.eq.${me},check_status.eq.held)` : "is_hidden.eq.false")
     .order("created_at", { ascending: false });
 
   if (error) {

@@ -41,7 +41,7 @@ export function IntroOverlay({ onContinue }: { onContinue: () => void }) {
           <IntroBullet
             emoji="📍"
             title="כל מה שקורה בגבעתיים"
-            text="גנים ומעונות, רופאים, קוסמטיקה ועוד — הכל על מפה אחת, בלי לגלול בקבוצות ווטסאפ."
+            text="גנים ומעונות, רופאים, יופי וטיפוח ועוד — הכל על מפה אחת, בלי לגלול בקבוצות ווטסאפ."
           />
           <IntroBullet
             emoji="🤝"

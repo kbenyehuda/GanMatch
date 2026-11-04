@@ -166,7 +166,12 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
           </div>
           <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{date}</div>
         </div>
-        {/* No "approved" badge: only published recommendations reach this list (held ones stay hidden), so it said nothing. */}
+        {/* Published recommendations get no badge. A held one is returned only to its writer, so they see it's waiting. */}
+        {review.check_status === "held" && (
+          <span className="font-hebrew shrink-0" style={{ background: "#FFF4E0", color: "#8A5A00", padding: "2px 6px", borderRadius: 5, fontSize: 12, fontWeight: 700 }}>
+            עוד לא אושרה לפרסום
+          </span>
+        )}
       </div>
       {/* Stars */}
       <div className="flex items-center gap-1.5 mb-1.5">
