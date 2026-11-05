@@ -5,7 +5,7 @@ import { X, Share, SquarePlus, MoreVertical, ExternalLink } from "lucide-react";
 import { track } from "@/lib/analytics";
 import {
   canPromptInstall, onInstallAvailabilityChange, promptInstall,
-  phoneKind, isInstalled, isInAppBrowser, type PhoneKind,
+  phoneKind, isInstalled, isInAppBrowser, addedFromThisBrowser, checkAlreadyInstalled, type PhoneKind,
 } from "@/lib/install-prompt";
 
 const VISITS_KEY = "gmt_visits";
@@ -74,13 +74,14 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
     setKind(phoneKind());
     setInApp(isInAppBrowser());
     setVisits(countVisit());
-    setHidden(dismissedRecently());
+    setHidden(dismissedRecently() || addedFromThisBrowser());
     try { setInAppHidden(window.sessionStorage.getItem(INAPP_DISMISSED_KEY) === "1"); } catch { setInAppHidden(false); }
     setCanPrompt(canPromptInstall());
     setReady(true);
+    void checkAlreadyInstalled().then((yes) => { if (yes) setHidden(true); });
     return onInstallAvailabilityChange(() => {
       setCanPrompt(canPromptInstall());
-      if (isInstalled()) setHidden(true);
+      if (isInstalled() || addedFromThisBrowser()) setHidden(true);
     });
   }, []);
 

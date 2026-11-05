@@ -8,6 +8,27 @@ import { track } from "@/lib/analytics";
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 let deferred: InstallEvent | null = null;
+const INSTALLED_KEY = "gmt_app_installed"; // this browser already added the app to the home screen
+
+function markInstalled() {
+  try { window.localStorage.setItem(INSTALLED_KEY, "1"); } catch {}
+}
+
+/** Chrome on Android: is the app already on the home screen (installed before we kept a note)? */
+export async function checkAlreadyInstalled(): Promise<boolean> {
+  try {
+    const nav = navigator as Navigator & { getInstalledRelatedApps?: () => Promise<unknown[]> };
+    if (!nav.getInstalledRelatedApps) return false;
+    const apps = await nav.getInstalledRelatedApps();
+    if (apps.length > 0) { markInstalled(); return true; }
+  } catch {}
+  return false;
+}
+
+/** The app was added from this browser (the browser tab itself doesn't run "as an app"). */
+export function addedFromThisBrowser() {
+  try { return window.localStorage.getItem(INSTALLED_KEY) === "1"; } catch { return false; }
+}
 const listeners = new Set<() => void>();
 let started = false;
 
@@ -21,6 +42,7 @@ export function startInstallCapture() {
   });
   window.addEventListener("appinstalled", () => {
     deferred = null;
+    markInstalled();
     track("app_installed", undefined, null);
     listeners.forEach((l) => l());
   });
@@ -42,6 +64,7 @@ export async function promptInstall(): Promise<boolean> {
   deferred = null; // each event can be used once
   await e.prompt();
   const { outcome } = await e.userChoice;
+  if (outcome === "accepted") markInstalled();
   return outcome === "accepted";
 }
 

@@ -13,6 +13,8 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0A2B6B",
     dir: "rtl",
     lang: "he",
+    // Lets Chrome on Android tell the site it's already installed (navigator.getInstalledRelatedApps).
+    related_applications: [{ platform: "webapp", url: "https://www.givemytimeapp.com/manifest.webmanifest" }],
     icons: [
       {
         src: "/icon-192.png",

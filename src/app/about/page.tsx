@@ -115,11 +115,14 @@ export default function AboutPage() {
           </div>
         </div>
 
-        {/* Floating category chips */}
-        <div
-          className="absolute flex flex-wrap items-center justify-center gap-2"
-          style={{ left: 20, right: 20, bottom: -26, maxWidth: 680, margin: "0 auto" }}
-        >
+      </div>
+
+      {/* Category chips — in the flow, overlapping the hero's bottom edge; when they wrap
+          to two rows they grow downward instead of up into the tagline */}
+      <div
+        className="relative flex flex-wrap items-center justify-center gap-2"
+        style={{ marginTop: -26, padding: "0 20px", maxWidth: 720, marginInline: "auto", zIndex: 1 }}
+      >
           {CATEGORY_CHIPS.map(({ key, label, Icon }) => {
             const color = PLACE_CATEGORY_COLORS[key];
             return (
@@ -146,11 +149,10 @@ export default function AboutPage() {
               </div>
             );
           })}
-        </div>
       </div>
 
       {/* Body */}
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "58px 20px 80px" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 20px 80px" }}>
         {/* "איך זה עובד" lives here now (merged with אודות, user 2026-10-30) */}
         <h2 className="font-hebrew text-center" style={{ fontSize: 16, fontWeight: 800, color: "#0F1A2E", marginBottom: 12 }}>
           ▶ איך זה עובד? <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 13 }}>45 שניות</span>
