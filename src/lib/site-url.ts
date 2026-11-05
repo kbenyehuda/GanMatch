@@ -36,3 +36,10 @@ export function tryGetMetadataBase(): URL | undefined {
     return undefined;
   }
 }
+
+// Server-side public address for link previews, sitemap and robots.txt. NEXT_PUBLIC_SITE_URL wins;
+// on Vercel the production domain is exposed as VERCEL_PROJECT_PRODUCTION_URL.
+export const SITE_URL = stripTrailingSlash(
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000")
+);

@@ -3,6 +3,7 @@ import { Inter, Heebo, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
+import { SITE_URL } from "@/lib/site-url";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -20,19 +21,13 @@ const jakartaSans = Plus_Jakarta_Sans({
   weight: ["400", "500", "600", "700", "800"],
 });
 
-// Link previews need absolute image URLs. NEXT_PUBLIC_SITE_URL wins; on Vercel the
-// production domain is exposed as VERCEL_PROJECT_PRODUCTION_URL.
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "GiveMyTime | גבעתיים",
-  description: "גלו מקומות, שירותים ועסקים מומלצים בגבעתיים.",
+  title: "GiveMyTime | גני ילדים, משפחתונים והמלצות בגבעתיים",
+  description: "המלצות של הורים מגבעתיים על גני ילדים, משפחתונים, מעונות, צהרונים וחוגים — וגם רופאים ויופי וטיפוח. הכול על מפה אחת.",
   openGraph: {
-    title: "GiveMyTime | גבעתיים",
-    description: "גלו מקומות, שירותים ועסקים מומלצים בגבעתיים.",
+    title: "GiveMyTime | גני ילדים, משפחתונים והמלצות בגבעתיים",
+    description: "המלצות של הורים מגבעתיים על גני ילדים, משפחתונים, מעונות, צהרונים וחוגים — וגם רופאים ויופי וטיפוח. הכול על מפה אחת.",
     locale: "he_IL",
     type: "website",
     images: [{ url: "/og/kids", width: 1200, height: 630 }],
