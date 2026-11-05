@@ -11,6 +11,7 @@ import {
 import { DrumstickIcon, PeanutIcon, getLanguageChar } from "@/components/gan/GanAttributeIcons";
 import { ContactReviewerModal } from "@/components/gan/ContactReviewerModal";
 import { useSession } from "@/lib/useSession";
+import { useBackClose } from "@/lib/back-stack";
 import { signInWithGoogle } from "@/lib/sign-in";
 import { placeTypeLabel } from "@/lib/place-type";
 import { isApproximateLocation } from "@/lib/place-location";
@@ -358,6 +359,12 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   const [showForm, setShowForm] = useState(false);
   const [formRating, setFormRating] = useState(0);
   const [formText, setFormText] = useState("");
+
+  // Phone Back closes these one at a time (the review form keeps what was typed).
+  useBackClose(showForm, () => setShowForm(false));
+  useBackClose(showAttrEdit, () => setShowAttrEdit(false));
+  useBackClose(showIconLegend, () => setShowIconLegend(false));
+  useBackClose(!!contactReviewId, () => setContactReviewId(null));
   const [formAnonymous, setFormAnonymous] = useState(true);
   const [formName, setFormName] = useState("");
   const [formPrice, setFormPrice] = useState("");

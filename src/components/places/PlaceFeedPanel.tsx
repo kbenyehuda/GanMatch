@@ -10,6 +10,7 @@ import type { Facet } from "./filter-facets";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { signInWithGoogle } from "@/lib/sign-in";
+import { useBackClose } from "@/lib/back-stack";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -193,6 +194,8 @@ export function PlaceFeedPanel({
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  useBackClose(showSortSheet, () => setShowSortSheet(false));
+  useBackClose(showProfileMenu, () => setShowProfileMenu(false));
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const greeting = useMemo(() => getGreeting(), []);

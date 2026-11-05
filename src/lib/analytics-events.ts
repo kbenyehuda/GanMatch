@@ -28,6 +28,12 @@ export const ANALYTICS_EVENT_LABELS: Record<string, string> = {
   edit_attrs_open: "Edit details",
   location_change_open: "Fix location",
   sort_open: "Sort",
+  install_banner_shown: "Saw \"add to home screen\"",
+  install_click: "Tapped \"add to home screen\"",
+  install_dismissed: "Closed \"add to home screen\"",
+  app_installed: "Added the app to home screen",
+  inapp_note_shown: "Saw \"open in browser\" (in-app browser)",
+  open_in_browser_click: "Tapped \"open in Chrome\"",
 };
 
 export const ANALYTICS_EVENTS = new Set(Object.keys(ANALYTICS_EVENT_LABELS));

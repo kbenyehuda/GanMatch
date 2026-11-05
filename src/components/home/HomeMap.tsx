@@ -26,6 +26,8 @@ import { DEFAULT_PLACE_FILTERS, activeCategory, type PlaceFilters } from "@/type
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { track, setAnalyticsPlace } from "@/lib/analytics";
+import { useBackClose } from "@/lib/back-stack";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import {
   Loader2, Star, X, ChevronLeft,
   Map, Home, Plus, Heart, User, MapPin,
@@ -615,6 +617,37 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     []
   );
 
+  // ── Phone Back closes what's open, newest first; only the plain feed lets Back leave the app ──
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener?.("change", sync);
+    return () => mq.removeEventListener?.("change", sync);
+  }, []);
+  const onMapView = isDesktop || activeTab === "map";
+  useBackClose(!isDesktop && activeTab !== "home", () => setActiveTab("home"));
+  useBackClose(searching, () => { setMapSearchQuery(""); setFilters(f => ({ ...f, search_query: null })); });
+  useBackClose(onMapView && !!selectedClusterPlaces, () => setSelectedClusterPlaces(null));
+  useBackClose(onMapView && !!selectedPlace && !detailPlace, () => setSelectedPlace(null));
+  useBackClose(!!detailPlace && !pickingLocationPin, () => {
+    setDetailPlace(null);
+    if (isDesktop) setSelectedPlace(null);
+  });
+  useBackClose(!!locationRequestPlace && !pickingLocationPin, () => { setLocationRequestPlace(null); setLocationRequestPin(null); });
+  useBackClose(showAddModal, () => { setShowAddModal(false); setSuggestPin(null); });
+  useBackClose(pickingPin || pickingLocationPin, () => {
+    // Back while choosing a spot on the map returns to the form it came from.
+    if (pickingPin) { setPickingPin(false); setShowAddModal(true); }
+    setPickingLocationPin(false);
+    setActiveTab("home");
+  });
+
+  // Count a "looked around" visit for the add-to-home-screen invite.
+  const [openedPlace, setOpenedPlace] = useState(false);
+  useEffect(() => { if (detailPlace && detailPlace.id !== seedPlace?.id) setOpenedPlace(true); }, [detailPlace, seedPlace?.id]);
+
   // ─── Auth gate ──────────────────────────────────────────────────────────────
   // Shared place links skip the intro and the sign-in screen; a soft banner offers sign-in instead.
 
@@ -1195,6 +1228,11 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           setActiveTab(tab);
         }}
       />
+
+      {/* Phone: add to home screen (after looking around) / open in the real browser (in-app browsers) */}
+      {activeTab === "home" && !detailPlace && !showAddModal && !locationRequestPlace && !pickingPin && !pickingLocationPin && !showShareBanner && (
+        <InstallPrompt engaged={openedPlace} />
+      )}
 
       {/* Toast */}
       <Toast text={toastText} visible={toastVisible} />

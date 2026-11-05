@@ -5,6 +5,7 @@ import { Check, ChevronDown, Filter, Search, SlidersHorizontal, X } from "lucide
 import type { PlaceCategory } from "@/types/places";
 import { PLACE_CATEGORY_LABELS, VISIBLE_CATEGORIES } from "@/types/places";
 import type { Facet } from "./filter-facets";
+import { useBackClose } from "@/lib/back-stack";
 
 const CATEGORY_EMOJI: Partial<Record<PlaceCategory, string>> = {
   kids: "🧸", doctor: "🩺", cosmetics: "💄", cafe: "☕", sport: "⚽", attraction: "🎭", food: "🍴",
@@ -102,6 +103,7 @@ export function FilterPills({
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  useBackClose(!!openKey, () => setOpenKey(null));
 
   useEffect(() => {
     if (!openKey) return;
