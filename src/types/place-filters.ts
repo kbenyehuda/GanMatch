@@ -45,6 +45,8 @@ export interface PlaceFilters {
   attraction_venue: string[] | null;
   /** Facet keys whose "לא ידוע עדיין" option is picked (places with no value for that field). */
   unknown_facets: string[] | null;
+  /** "on_map": only places with a pin; "no_pin": only places not on the map yet. */
+  pin_status: "on_map" | "no_pin" | null;
 }
 
 /** The UI shows exactly one category at a time (search is the exception — it looks across all). */
@@ -87,6 +89,7 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilters = {
   sport_gender: null,
   attraction_venue: null,
   unknown_facets: null,
+  pin_status: null,
 };
 
 export function activeCategory(f: PlaceFilters): PlaceCategory {
@@ -131,5 +134,6 @@ export function countActivePlaceFilters(f: PlaceFilters): number {
   if (f.sport_gender != null) n++;
   if (f.attraction_venue != null && f.attraction_venue.length > 0) n++;
   n += f.unknown_facets?.length ?? 0;
+  if (f.pin_status != null) n++;
   return n;
 }

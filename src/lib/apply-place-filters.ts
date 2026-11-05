@@ -21,6 +21,11 @@ export function mergedGanCategory(raw: unknown): string | null {
   return raw.startsWith("TZAHARON") ? "TZAHARON" : raw;
 }
 
+/** True when the place has no pin on the map (an address we couldn't place, or none at all). */
+export function hasNoPin(p: Place): boolean {
+  return p.lat == null || p.lon == null;
+}
+
 export function applyPlaceFilters(
   places: Place[],
   filters: PlaceFilters,
@@ -211,6 +216,8 @@ export function applyPlaceFilters(
       const a = p.attributes as Record<string, unknown>;
       return filters.attraction_venue!.includes(String(a.indoor_outdoor ?? ""));
     });
+  if (filters.pin_status)
+    result = result.filter((p) => hasNoPin(p) === (filters.pin_status === "no_pin"));
   // Keep the open place visible even if a filter hides it — but only within the current
   // category, or a gan opened earlier shows up in the doctors list.
   if (selectedPlaceId && !result.find((p) => p.id === selectedPlaceId)) {

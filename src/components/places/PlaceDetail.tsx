@@ -576,16 +576,20 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 )}
                 {/* Phone equivalent of the desktop hover note: this place isn't on the map */}
                 {(place.lat == null || place.lon == null) && (
-                  <span className="font-hebrew block" style={{ marginTop: 2, fontSize: 12, color: "#8A95A8" }}>ללא מיקום מדויק על המפה</span>
+                  <span className="font-hebrew block" style={{ marginTop: 2, fontSize: 12, color: "#8A95A8" }}>המיקום עוד לא מופיע במפה</span>
                 )}
                 {place.lat != null && place.lon != null && isApproximateLocation(place) && (
                   <span className="font-hebrew block" style={{ marginTop: 2, fontSize: 12, color: "#8A95A8" }}>מיקום משוער: הרחוב ידוע, מספר הבית לא</span>
                 )}
-                {user && onRequestLocationChange && (
-                  <button type="button" data-track="location_change_open" onClick={() => onRequestLocationChange(place)}
+                {onRequestLocationChange && (user || place.lat == null || place.lon == null) && (
+                  // No pin: shown to guests too (they sign in first), since this is how missing pins get filled
+                  <button type="button" data-track="location_change_open"
+                    onClick={() => (user ? onRequestLocationChange(place) : signInWithGoogle(`/place/${place.id}`))}
                     className="font-hebrew font-semibold block"
                     style={{ marginTop: 4, fontSize: 12, color: "#1F5BB5", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-                    המיקום לא מדויק? בקשו עדכון ←
+                    {place.lat == null || place.lon == null
+                      ? (user ? "יודעים איפה זה? סמנו על המפה ←" : "יודעים איפה זה? התחברו עם Google כדי לסמן על המפה ←")
+                      : "המיקום לא מדויק? בקשו עדכון ←"}
                   </button>
                 )}
               </div>

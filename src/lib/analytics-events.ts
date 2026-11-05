@@ -27,6 +27,7 @@ export const ANALYTICS_EVENT_LABELS: Record<string, string> = {
   legend_open: "Icon legend",
   edit_attrs_open: "Edit details",
   location_change_open: "Fix location",
+  no_pin_show: "Showed places without a pin",
   sort_open: "Sort",
   install_banner_shown: "Saw \"add to home screen\"",
   install_click: "Tapped \"add to home screen\"",

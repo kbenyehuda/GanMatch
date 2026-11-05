@@ -1,7 +1,7 @@
 import type { Place, PlaceCategory } from "@/types/places";
 import { HMO_LABELS, NEIGHBORHOOD_LABELS } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
-import { applyPlaceFilters, kidsTypeOf, mergedGanCategory, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
+import { applyPlaceFilters, hasNoPin, kidsTypeOf, mergedGanCategory, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
 import { factById, factsFor, placeHasFact } from "@/lib/place-facts";
 import { GAN_CATEGORY_LABELS } from "@/lib/place-type";
 
@@ -51,6 +51,8 @@ interface FacetDef {
   visible?: (f: PlaceFilters) => boolean;
   /** Options combine with AND, so an option's count includes the ones already picked. */
   matchAll?: boolean;
+  /** Hide the facet when every place in the category has the same value (nothing to choose). */
+  needsChoice?: boolean;
 }
 
 /** Extra option on every choice filter: places whose value for that field isn't known yet. */
@@ -226,7 +228,20 @@ const FACET_DEFS: FacetDef[] = [
       set: (f, v) => ({ ...f, kosher: arrayOrNull(v) as PlaceFilters["kosher"] }),
     },
   ]),
+
+  // ── Every category: on the map or not (many places have an address but no pin yet) ──
+  ...(["kids", "doctor", "cosmetics", "cafe", "sport", "attraction", "food", "clinic"] as PlaceCategory[]).map((category): FacetDef => ({
+    key: `${category}_pin`, category, label: "מיקום", mode: "single", primary: true, needsChoice: true,
+    valuesOf: (p) => [hasNoPin(p) ? "no_pin" : "on_map"],
+    optionLabel: (id) => (id === "no_pin" ? "ללא מיקום על המפה" : "על המפה"),
+    fixedOrder: ["on_map", "no_pin"],
+    get: (f) => (f.pin_status ? [f.pin_status] : []),
+    set: (f, v) => ({ ...f, pin_status: (v[0] as PlaceFilters["pin_status"]) ?? null }),
+  })),
 ];
+
+/** Facet key of the "מיקום" filter for a category. */
+export const pinFacetKey = (category: PlaceCategory) => `${category}_pin`;
 
 /**
  * Builds the facets for one category.
@@ -257,6 +272,7 @@ export function buildFacets(
     // Keep an active facet visible even if the data under it shrank, so it can be cleared.
     const unknownPicked = hasUnknownOption(def) && (filters.unknown_facets ?? []).includes(def.key);
     if (placesWithField < MIN_PLACES_FOR_FILTER && selected.length === 0 && !unknownPicked) continue;
+    if (def.needsChoice && freq.size < 2 && selected.length === 0) continue;
 
     for (const v of selected) if (!freq.has(v)) freq.set(v, 0);
     const ids = def.fixedOrder

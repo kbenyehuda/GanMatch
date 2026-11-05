@@ -19,7 +19,7 @@ const HMO_LABELS: Record<string, string> = {
 
 
 /** Most WhatsApp recommendations (babysitters, private teachers…) have no address to pin. */
-const NO_PIN_LABEL = "ללא מיקום מדויק";
+const NO_PIN_LABEL = "ללא מיקום על המפה";
 const hasPin = (p: Place) => p.lat != null && p.lon != null;
 
 function distanceLabel(place: Place, user: { lon: number; lat: number } | null): string | null {

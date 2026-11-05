@@ -8,8 +8,10 @@ import { signInWithGoogle, takeReturnPath } from "@/lib/sign-in";
 import { IntroOverlay, INTRO_SEEN_STORAGE_KEY } from "@/components/home/IntroOverlay";
 import { PlaceFeedPanel } from "@/components/places/PlaceFeedPanel";
 import { CategoryTabs, FilterPills } from "@/components/places/CategoryFilterBar";
-import { buildFacets, setFacetValues, clearCategoryFilters, applyFacetFilters } from "@/components/places/filter-facets";
+import { buildFacets, setFacetValues, clearCategoryFilters, applyFacetFilters, pinFacetKey } from "@/components/places/filter-facets";
 import { PlaceDetail } from "@/components/places/PlaceDetail";
+import { NoPinChip } from "@/components/places/NoPinNotice";
+import { hasNoPin, kidsTypeOf, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { AddPlaceModal } from "@/components/places/AddPlaceModal";
 import { RequestLocationChangeModal } from "@/components/places/RequestLocationChangeModal";
@@ -552,7 +554,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     track("category_selected", { category: next }, null);
     scopedByCategoryRef.current[category] = { neighborhoods: filters.neighborhoods, hmo: filters.hmo };
     const restored = scopedByCategoryRef.current[next] ?? { neighborhoods: null, hmo: null };
-    setFilters({ ...filters, categories: [next], ...restored });
+    setFilters({ ...filters, categories: [next], ...restored, pin_status: null });
     setSelectedClusterPlaces(null);
     try { window.localStorage.setItem(CATEGORY_STORAGE_KEY, next); } catch {}
   }, [category, filters]);
@@ -570,6 +572,26 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
   );
   const filteredCountRef = useRef(0);
   filteredCountRef.current = filteredPlaces.length;
+
+  // ── Places without a pin ──────────────────────────────────────────────────────
+  // The map can't show them, so the phone map says how many there are (same category and filters).
+  // Not in the list: with no "מיקום" filter the list already includes them.
+  // Hidden once the "מיקום" filter is set: then it's already a choice.
+  const noPin = useMemo(() => {
+    if (searching || filters.pin_status) return { count: 0, ganim: 0 };
+    const list = filteredPlaces.filter(hasNoPin);
+    const ganim = list.filter((p) => p.place_category === "kids" && kidsTypeOf(p) === KIDS_GAN_TYPE).length;
+    return { count: list.length, ganim };
+  }, [searching, filters.pin_status, filteredPlaces]);
+  const showNoPin = useCallback(() => {
+    track("no_pin_show", { category }, null);
+    setFilters((f) => setFacetValues(f, pinFacetKey(category), ["no_pin"]));
+  }, [category]);
+  const noPinProps = {
+    count: noPin.count,
+    ganimCount: category === "kids" ? noPin.ganim : 0,
+    ganimOnly: category === "kids" && (filters.kids_specialty ?? []).includes(KIDS_GAN_TYPE),
+  };
 
   // ── Filter facets (pills) ─────────────────────────────────────────────────────
   const facets = useMemo(
@@ -1061,6 +1083,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                   resultCount={filteredPlaces.length}
                   floating
                 />
+              )}
+              {!showPeek && !pickingPin && !pickingLocationPin && (
+                <NoPinChip {...noPinProps} onShow={() => { showNoPin(); setActiveTab("home"); }} />
               )}
             </div>
           )}
