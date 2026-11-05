@@ -805,7 +805,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               }}
             >
               {detailPlace ? (
-                <div className="h-full">
+                // Only one PlaceDetail at a time: the hidden phone copy used to load the reviews again
+                isDesktop && <div className="h-full">
                   <PlaceDetail
                     place={detailPlace}
                     onClose={() => { setDetailPlace(null); setSelectedPlace(null); }}
@@ -1083,8 +1084,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
         </div>
       </div>
 
-      {/* Mobile full-screen PlaceDetail overlay */}
-      {detailPlace && !pickingLocationPin && (
+      {/* Mobile full-screen PlaceDetail overlay (not mounted on desktop, see above) */}
+      {detailPlace && !pickingLocationPin && !isDesktop && (
         <div className="md:hidden absolute inset-0 z-40 overflow-hidden" style={{ background: "#F6F9FE" }}>
           <PlaceDetail
             place={detailPlace}
