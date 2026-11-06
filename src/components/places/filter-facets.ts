@@ -2,7 +2,7 @@ import type { Place, PlaceCategory } from "@/types/places";
 import { HMO_LABELS, NEIGHBORHOOD_LABELS } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
 import { applyPlaceFilters, hasNoPin, kidsTypeOf, mergedGanCategory, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
-import { factById, factsFor, placeHasFact } from "@/lib/place-facts";
+import { factById, factsFor, placeHasFact, openTagsOf, OPEN_TAG_PREFIX } from "@/lib/place-facts";
 import { GAN_CATEGORY_LABELS } from "@/lib/place-type";
 
 /**
@@ -15,6 +15,12 @@ import { GAN_CATEGORY_LABELS } from "@/lib/place-type";
  * empties the list.
  */
 export const MIN_PLACES_FOR_FILTER = 5;
+
+/** An open review tag (not a fixed fact) becomes a "מה חשוב לכם" option once this many places in the category have it. */
+export const MIN_PLACES_FOR_TAG_FILTER = 3;
+
+/** Display labels of open-tag options, filled while facets are built. */
+const openTagLabels = new Map<string, string>();
 
 export type FacetMode = "single" | "multi" | "toggle";
 
@@ -68,19 +74,28 @@ const toggleValue = (v: string[]) => (v.length ? true : null);
 
 const KIDS_PRICE_BRACKETS = [1500, 2500, 4000, 6000, 8000];
 
-/** "מה חשוב לכם": the category's facts (field or review tag); picked facts combine with AND. */
+/**
+ * "מה חשוב לכם": the category's facts (field or review tag) plus open review tags that enough
+ * places share (see MIN_PLACES_FOR_TAG_FILTER); picks combine with AND.
+ */
 function factsFacet(
   key: string,
   category: PlaceCategory,
   get: FacetDef["get"],
   set: FacetDef["set"],
   exclude: string[] = [],
+  /** Places whose open tags count here (kids: ganim only, not classes or babysitters). */
+  tagScope: (p: Place) => boolean = () => true,
 ): FacetDef {
   const facts = factsFor(category).filter((f) => !exclude.includes(f.id));
   return {
     key, category, label: "מה חשוב לכם", mode: "multi", primary: true, matchAll: true,
-    valuesOf: (p) => facts.filter((fact) => placeHasFact(p, fact)).map((fact) => fact.id),
-    optionLabel: (id) => factById(id)?.label ?? id,
+    valuesOf: (p) => {
+      const tags = tagScope(p) ? openTagsOf(p) : new Map<string, string>();
+      tags.forEach((label, id) => { if (!openTagLabels.has(id)) openTagLabels.set(id, label); });
+      return [...facts.filter((fact) => placeHasFact(p, fact)).map((fact) => fact.id), ...Array.from(tags.keys())];
+    },
+    optionLabel: (id) => factById(id)?.label ?? openTagLabels.get(id) ?? id.replace(OPEN_TAG_PREFIX, ""),
     get, set,
   };
 }
@@ -153,7 +168,8 @@ const FACET_DEFS: FacetDef[] = [
     set: (f, v) => ({ ...f, kids_workshops: arrayOrNull(v) }),
   },
   {
-    ...factsFacet("kids_facts", "kids", (f) => f.kids_facts ?? [], (f, v) => ({ ...f, kids_facts: arrayOrNull(v) })),
+    ...factsFacet("kids_facts", "kids", (f) => f.kids_facts ?? [], (f, v) => ({ ...f, kids_facts: arrayOrNull(v) }), [],
+      (p) => kidsTypeOf(p) === KIDS_GAN_TYPE),
     visible: (f) => kidsTypeIs(f, KIDS_GAN_TYPE),
   },
   {
@@ -274,6 +290,10 @@ export function buildFacets(
     if (placesWithField < MIN_PLACES_FOR_FILTER && selected.length === 0 && !unknownPicked) continue;
     if (def.needsChoice && freq.size < 2 && selected.length === 0) continue;
 
+    // Open tags only become options once enough places share them.
+    freq.forEach((n, v) => {
+      if (v.startsWith(OPEN_TAG_PREFIX) && n < MIN_PLACES_FOR_TAG_FILTER && !selected.includes(v)) freq.delete(v);
+    });
     for (const v of selected) if (!freq.has(v)) freq.set(v, 0);
     const ids = def.fixedOrder
       ? def.fixedOrder.filter((id) => freq.has(id))

@@ -259,6 +259,9 @@ const NON_TAGS = new Set([
   "קלינאית תקשורת", "מוהל", "גינקולוג", "אורתופד", "אורולוג", "שיננית", "טיפת חלב", "אחות טיפת חלב",
   "גסטרו", "נוירולוג", "מרפאה בעיסוק", "התפתחות הילד", "רצפת אגן", "אולטרסאונד", "אלרגיה", "רנטגן",
   "שיער", "מספרה", "ספר", "ספרית", "קוסמטיקה", "קוסמטיקאית",
+  "עיסוי", "מסאז", "מעסה", "דיקור", "דיקור סיני", "מדקר", "מדקרת", "רפלקסולוגיה", "שיאצו",
+  // gan types (the "סוג גן" filter covers them)
+  "גן פרטי", "גן עירוני", "גן ציבורי", "גן עם אמא",
 ].map(normalizeTag));
 
 function isNonTag(tag: string, place?: Place): boolean {
@@ -278,6 +281,32 @@ export function canonicalTag(tag: string, category: PlaceCategory, place?: Place
   if (fact) return place ? factLabel(fact, place) : fact.label;
   if (isNonTag(tag, place)) return null;
   return tag.trim();
+}
+
+// ── Open tags as filters ─────────────────────────────────────────────────────
+// A useful review tag that isn't one of the fixed facts (e.g. "מתאים להריון") becomes a
+// "מה חשוב לכם" option on its own once enough places in the category carry it
+// (MIN_PLACES_FOR_TAG_FILTER in filter-facets.ts). Filter ids are "tag:<normalized tag>".
+export const OPEN_TAG_PREFIX = "tag:";
+
+/** The place's open tags (not facts, not non-tags) as filter ids → display label. */
+export function openTagsOf(place: Place): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const t of place.review_tags ?? []) {
+    if (tagToFact(t, place.place_category)) continue;
+    const label = canonicalTag(t, place.place_category, place);
+    if (!label) continue;
+    const id = OPEN_TAG_PREFIX + normalizeTag(label);
+    if (!out.has(id)) out.set(id, label);
+  }
+  return out;
+}
+
+/** A "מה חשוב לכם" pick: a fact id or an open-tag id. */
+export function placeMatchesPick(place: Place, id: string): boolean {
+  if (id.startsWith(OPEN_TAG_PREFIX)) return openTagsOf(place).has(id);
+  const fact = factById(id);
+  return fact ? placeHasFact(place, fact) : true;
 }
 
 /** A review's tags as chips: canonical, without non-tags or duplicates. */

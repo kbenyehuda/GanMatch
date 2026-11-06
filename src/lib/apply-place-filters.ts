@@ -1,6 +1,6 @@
 import type { Place } from "@/types/places";
 import type { PlaceFilters } from "@/types/place-filters";
-import { factById, placeHasFact, type PlaceFact } from "@/lib/place-facts";
+import { factById, placeHasFact, placeMatchesPick } from "@/lib/place-facts";
 
 export const KIDS_GAN_TYPE = "גני ילדים";
 
@@ -172,11 +172,10 @@ export function applyPlaceFilters(
       const kinds = Array.isArray(a.workshop_types) ? (a.workshop_types as string[]) : [];
       return filters.kids_workshops!.some((c) => kinds.includes(c));
     });
-  // Facts (field or review tag), per category; every picked fact is required.
+  // Facts (field or review tag) and open tags, per category; every pick is required.
   for (const [category, ids] of [["kids", filters.kids_facts], ["doctor", filters.doctor_facts], ["cosmetics", filters.cosmetics_facts]] as const) {
     if (!ids?.length) continue;
-    const facts = ids.map(factById).filter((f): f is PlaceFact => f != null);
-    result = result.filter((p) => p.place_category !== category || facts.every((f) => placeHasFact(p, f)));
+    result = result.filter((p) => p.place_category !== category || ids.every((id) => placeMatchesPick(p, id)));
   }
   if (filters.hours_contains?.trim()) {
     const q = filters.hours_contains.trim().toLowerCase();
