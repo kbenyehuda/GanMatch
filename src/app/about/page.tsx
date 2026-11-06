@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const CATEGORY_CHIPS = [
   { key: "kids", label: "גנים ומעונות", Icon: Baby },
   { key: "doctor", label: "רופאים", Icon: Stethoscope },
-  { key: "cosmetics", label: "יופי וטיפוח", Icon: Sparkles },
+  { key: "cosmetics", label: "טיפוח וטיפולים", Icon: Sparkles },
 ] as const;
 
 const STEPS = [

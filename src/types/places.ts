@@ -154,7 +154,7 @@ export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   sport: "ספורט",
   attraction: "אטרקציות",
   food: "אוכל",
-  cosmetics: "יופי וטיפוח",
+  cosmetics: "טיפוח וטיפולים",
 };
 
 export const NEIGHBORHOOD_LABELS: Record<NeighborhoodGivatayim, string> = {
