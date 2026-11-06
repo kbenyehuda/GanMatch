@@ -15,6 +15,8 @@ export const publicEnv = {
   NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN: trimOrNull(process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN),
   NEXT_PUBLIC_SUPABASE_URL: trimOrNull(process.env.NEXT_PUBLIC_SUPABASE_URL),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: trimOrNull(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+  /** Same Google OAuth client ID as in Supabase → Auth → Google. Unset = old redirect sign-in. */
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: trimOrNull(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID),
   NEXT_PUBLIC_CONTACT_REVIEWER_ENABLED: (() => {
     const raw = process.env.NEXT_PUBLIC_CONTACT_REVIEWER_ENABLED;
     // If unset, default to "on" so the UI can still render a helpful message from the API.

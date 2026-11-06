@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { signInWithGoogle } from "@/lib/sign-in";
+import { signInWithGoogle, renderGoogleButton } from "@/lib/sign-in";
 
 export const SKIP_LOGIN_STORAGE_KEY = "ganmatch_skip_login";
 
@@ -16,6 +16,21 @@ export function ConnectionGate({
 }) {
   const [signingIn, setSigningIn] = useState(false);
   const canAuth = !!supabase;
+  // Google's own button (opens on our domain); our button below is the fallback.
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const [googleBtnReady, setGoogleBtnReady] = useState(false);
+
+  useEffect(() => {
+    if (loading || !canAuth || !googleBtnRef.current) return;
+    let cancelled = false;
+    const el = googleBtnRef.current;
+    renderGoogleButton(el, { width: el.offsetWidth || 300 }).then((ok) => {
+      if (!cancelled) setGoogleBtnReady(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, canAuth]);
 
   const signIn = async () => {
     if (!supabase) return;
@@ -70,8 +85,16 @@ export function ConnectionGate({
             </div>
           )}
 
-          {/* Google sign-in */}
-          <button
+          {/* Google's official button, rendered by Google into this box */}
+          <div
+            ref={googleBtnRef}
+            dir="ltr"
+            className="w-full flex justify-center"
+            style={{ minHeight: googleBtnReady ? 44 : 0, marginBottom: googleBtnReady ? 12 : 0, colorScheme: "light" }}
+          />
+
+          {/* Fallback sign-in (no client ID / Google script blocked) */}
+          {!googleBtnReady && <button
             type="button"
             onClick={signIn}
             disabled={loading || signingIn || !canAuth}
@@ -95,7 +118,7 @@ export function ConnectionGate({
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
             </svg>
             {signingIn ? "מתחבר…" : "התחברות עם Google"}
-          </button>
+          </button>}
 
           {/* Skip */}
           {onSkip && (
