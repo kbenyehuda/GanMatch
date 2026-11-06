@@ -235,15 +235,61 @@ function FacetMenuBody({
   return (
     <div className="font-hebrew">
       {facets.map((f, i) => (
-        <div key={f.key} style={{ borderTop: i > 0 ? "1px solid #E5E9F0" : undefined, paddingTop: i > 0 ? 8 : 0, marginTop: i > 0 ? 8 : 0 }}>
-          {showHeadings && (
+        <FacetSection key={f.key} facet={f} first={i === 0} showHeading={showHeadings}
+          onChange={onChange} onPickedSingle={onPickedSingle} />
+      ))}
+    </div>
+  );
+}
+
+/** Above this many options a facet gets a "type to filter" box. */
+const SEARCH_FROM_OPTIONS = 10;
+
+/** Loose match for typing: no quotes/geresh, case-insensitive ("ממד" finds ממ"ד). */
+const loose = (s: string) => s.replace(/["'״׳`]/g, "").toLowerCase().trim();
+
+function FacetSection({
+  facet: f, first, showHeading, onChange, onPickedSingle,
+}: {
+  facet: Facet;
+  first: boolean;
+  showHeading: boolean;
+  onChange: (key: string, values: string[]) => void;
+  onPickedSingle: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const searchable = f.options.length > SEARCH_FROM_OPTIONS;
+  const q = loose(query);
+  // Picked options always stay visible so they can be unticked.
+  const shown = searchable && q
+    ? f.options.filter((o) => f.selected.includes(o.id) || loose(o.label).includes(q))
+    : f.options;
+  return (
+        <div style={{ borderTop: !first ? "1px solid #E5E9F0" : undefined, paddingTop: !first ? 8 : 0, marginTop: !first ? 8 : 0 }}>
+          {showHeading && (
             <div style={{ fontSize: 12, fontWeight: 800, color: "#8A95A8", padding: "4px 10px 6px" }}>{f.label}</div>
           )}
-          {f.mode === "single" && (
-            <OptionRow label="הכל" checked={f.selected.length === 0} round
-              onClick={() => { onChange(f.key, []); if (!showHeadings) onPickedSingle(); }} />
+          {searchable && (
+            <div style={{ padding: "2px 6px 6px" }}>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="הקלידו לחיפוש…"
+                aria-label={`חיפוש ב${f.label}`}
+                className="w-full font-hebrew"
+                style={{ fontSize: 16, padding: "8px 12px", borderRadius: 10, border: "1.5px solid #E5E9F0", background: "#F6F9FE", color: "#0F1A2E", outline: "none" }}
+              />
+            </div>
           )}
-          {f.options.map((o) => {
+          {f.mode === "single" && !q && (
+            <OptionRow label="הכל" checked={f.selected.length === 0} round
+              onClick={() => { onChange(f.key, []); if (!showHeading) onPickedSingle(); }} />
+          )}
+          {shown.length === 0 && (
+            <div style={{ fontSize: 13, color: "#8A95A8", padding: "8px 10px" }}>לא נמצא</div>
+          )}
+          {shown.map((o) => {
             const checked = f.selected.includes(o.id);
             return (
               <OptionRow
@@ -256,7 +302,7 @@ function FacetMenuBody({
                 onClick={() => {
                   if (f.mode === "single") {
                     onChange(f.key, checked ? [] : [o.id]);
-                    if (!showHeadings) onPickedSingle();
+                    if (!showHeading) onPickedSingle();
                   } else {
                     onChange(f.key, checked ? f.selected.filter((v) => v !== o.id) : [...f.selected, o.id]);
                   }
@@ -265,8 +311,6 @@ function FacetMenuBody({
             );
           })}
         </div>
-      ))}
-    </div>
   );
 }
 
