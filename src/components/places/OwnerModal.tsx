@@ -73,7 +73,7 @@ export function OwnerModal({ place, onClose, onPlaceUpdated, onShowToast, onEdit
   useEffect(() => {
     if (!token) return;
     let alive = true;
-    fetch(`/api/places/owner?place_id=${encodeURIComponent(place.id)}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`/api/places/owner?place_id=${encodeURIComponent(place.id)}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
       .then((r) => r.json())
       .then((d) => { if (alive) setStatus((d?.claim?.status as ClaimStatus) ?? null); })
       .catch(() => { if (alive) setStatus(null); });

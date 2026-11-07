@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { ownerContextFor } from "@/lib/server/place-owners";
+import { privateJson } from "@/lib/server/no-store";
 
 // Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
 export const dynamic = "force-dynamic";
@@ -21,12 +21,12 @@ export async function GET(req: Request) {
   const anon = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !anon || !serviceKey) {
-    return NextResponse.json({ error: "Supabase config missing" }, { status: 500 });
+    return privateJson({ error: "Supabase config missing" }, { status: 500 });
   }
 
   const authHeader = req.headers.get("authorization") ?? "";
   if (!authHeader.toLowerCase().startsWith("bearer ")) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    return privateJson({ error: "Authentication required" }, { status: 401 });
   }
 
   const userClient = createClient(url, anon, {
@@ -36,10 +36,10 @@ export async function GET(req: Request) {
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   const email = String(userData?.user?.email ?? "").trim().toLowerCase();
   if (userErr || !userData?.user || !email) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    return privateJson({ error: "Authentication required" }, { status: 401 });
   }
   if (!serverEnv.ADMIN_EMAILS.has(email)) {
-    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    return privateJson({ error: "Admin access required" }, { status: 403 });
   }
   await ensureAdminFullAccessForUser({ userId: userData.user.id, email });
 
@@ -68,7 +68,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return privateJson({ error: error.message }, { status: 500 });
   }
 
   const rows = (data ?? []) as any[];
@@ -93,5 +93,5 @@ export async function GET(req: Request) {
     user_email: row.user_id ? emailByUserId[String(row.user_id)] ?? null : null,
   }));
 
-  return NextResponse.json({ items });
+  return privateJson({ items });
 }

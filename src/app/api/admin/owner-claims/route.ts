@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/server/require-admin";
+import { privateJson } from "@/lib/server/no-store";
 
 // Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   if (["pending", "approved", "declined", "revoked"].includes(statusParam)) query = query.eq("status", statusParam);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return privateJson({ error: error.message }, { status: 500 });
   const rows = (data ?? []) as any[];
 
   const emailByUser: Record<string, string | null> = {};
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
     user_email: r.user_id ? emailByUser[r.user_id] ?? null : null,
     other_claims: r.user_id ? (otherByUser[r.user_id] ?? []).filter((c) => c.id !== r.id) : [],
   }));
-  return NextResponse.json({ items });
+  return privateJson({ items });
 }
 
 // POST /api/admin/owner-claims  body: { id, action: "approve" | "decline" | "revoke", verification_note? }
@@ -54,23 +54,23 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return privateJson({ error: "Invalid JSON" }, { status: 400 });
   }
   const id = typeof body.id === "string" ? body.id : "";
   const action = body.action;
   const note = typeof body.verification_note === "string" ? body.verification_note.trim().slice(0, 500) : "";
   if (!id || (action !== "approve" && action !== "decline" && action !== "revoke")) {
-    return NextResponse.json({ error: "Missing id or action" }, { status: 400 });
+    return privateJson({ error: "Missing id or action" }, { status: 400 });
   }
   if (action === "approve" && !note) {
-    return NextResponse.json({ error: "כתבי איך אימתת (למשל: התקשרתי לטלפון שברישום)" }, { status: 400 });
+    return privateJson({ error: "כתבי איך אימתת (למשל: התקשרתי לטלפון שברישום)" }, { status: 400 });
   }
 
   const { data: claim } = await admin.from("place_owner_claims").select("id,status").eq("id", id).maybeSingle();
-  if (!claim) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!claim) return privateJson({ error: "Not found" }, { status: 404 });
   const allowedFrom: Record<string, string[]> = { approve: ["pending"], decline: ["pending"], revoke: ["approved"] };
   if (!allowedFrom[action as string].includes(claim.status)) {
-    return NextResponse.json({ error: `Already ${claim.status}` }, { status: 409 });
+    return privateJson({ error: `Already ${claim.status}` }, { status: 409 });
   }
 
   const status = action === "approve" ? "approved" : action === "decline" ? "declined" : "revoked";
@@ -79,6 +79,6 @@ export async function POST(req: Request) {
     decided_at: new Date().toISOString(),
     ...(note ? { verification_note: note } : {}),
   }).eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  if (error) return privateJson({ error: error.message }, { status: 500 });
+  return privateJson({ success: true });
 }

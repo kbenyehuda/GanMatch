@@ -361,6 +361,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       // The token lets the API mark your own review (is_mine) without sending anyone's user id
       const res = await fetch(`/api/place-reviews?place_id=${encodeURIComponent(place.id)}`, {
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+        cache: "no-store",
       });
       const d = await res.json();
       setReviews(d.reviews ?? []);
@@ -377,6 +378,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
     try {
       const res = await fetch(`/api/places/owner?place_id=${encodeURIComponent(place.id)}`, {
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+        cache: "no-store",
       });
       if (res.ok) setOwnerInfo(await res.json());
     } catch { /* the page works without it */ }

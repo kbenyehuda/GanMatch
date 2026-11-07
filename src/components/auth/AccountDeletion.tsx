@@ -21,6 +21,7 @@ async function api(token: string, method: "GET" | "POST" | "DELETE", body?: unkn
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? "שגיאה");

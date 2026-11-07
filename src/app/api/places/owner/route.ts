@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ownerManagedInfo, ownerRelatedToPlace, requireUser } from "@/lib/server/place-owners";
 import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
+import { privateJson } from "@/lib/server/no-store";
 
 // Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
 export const dynamic = "force-dynamic";
@@ -12,10 +12,10 @@ export const dynamic = "force-dynamic";
 // own / asked to own another place in the same category (for the recommendation form).
 export async function GET(req: Request) {
   const placeId = new URL(req.url).searchParams.get("place_id")?.trim() ?? "";
-  if (!placeId) return NextResponse.json({ error: "Missing place_id" }, { status: 400 });
+  if (!placeId) return privateJson({ error: "Missing place_id" }, { status: 400 });
   const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return NextResponse.json({ error: "Supabase config missing" }, { status: 500 });
+  if (!url || !serviceKey) return privateJson({ error: "Supabase config missing" }, { status: 500 });
 
   const hasToken = (req.headers.get("authorization") ?? "").toLowerCase().startsWith("bearer ");
   const auth = hasToken ? await requireUser(req) : null;
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   const info = await ownerManagedInfo(admin, placeId);
-  if (!auth?.user) return NextResponse.json({ ...info, claim: null, competitor: false });
+  if (!auth?.user) return privateJson({ ...info, claim: null, competitor: false });
 
   const { data } = await admin
     .from("place_owner_claims")
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     .limit(1);
   const claim = data?.[0] ?? null;
   const competitor = !claim && (await ownerRelatedToPlace(admin, auth.user.id, placeId));
-  return NextResponse.json({ ...info, claim, competitor });
+  return privateJson({ ...info, claim, competitor });
 }
 
 // POST /api/places/owner — ask to be the owner of a place
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return privateJson({ error: "Invalid JSON" }, { status: 400 });
   }
   const s = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
   const placeId = s(body.place_id, 64);
@@ -56,14 +56,14 @@ export async function POST(req: Request) {
   const role = s(body.role, 120) || null;
   const phone = s(body.phone, 30);
   const note = s(body.note, 1000) || null;
-  if (!placeId) return NextResponse.json({ error: "Missing place_id" }, { status: 400 });
-  if (!fullName) return NextResponse.json({ error: "נא למלא שם" }, { status: 400 });
-  if (phone.replace(/\D/g, "").length < 9) return NextResponse.json({ error: "נא למלא מספר טלפון תקין" }, { status: 400 });
-  if (body.accepted_rules !== true) return NextResponse.json({ error: "נא לאשר את הכללים" }, { status: 400 });
+  if (!placeId) return privateJson({ error: "Missing place_id" }, { status: 400 });
+  if (!fullName) return privateJson({ error: "נא למלא שם" }, { status: 400 });
+  if (phone.replace(/\D/g, "").length < 9) return privateJson({ error: "נא למלא מספר טלפון תקין" }, { status: 400 });
+  if (body.accepted_rules !== true) return privateJson({ error: "נא לאשר את הכללים" }, { status: 400 });
 
   const { admin, user } = auth;
   const { data: place } = await admin.from("places").select("name,phone").eq("id", placeId).maybeSingle();
-  if (!place) return NextResponse.json({ error: "מקום לא נמצא" }, { status: 404 });
+  if (!place) return privateJson({ error: "מקום לא נמצא" }, { status: 404 });
 
   const { data: open } = await admin
     .from("place_owner_claims")
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     .in("status", ["pending", "approved"])
     .limit(1);
   if (open?.length) {
-    return NextResponse.json({ error: open[0].status === "approved" ? "את/ה כבר בעל/ת המקום" : "הבקשה כבר אצלנו" }, { status: 409 });
+    return privateJson({ error: open[0].status === "approved" ? "את/ה כבר בעל/ת המקום" : "הבקשה כבר אצלנו" }, { status: 409 });
   }
 
   const { data: inserted, error } = await admin
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     .insert({ place_id: placeId, user_id: user.id, full_name: fullName, role, phone, note })
     .select("id")
     .single();
-  if (error || !inserted) return NextResponse.json({ error: error?.message ?? "שגיאה בשמירה" }, { status: 500 });
+  if (error || !inserted) return privateJson({ error: error?.message ?? "שגיאה בשמירה" }, { status: 500 });
 
   const listed = Array.isArray(place.phone) && place.phone.length ? place.phone.join(", ") : "אין טלפון ברישום";
   await notifyAdmins({
@@ -96,5 +96,5 @@ export async function POST(req: Request) {
       ${requestLinksHtml(new URL(req.url).origin, "owner-claims", inserted.id)}`,
   });
 
-  return NextResponse.json({ success: true });
+  return privateJson({ success: true });
 }
