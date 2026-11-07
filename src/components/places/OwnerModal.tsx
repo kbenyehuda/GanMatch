@@ -184,9 +184,10 @@ export function OwnerModal({ place, onClose, onPlaceUpdated, onShowToast, onEdit
               <label className="flex items-start gap-2" style={{ fontSize: 12.5, color: "#4A5568", cursor: "pointer" }}>
                 <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} style={{ marginTop: 3, accentColor: "#0A2B6B" }} />
                 <span>
-                  אני בעל/ת המקום או מורשה מטעמו. ידוע לי שבכל המלצה, הודעה או תגובה שקשורה למקום שלי או למקום מתחרה
-                  חובה לציין שאני בעל/ת המקום, ושהסתרה של זה אסורה לפי{" "}
-                  <a href="/terms" target="_blank" style={{ color: "#1F5BB5", fontWeight: 700 }}>תנאי השימוש</a>.
+                  אני בעל/ת המקום או מורשה מטעמו. ידוע לי שבכל הודעה ועדכון שאשלח מהחשבון הזה, האתר יציין אוטומטית
+                  שאני בעל/ת המקום, ושלפי{" "}
+                  <a href="/terms" target="_blank" style={{ color: "#1F5BB5", fontWeight: 700 }}>תנאי השימוש</a>{" "}
+                  אסור לשלוח הודעות או לעדכן פרטים בלי שיהיה ברור שאני בעל/ת מקום באתר, למשל מחשבון אחר.
                 </span>
               </label>
               <button type="button" onClick={submitClaim} disabled={busy || !fullName.trim() || !phone.trim() || !accepted}
@@ -203,8 +204,8 @@ export function OwnerModal({ place, onClose, onPlaceUpdated, onShowToast, onEdit
                 את/ה בעל/ת {place.name}. שינויים שתעשו יופיעו באתר מיד.
               </p>
               <p style={{ color: "#4A5568", fontSize: 12.5 }}>
-                תזכורת: בכל המלצה, הודעה או תגובה שקשורה למקום שלך או למקום מתחרה, חובה לציין שאת/ה בעל/ת המקום.
-                בהודעות שנשלחות דרך האתר זה מופיע אוטומטית.
+                בכל הודעה ועדכון שתשלחו מהחשבון הזה, האתר מציין אוטומטית שאתם בעלי המקום. לפי כללי האתר,
+                אסור לשלוח הודעות או לעדכן פרטים בלי שיהיה ברור שאתם בעלי מקום, למשל מחשבון אחר.
               </p>
               <button type="button" className="font-hebrew font-bold" style={primaryBtn} onClick={() => setView("edit")}>עריכת פרטים</button>
               {place.place_category === "kids" && (
