@@ -4,6 +4,9 @@ import { serverEnv } from "@/lib/env/server";
 import { ownerManagedInfo, ownerRelatedToPlace, requireUser } from "@/lib/server/place-owners";
 import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
 
+// Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
+export const dynamic = "force-dynamic";
+
 // GET /api/places/owner?place_id=… — public: is the place managed by a verified owner, and when an
 // owner last changed it. With a Bearer token also: my latest ownership request here, and whether I
 // own / asked to own another place in the same category (for the recommendation form).

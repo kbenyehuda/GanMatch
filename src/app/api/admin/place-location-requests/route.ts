@@ -4,6 +4,9 @@ import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { ownerContextFor } from "@/lib/server/place-owners";
 
+// Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
+export const dynamic = "force-dynamic";
+
 type QueueStatus = "pending" | "approved" | "rejected";
 
 function parseLimit(raw: string | null, fallback = 100): number {

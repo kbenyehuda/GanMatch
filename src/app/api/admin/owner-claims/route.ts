@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/server/require-admin";
 
+// Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
+export const dynamic = "force-dynamic";
+
 // GET /api/admin/owner-claims?status=pending|approved|declined|revoked|all — ownership requests
 export async function GET(req: Request) {
   const auth = await requireAdmin(req);

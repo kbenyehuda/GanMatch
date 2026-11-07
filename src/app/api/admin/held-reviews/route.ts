@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/server/require-admin";
 import { ownerContextFor } from "@/lib/server/place-owners";
 
+// Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
+export const dynamic = "force-dynamic";
+
 // GET /api/admin/held-reviews — recommendations saved hidden (flagged by the check, or 1–2 stars)
 export async function GET(req: Request) {
   const auth = await requireAdmin(req);

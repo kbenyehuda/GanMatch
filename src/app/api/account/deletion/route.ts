@@ -4,6 +4,9 @@ import { requestPlaceRemoval, requireUser } from "@/lib/server/place-owners";
 import { escapeHtml, notifyAdmins } from "@/lib/admin-notify";
 import { serverEnv } from "@/lib/env/server";
 
+// Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
+export const dynamic = "force-dynamic";
+
 // Account deletion like Instagram/Facebook (decisions 2026-11-07): the person asks in the app,
 // recommendations they chose to delete go at once, and the account itself is deleted by the daily
 // job after 30 days. Signing in during those 30 days shows the request with a cancel button.

@@ -6,6 +6,9 @@ import { escapeHtml, notifyAdmins } from "@/lib/admin-notify";
 import { KIDS_FIELD_LABELS } from "@/lib/kids-attributes";
 import { BASIC_FIELD_LABELS } from "@/lib/place-basic-details";
 
+// Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
+export const dynamic = "force-dynamic";
+
 // GET /api/cron/daily — run once a day by Vercel Cron (vercel.json). Vercel sends
 // "Authorization: Bearer $CRON_SECRET"; anything else is refused.
 //  1. Deletes accounts whose 30-day grace period ended (decision 2026-11-07).
