@@ -113,12 +113,12 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
   return (
     <div
       className="fixed inset-0 z-50"
-      style={{ background: "rgba(15,26,46,.4)", backdropFilter: "blur(2px)" }}
+      style={{ background: "rgba(15,26,46,.4)", backdropFilter: "blur(2px)", touchAction: "none", overscrollBehavior: "contain" }}
       onClick={onClose}
     >
       <div
         className="absolute left-0 right-0 bottom-0 flex flex-col overflow-hidden"
-        style={{ background: "#F6F9FE", borderRadius: "28px 28px 0 0", boxShadow: "0 -10px 30px rgba(10,43,107,.2)", maxHeight: "55%" }}
+        style={{ background: "#F6F9FE", borderRadius: "28px 28px 0 0", boxShadow: "0 -10px 30px rgba(10,43,107,.2)", maxHeight: "85dvh", touchAction: "pan-y" }}
         onClick={e => e.stopPropagation()}
         dir="rtl"
       >
@@ -134,7 +134,7 @@ function SortSheet({ sort, onSelect, onClose }: { sort: SortOption; onSelect: (s
           </button>
         </div>
         {/* Options */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: "0 20px 32px" }}>
+        <div className="flex-1 overflow-y-auto" style={{ padding: "0 20px calc(32px + env(safe-area-inset-bottom))", overscrollBehavior: "contain" }}>
           {SORT_OPTIONS.map((opt, i) => (
             <button key={opt.id} type="button" onClick={() => { onSelect(opt.id); onClose(); }}
               className="w-full text-start flex items-center gap-3.5"

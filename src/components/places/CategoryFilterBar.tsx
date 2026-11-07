@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, ChevronDown, Filter, Search, SlidersHorizontal, X } from "lucide-react";
 import type { PlaceCategory } from "@/types/places";
 import { PLACE_CATEGORY_LABELS, VISIBLE_CATEGORIES } from "@/types/places";
-import type { Facet } from "./filter-facets";
+import { UNKNOWN_OPTION, type Facet } from "./filter-facets";
 import { useBackClose } from "@/lib/back-stack";
 
 const CATEGORY_EMOJI: Partial<Record<PlaceCategory, string>> = {
@@ -244,6 +244,8 @@ function FacetMenuBody({
 
 /** Above this many options a facet gets a "type to filter" box. */
 const SEARCH_FROM_OPTIONS = 10;
+/** Above this many options a facet can be sorted by popularity or alphabetically. */
+const SORTABLE_FROM_OPTIONS = 6;
 
 /** Loose match for typing: no quotes/geresh, case-insensitive ("ממד" finds ממ"ד). */
 const loose = (s: string) => s.replace(/["'״׳`]/g, "").toLowerCase().trim();
@@ -258,12 +260,19 @@ function FacetSection({
   onPickedSingle: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const [abc, setAbc] = useState(false);
   const searchable = f.options.length > SEARCH_FROM_OPTIONS;
+  const sortable = f.options.length > SORTABLE_FROM_OPTIONS;
   const q = loose(query);
+  // Options arrive sorted by popularity; "א-ב" re-sorts by name ("לא ידוע" stays last).
+  const ordered = sortable && abc
+    ? [...f.options].sort((a, b) =>
+        Number(a.id === UNKNOWN_OPTION) - Number(b.id === UNKNOWN_OPTION) || a.label.localeCompare(b.label, "he"))
+    : f.options;
   // Picked options always stay visible so they can be unticked.
   const shown = searchable && q
-    ? f.options.filter((o) => f.selected.includes(o.id) || loose(o.label).includes(q))
-    : f.options;
+    ? ordered.filter((o) => f.selected.includes(o.id) || loose(o.label).includes(q))
+    : ordered;
   return (
         <div style={{ borderTop: !first ? "1px solid #E5E9F0" : undefined, paddingTop: !first ? 8 : 0, marginTop: !first ? 8 : 0 }}>
           {showHeading && (
@@ -280,6 +289,19 @@ function FacetSection({
                 className="w-full font-hebrew"
                 style={{ fontSize: 16, padding: "8px 12px", borderRadius: 10, border: "1.5px solid #E5E9F0", background: "#F6F9FE", color: "#0F1A2E", outline: "none" }}
               />
+            </div>
+          )}
+          {sortable && (
+            <div className="flex items-center" style={{ gap: 6, padding: "2px 6px 6px" }}>
+              <span style={{ fontSize: 12, color: "#8A95A8" }}>סידור:</span>
+              {([[false, "הכי נפוצים"], [true, "א-ב"]] as const).map(([v, label]) => (
+                <button key={label} type="button" onClick={() => setAbc(v)} aria-pressed={abc === v}
+                  style={{ fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 99, cursor: "pointer",
+                    border: abc === v ? "1.5px solid #0A2B6B" : "1.5px solid #E5E9F0",
+                    background: abc === v ? "#0A2B6B" : "#fff", color: abc === v ? "#fff" : "#0A2B6B" }}>
+                  {label}
+                </button>
+              ))}
             </div>
           )}
           {f.mode === "single" && !q && (

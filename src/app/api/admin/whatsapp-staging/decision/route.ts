@@ -6,6 +6,7 @@ import { summarizeRecommendation, getCategoryTags, getCategorySpecialties, recor
 import { geocodeHint, extractAddressFromText, parseStoredHint, serializeHint, formatHintForDisplay, type BilingualExtractedAddress } from "@/lib/whatsapp-geocode";
 import { findSimilarPlace } from "@/lib/dedupe";
 import { isPrivatePersonEntry } from "@/lib/private-person";
+import { cleanPlaceName } from "@/lib/place-name";
 import * as crypto from "crypto";
 import { kindFieldFor } from "@/lib/chugim-types";
 
@@ -232,7 +233,7 @@ export async function POST(req: Request) {
         : null;
 
     const { data: newPlaceId, error: placeErr } = await admin.rpc("insert_community_place", {
-      p_name:        row.place_name,
+      p_name:        cleanPlaceName(row.place_name, row.category),
       p_category:    row.category,
       p_lon:         coords?.lon ?? null,
       p_lat:         coords?.lat ?? null,

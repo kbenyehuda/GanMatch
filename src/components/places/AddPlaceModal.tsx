@@ -371,7 +371,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
             </div>
 
             <input type="text" value={hours} onChange={(e) => setHours(e.target.value)}
-              placeholder="🕐 שעות פעילות (לדוגמה: א׳-ה׳ 09:00-18:00)"
+              placeholder="🕐 שעות פעילות (לדוגמה: א׳-ה׳ 9-18, או א׳,ג׳ 10-12, ב׳ 10-14)"
               className="w-full font-hebrew" style={inputStyle}
               onFocus={(e) => { e.target.style.borderColor = "#1F5BB5"; }}
               onBlur={(e) => { e.target.style.borderColor = "#E5E9F0"; }} />

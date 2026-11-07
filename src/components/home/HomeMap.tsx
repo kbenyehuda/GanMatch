@@ -1471,14 +1471,23 @@ function ProfileScreen({
           type="button"
           onClick={onLogout}
           className="w-full font-hebrew flex items-center justify-center gap-2"
-          style={{ marginTop: 24, padding: "14px 20px", borderRadius: 16, background: "none", border: "1.5px solid #E5E9F0", fontSize: 14, fontWeight: 700, color: "#E53E3E", cursor: "pointer" }}
+          style={{ marginTop: 24, padding: "14px 20px", borderRadius: 16, background: "none", border: "1.5px solid #E5E9F0", fontSize: 14, fontWeight: 700, color: user ? "#E53E3E" : "#0A2B6B", cursor: "pointer" }}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}>
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          התנתקות
+          {/* A guest has no account to sign out of — the same action just takes them back to the sign-in screen. */}
+          {user ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}>
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18 }}>
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+              <polyline points="10 17 15 12 10 7"/>
+              <line x1="15" y1="12" x2="3" y2="12"/>
+            </svg>
+          )}
+          {user ? "התנתקות" : "התחברות"}
         </button>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { publicEnv } from "@/lib/env/public";
 import { serverEnv } from "@/lib/env/server";
 import type { Place, PlaceCategory } from "@/types/places";
 import { escapeHtml, notifyAdmins } from "@/lib/admin-notify";
+import { cleanPlaceName } from "@/lib/place-name";
 
 const VALID_CATEGORIES: PlaceCategory[] = [
   "doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
@@ -148,7 +149,7 @@ export async function POST(request: NextRequest) {
 
   // Insert the place using raw SQL so we can use ST_MakePoint
   const { data: inserted, error: insertErr } = await admin.rpc("insert_community_place", {
-    p_name: name,
+    p_name: cleanPlaceName(name, category),
     p_category: category,
     p_lon: isPrivatePerson ? null : lon,
     p_lat: isPrivatePerson ? null : lat,
