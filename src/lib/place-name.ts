@@ -8,5 +8,7 @@ export function cleanPlaceName(name: string, category: string | null | undefined
   const trimmed = name.trim();
   if (category !== "doctor") return trimmed;
   const stripped = trimmed.replace(DOCTOR_TITLE, "").trim();
-  return stripped || trimmed;
+  // A surname alone ("ד"ר הלפרן") reads like a shop without the title — keep it then.
+  const words = stripped.replace(/\([^)]*\)/g, " ").trim().split(/\s+/).filter(Boolean);
+  return words.length >= 2 ? stripped : trimmed;
 }
