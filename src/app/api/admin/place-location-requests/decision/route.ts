@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
+import { applyPlaceLocation } from "@/lib/server/place-owners";
 
 // POST /api/admin/place-location-requests/decision
-// body: { id, action: "approve" | "reject", moderation_reason? }
+// body: { id, action: "approve" | "reject" | "revert" | "seen", moderation_reason? }
+// "revert" puts an owner's auto-applied pin move back; "seen" keeps it and takes it off the pending queue.
 export async function POST(req: Request) {
   const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
   const anon = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -44,8 +46,8 @@ export async function POST(req: Request) {
   const moderationReason =
     typeof body?.moderation_reason === "string" ? body.moderation_reason.trim() || null : null;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  if (action !== "approve" && action !== "reject") {
-    return NextResponse.json({ error: "action must be approve or reject" }, { status: 400 });
+  if (!["approve", "reject", "revert", "seen"].includes(action)) {
+    return NextResponse.json({ error: "action must be approve, reject, revert or seen" }, { status: 400 });
   }
 
   const admin = createClient(url, serviceKey, {
@@ -54,11 +56,29 @@ export async function POST(req: Request) {
 
   const { data: existing, error: existingErr } = await admin
     .from("place_location_requests")
-    .select("id,place_id,status,requested_lat,requested_lon,requested_address")
+    .select("id,place_id,status,requested_lat,requested_lon,requested_address,previous_lat,previous_lon,previous_address,auto_applied,reverted_at")
     .eq("id", id)
     .single();
   if (existingErr || !existing) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  }
+
+  if (action === "seen" || action === "revert") {
+    if (!existing.auto_applied || existing.reverted_at) {
+      return NextResponse.json({ error: "Only an owner move that wasn't undone yet" }, { status: 409 });
+    }
+    const stamp = new Date().toISOString();
+    if (action === "revert") {
+      const err = await applyPlaceLocation(admin, existing.place_id, existing.previous_lat, existing.previous_lon, existing.previous_address);
+      if (err) return NextResponse.json({ error: err }, { status: 500 });
+    }
+    const { error: markErr } = await admin.from("place_location_requests")
+      .update(action === "revert"
+        ? { reverted_at: stamp, reverted_by: userData.user.id, admin_seen_at: stamp, moderation_reason: moderationReason }
+        : { admin_seen_at: stamp })
+      .eq("id", id);
+    if (markErr) return NextResponse.json({ error: markErr.message }, { status: 500 });
+    return NextResponse.json({ success: true });
   }
   if (existing.status !== "pending") {
     return NextResponse.json({ error: `Already ${existing.status}` }, { status: 409 });

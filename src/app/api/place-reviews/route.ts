@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { checkReview } from "@/lib/review-check";
 import { HOLD_REASON_LABELS } from "@/lib/hold-reasons";
+import { isApprovedOwner, ownerRelatedToPlace } from "@/lib/server/place-owners";
 import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
 
 function supabaseAdmin() {
@@ -154,10 +155,21 @@ export async function POST(req: NextRequest) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
+  // An approved owner can't recommend their own place (terms §4; decision 2026-11-07)
+  if (await isApprovedOwner(admin, userData.user.id, placeId)) {
+    return NextResponse.json({ error: "בעלי המקום לא יכולים להמליץ על המקום שלהם" }, { status: 403 });
+  }
+
   // Automatic check before publishing: anything flagged, or a 1–2 star rating, waits for an admin
   const { data: placeRow } = await admin.from("places").select("name").eq("id", placeId).maybeSingle();
   const placeName = String(placeRow?.name ?? "");
   const check = await checkReview({ placeName, rating, text });
+  // An owner (or someone who asked to be one) reviewing their own place or a competitor
+  // always waits for the admin (user decision 2026-11-07).
+  if (await ownerRelatedToPlace(admin, userData.user.id, placeId)) {
+    check.publish = false;
+    check.reasons = [...check.reasons, "owner_related"];
+  }
 
   // Upsert — unique constraint (user_id, place_id) means one review per user per place
   const { data: inserted, error: insertErr } = await admin
@@ -173,6 +185,7 @@ export async function POST(req: NextRequest) {
         is_hidden: !check.publish,
         check_status: check.publish ? "auto_ok" : "held",
         hold_reasons: check.publish ? null : check.reasons,
+        approved_at: check.publish ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,place_id" }
@@ -209,4 +222,20 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ success: true, id: inserted.id, held: !check.publish });
+}
+
+// DELETE /api/place-reviews?id=<uuid> — the writer deletes their own recommendation, at once and
+// without an admin (decision 2026-11-07). The place's rating trigger recalculates.
+export async function DELETE(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get("id")?.trim();
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  const me = await callerId(req);
+  if (!me) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const db = supabaseAdmin();
+  if (!db) return NextResponse.json({ error: "Supabase config missing" }, { status: 500 });
+
+  const { data, error } = await db.from("place_reviews").delete().eq("id", id).eq("user_id", me).select("id");
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data?.length) return NextResponse.json({ error: "ההמלצה לא נמצאה" }, { status: 404 });
+  return NextResponse.json({ success: true });
 }

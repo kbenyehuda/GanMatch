@@ -15,8 +15,9 @@ import { useBackClose } from "@/lib/back-stack";
 import { signInWithGoogle } from "@/lib/sign-in";
 import { placeTypeLabel } from "@/lib/place-type";
 import { isApproximateLocation } from "@/lib/place-location";
-import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME, reportReviewMailto, reportPlaceMailto, ownerMailto } from "@/lib/contact";
+import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME, reportReviewMailto, reportPlaceMailto } from "@/lib/contact";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
+import { OwnerModal } from "./OwnerModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 import { GAN_APPROACH_LABELS, displayTags, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
 
@@ -143,7 +144,10 @@ function ReviewSourceInfo() {
   );
 }
 
-function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onContact }: { review: PlaceReview; place: Place; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void }) {
+function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onContact, onEdit, onDelete }: { review: PlaceReview; place: Place; helpfulIds: Set<string>; onHelpful: (id: string) => void; currentUserId: string | null; onContact: (id: string) => void; onEdit: (review: PlaceReview) => void; onDelete: (id: string) => Promise<void> }) {
+  // Deleting your own recommendation takes two taps (decision 2026-11-07)
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   // Same-meaning tags merge (מקבלת ילדים → מקבל ילדים); type words, health funds and praise are dropped.
   const tags = displayTags(review.tags, place);
   const name = review.reviewer_public_name ?? (review.is_anonymous ? "אנונימי" : "משתמש");
@@ -214,11 +218,41 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
             שליחת הודעה
           </button>
         )}
-        <a href={reportReviewMailto(place, review.id)} data-track="report"
-          className="flex items-center gap-1 ms-auto" style={{ color: "#8A95A8", fontWeight: 600, fontSize: 12, textDecoration: "none" }}>
-          <Flag style={{ width: 12, height: 12 }} />
-          דיווח
-        </a>
+        {review.is_mine ? (
+          <span className="flex items-center gap-3 ms-auto">
+            {!confirmDelete ? (
+              <>
+                <button type="button" data-track="review_edit" onClick={() => onEdit(review)}
+                  style={{ background: "none", border: 0, cursor: "pointer", color: "#1F5BB5", fontWeight: 600, fontSize: 12, padding: 0 }}>
+                  עריכה
+                </button>
+                <button type="button" data-track="review_delete_start" onClick={() => setConfirmDelete(true)}
+                  style={{ background: "none", border: 0, cursor: "pointer", color: "#B42318", fontWeight: 600, fontSize: 12, padding: 0 }}>
+                  מחיקה
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" data-track="review_delete" disabled={deleting}
+                  onClick={async () => { setDeleting(true); try { await onDelete(review.id); } finally { setDeleting(false); setConfirmDelete(false); } }}
+                  className="font-hebrew"
+                  style={{ background: "#B42318", border: 0, cursor: "pointer", color: "#fff", fontWeight: 700, fontSize: 12, padding: "4px 10px", borderRadius: 8 }}>
+                  {deleting ? "מוחק..." : "כן, למחוק לצמיתות"}
+                </button>
+                <button type="button" onClick={() => setConfirmDelete(false)}
+                  style={{ background: "none", border: 0, cursor: "pointer", color: "#8A95A8", fontWeight: 600, fontSize: 12, padding: 0 }}>
+                  ביטול
+                </button>
+              </>
+            )}
+          </span>
+        ) : (
+          <a href={reportReviewMailto(place, review.id)} data-track="report"
+            className="flex items-center gap-1 ms-auto" style={{ color: "#8A95A8", fontWeight: 600, fontSize: 12, textDecoration: "none" }}>
+            <Flag style={{ width: 12, height: 12 }} />
+            דיווח
+          </a>
+        )}
       </div>
     </div>
   );
@@ -336,6 +370,20 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
   useEffect(() => { loadReviews(); }, [loadReviews]);
 
+  // Owner status of this place, and my relation to it (badge, recommendation form). 2026-11-07
+  const [ownerInfo, setOwnerInfo] = useState<{ managed: boolean; owner_updated_at: string | null; claim: { status: string } | null; competitor: boolean } | null>(null);
+  const [showOwnerExplain, setShowOwnerExplain] = useState(false);
+  const loadOwnerInfo = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/places/owner?place_id=${encodeURIComponent(place.id)}`, {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+      });
+      if (res.ok) setOwnerInfo(await res.json());
+    } catch { /* the page works without it */ }
+  }, [place.id, session?.access_token]);
+  useEffect(() => { loadOwnerInfo(); }, [loadOwnerInfo]);
+  const isMyPlace = ownerInfo?.claim?.status === "approved";
+
   // Prefer live review data over potentially-stale place prop (feed loads before reviews are approved)
   const liveAvgRating = reviews.length > 0
     ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
@@ -353,6 +401,9 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
   // Kids attribute-edit modal (full form — "עזרו לנו למלא" / "ערכו פרטים")
   const [showAttrEdit, setShowAttrEdit] = useState(false);
+  // "זה העסק שלכם?" panel, and the gan editor opened from it in owner mode
+  const [showOwner, setShowOwner] = useState(false);
+  const [attrEditAsOwner, setAttrEditAsOwner] = useState(false);
   const [showIconLegend, setShowIconLegend] = useState(false);
 
   // Review form
@@ -429,6 +480,27 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
     } catch (e) { setSubmitError(e instanceof Error ? e.message : "שגיאה בשליחה"); }
     finally { setSubmitting(false); }
   }, [formRating, formText, formAnonymous, formName, formPrice, formVacancy, place, user, session, loadReviews, onShowToast, onPlaceUpdated]);
+
+  const deleteMyReview = useCallback(async (id: string) => {
+    if (!session) return;
+    const res = await fetch(`/api/place-reviews?id=${encodeURIComponent(id)}`, {
+      method: "DELETE", headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { onShowToast?.(data.error ?? "שגיאה במחיקה"); return; }
+    setSubmitSuccess(false);
+    await loadReviews();
+    onShowToast?.("ההמלצה נמחקה");
+  }, [session, loadReviews, onShowToast]);
+
+  const editMyReview = useCallback((r: PlaceReview) => {
+    setFormRating(r.rating);
+    setFormText(r.text ?? "");
+    setFormAnonymous(r.is_anonymous);
+    setFormName(r.reviewer_public_name ?? "");
+    setSubmitSuccess(false);
+    setShowForm(true);
+  }, []);
 
   // Tags for detail view
   const detailTags: { label: string; style: React.CSSProperties }[] = [
@@ -523,6 +595,26 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             )}
           </div>
 
+          {/* A verified owner manages this listing (decision 2026-11-07) */}
+          {ownerInfo?.managed && (
+            <div className="mb-1.5">
+              <button type="button" onClick={() => setShowOwnerExplain((v) => !v)} className="font-hebrew inline-flex items-center gap-1.5"
+                style={{ background: "#DCF3E6", color: "#1D7F4F", fontSize: 12, fontWeight: 700, padding: "3px 9px", borderRadius: 7, border: 0, cursor: "pointer" }}>
+                ✓ מנוהל על ידי בעלי המקום
+                <span style={{ fontWeight: 600, textDecoration: "underline" }}>מה זה אומר?</span>
+              </button>
+              {showOwnerExplain && (
+                <p className="font-hebrew" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.55, color: "#4A5568", background: "#F6F9FE", border: "1px solid #E5E9F0", borderRadius: 10, padding: "8px 10px" }}>
+                  בעלי המקום אימתו מולנו שזה העסק שלהם, והם מעדכנים את הפרטים בעצמם.
+                  ההמלצות הן של ההורים והלקוחות, ובעלי המקום לא יכולים לשנות אותן.
+                  המלצה עם שם מוצגת עם השם שבחרתם, לכל מי שנכנס לאתר, כולל בעלי המקום.
+                  המלצה בעילום שם לא מגלה לבעלי המקום שום מידע עליכם.
+                  אם בעלי המקום ישלחו לכם הודעה דרך האתר, יהיה כתוב בה שהיא מבעלי המקום.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Sub */}
           <div className="font-hebrew mb-3.5" style={{ fontSize: 13, color: "#8A95A8" }}>
             {[place.address?.split(",")[0], neighborhood, dist ? `${dist} ממך` : null].filter(Boolean).join(" · ")}
@@ -603,6 +695,12 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 <strong style={{ fontSize: 13, fontWeight: 600, color: "#0A2B6B" }}>{place.website.replace(/^https?:\/\//, "")}</strong>
               </div>
             </a>
+          )}
+
+          {ownerInfo?.owner_updated_at && (
+            <p className="font-hebrew" style={{ padding: "10px 0 4px", borderTop: "1px solid #E5E9F0", fontSize: 12, color: "#8A95A8" }}>
+              הפרטים עודכנו על ידי בעלי המקום · {new Date(ownerInfo.owner_updated_at).toLocaleDateString("he-IL")}
+            </p>
           )}
 
           {/* HMO */}
@@ -708,7 +806,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>היו הראשונים להמליץ!</p>
               </div>
             ) : (
-              reviews.map(r => <ReviewCard key={r.id} review={r} place={place} helpfulIds={helpfulIds} onHelpful={handleHelpful} currentUserId={user?.id ?? null} onContact={setContactReviewId} />)
+              reviews.map(r => <ReviewCard key={r.id} review={r} place={place} helpfulIds={helpfulIds} onHelpful={handleHelpful} currentUserId={user?.id ?? null} onContact={setContactReviewId} onEdit={editMyReview} onDelete={deleteMyReview} />)
             )}
 
             {submitSuccess && (
@@ -717,7 +815,16 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               </div>
             )}
 
-            {!submitSuccess && user && !showForm && (
+            {/* An owner can't recommend their own place (decision 2026-11-07) */}
+            {user && isMyPlace && (
+              <div className="font-hebrew" style={{ marginTop: 4, padding: "12px 14px", borderRadius: 14, background: "#FEF3F2", border: "1px solid #FDA29B", color: "#7A271A", fontSize: 13, lineHeight: 1.55 }}>
+                <strong>בעלי המקום לא יכולים להמליץ על המקום שלהם.</strong>{" "}
+                שימו לב: אם יתברר שבעלי המקום כתבו המלצה דרך חשבון אחר, או ביקשו ממישהו לכתוב בשמם, בלי לציין זאת,
+                ההמלצה תוסר, והחשבונות הקשורים עלולים להיחסם.
+              </div>
+            )}
+
+            {!submitSuccess && user && !showForm && !isMyPlace && (
               <button type="button" data-track="review_start" onClick={() => setShowForm(true)}
                 className="w-full font-hebrew font-bold flex items-center justify-center gap-2"
                 style={{ padding: "13px 0", borderRadius: 14, marginTop: 4, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", fontSize: 14, border: "none", cursor: "pointer", boxShadow: "0 6px 16px rgba(10,43,107,.25)" }}>
@@ -739,6 +846,16 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             {showForm && (
               <div className="mt-3 p-4 rounded-2xl" style={{ background: "#F6F9FE", border: "1px solid #E5E9F0" }}>
                 <h5 className="font-hebrew font-bold text-sm mb-3" style={{ color: "#0A2B6B" }}>ההמלצה שלך</h5>
+                {ownerInfo?.competitor && (
+                  <p className="font-hebrew" style={{ fontSize: 12, color: "#8A5A00", background: "#FFF4E0", borderRadius: 10, padding: "7px 10px", marginBottom: 10, lineHeight: 1.5 }}>
+                    את/ה בעל/ת מקום באותה קטגוריה, ההמלצה תיבדק לפני שתפורסם.
+                  </p>
+                )}
+                {ownerInfo?.managed && (
+                  <p className="font-hebrew" style={{ fontSize: 12, color: "#4A5568", marginBottom: 10, lineHeight: 1.5 }}>
+                    המקום מנוהל על ידי בעליו. בעלי המקום יראו את השם שתבחרו להציג. אם תכתבו בעילום שם, לא יהיה להם שום מידע עליכם.
+                  </p>
+                )}
                 <StarInput value={formRating} onChange={(v) => { setFormRating(v); setSubmitError(null); }} />
                 <textarea value={formText} onChange={e => setFormText(e.target.value)}
                   placeholder="שתפו את הניסיון שלכם..." rows={3} className="w-full font-hebrew text-sm resize-none"
@@ -797,9 +914,14 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             )}
           </div>
 
-          {/* Owners and reports: by email for now (CONTACT_EMAIL) */}
+          {/* Owners: in-app panel (2026-11-07). Reports: by email (CONTACT_EMAIL) */}
           <div className="font-hebrew flex flex-wrap items-center justify-center gap-x-3 gap-y-1" style={{ paddingTop: 16, marginTop: 14, borderTop: "1px solid #E5E9F0", fontSize: 12, color: "#8A95A8" }}>
-            <a href={ownerMailto(place)} data-track="owner_claim" style={{ color: "#1F5BB5", fontWeight: 700, textDecoration: "none" }}>זה העסק שלכם?</a>
+            <button type="button" data-track="owner_claim"
+              onClick={() => (user ? setShowOwner(true) : signInWithGoogle(`/place/${place.id}`))}
+              className="font-hebrew"
+              style={{ color: "#1F5BB5", fontWeight: 700, background: "none", border: 0, padding: 0, cursor: "pointer", fontSize: 12 }}>
+              זה העסק שלכם?
+            </button>
             <span aria-hidden>·</span>
             <a href={reportPlaceMailto(place)} data-track="report" style={{ color: "#8A95A8", fontWeight: 600, textDecoration: "underline" }}>דיווח על טעות או בקשת הסרה</a>
           </div>
@@ -838,11 +960,23 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         )}
       </div>
 
+      {showOwner && (
+        <OwnerModal
+          place={place}
+          onClose={() => { setShowOwner(false); loadOwnerInfo(); }}
+          onPlaceUpdated={(p) => { onPlaceUpdated?.(p); loadOwnerInfo(); }}
+          onShowToast={onShowToast}
+          onEditKidsDetails={() => { setShowOwner(false); setAttrEditAsOwner(true); setShowAttrEdit(true); }}
+          onRequestLocationChange={onRequestLocationChange ? () => onRequestLocationChange(place) : undefined}
+        />
+      )}
+
       {showAttrEdit && (
         <EditKidsAttributesModal
           place={place}
-          onClose={() => setShowAttrEdit(false)}
-          onSaved={(updated) => onPlaceUpdated?.(updated)}
+          isOwner={attrEditAsOwner}
+          onClose={() => { setShowAttrEdit(false); setAttrEditAsOwner(false); }}
+          onSaved={(updated) => { onPlaceUpdated?.(updated); loadOwnerInfo(); }}
           onShowToast={onShowToast}
         />
       )}

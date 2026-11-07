@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { X, MapPin, Loader2, Search, Send } from "lucide-react";
 import type { Place } from "@/types/places";
 import { useSession } from "@/lib/useSession";
+import { isInGivatayim } from "@/lib/place-location";
 
 interface GeoSuggestion {
   id: string;
@@ -16,7 +17,8 @@ export interface RequestLocationChangeModalProps {
   place: Place;
   initialLocation?: { lon: number; lat: number } | null;
   onClose: () => void;
-  onSuccess: () => void;
+  /** applied: an approved owner's move, already live (decision 2026-11-07) */
+  onSuccess: (result?: { applied?: boolean; lat?: number; lon?: number; address?: string | null }) => void;
   onPickPin: () => void;
 }
 
@@ -83,9 +85,14 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = resolvedLocation !== null && !submitting;
+  // A pin outside Giv'atayim is almost always a mistake (same street name elsewhere): ask once
+  const [outsideAsked, setOutsideAsked] = useState(false);
+  useEffect(() => { setOutsideAsked(false); }, [resolvedLocation]);
+  const isOutside = resolvedLocation !== null && !isInGivatayim(resolvedLocation.lat, resolvedLocation.lon);
 
   const submit = useCallback(async () => {
     if (!canSubmit || !session || !resolvedLocation) return;
+    if (isOutside && !outsideAsked) { setOutsideAsked(true); return; }
     setSubmitting(true);
     setError(null);
     try {
@@ -102,13 +109,13 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשליחת הבקשה");
-      onSuccess();
+      onSuccess(data.applied ? { applied: true, lat: data.lat, lon: data.lon, address: data.address } : undefined);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "שגיאה");
     } finally {
       setSubmitting(false);
     }
-  }, [canSubmit, session, resolvedLocation, place.id, locationLabel, note, onSuccess]);
+  }, [canSubmit, session, resolvedLocation, place.id, locationLabel, note, onSuccess, isOutside, outsideAsked]);
 
   const inputStyle = {
     background: "#fff", border: "1px solid #E5E9F0", borderRadius: 12,
@@ -136,6 +143,21 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
 
       {/* Scrollable form */}
       <div className="flex-1 overflow-y-auto" style={{ padding: "20px 20px 48px" }}>
+        {outsideAsked && (
+          <div className="font-hebrew mb-4" style={{ background: "#FFF4E0", border: "1px solid #F5C26B", borderRadius: 12, padding: "10px 12px", fontSize: 13, color: "#7A4A00", lineHeight: 1.55 }}>
+            <strong>העברת את הסיכה לעיר אחרת, בטוח/ה?</strong> המיקום שבחרת מחוץ לגבעתיים.
+            <div className="flex gap-2 mt-2">
+              <button type="button" onClick={submit} disabled={submitting}
+                className="font-hebrew font-bold" style={{ background: "#0A2B6B", color: "#fff", border: 0, borderRadius: 10, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>
+                כן, זה המיקום
+              </button>
+              <button type="button" onClick={() => setOutsideAsked(false)}
+                className="font-hebrew" style={{ background: "#fff", color: "#4A5568", border: "1px solid #E5E9F0", borderRadius: 10, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>
+                לא, אתקן
+              </button>
+            </div>
+          </div>
+        )}
         <p className="font-hebrew text-sm mb-4" style={{ color: "#4A5568", lineHeight: 1.6 }}>
           המיקום של <strong>{place.name}</strong> לא מדויק? סמנו את המיקום הנכון על המפה או חפשו כתובת. הבקשה תישלח לאישור מנהל לפני שהמיקום יתעדכן בפועל.
         </p>

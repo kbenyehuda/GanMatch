@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
+import { ownerContextFor } from "@/lib/server/place-owners";
 
 type QueueStatus = "pending" | "approved" | "rejected";
 
@@ -54,11 +55,13 @@ export async function GET(req: Request) {
   let query = admin
     .from("place_location_requests")
     .select(
-      "id,place_id,user_id,requested_lat,requested_lon,requested_address,note,previous_lat,previous_lon,previous_address,status,moderation_reason,created_at,reviewed_at,reviewed_by,places(name,address,place_category)"
+      "id,place_id,user_id,requested_lat,requested_lon,requested_address,note,previous_lat,previous_lon,previous_address,status,moderation_reason,created_at,reviewed_at,reviewed_by,auto_applied,reverted_at,admin_seen_at,places(name,address,place_category)"
     )
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (status) query = query.eq("status", status);
+  // Pending also lists owner moves that went live and weren't seen or undone yet
+  if (status === "pending") query = query.or("status.eq.pending,and(auto_applied.eq.true,admin_seen_at.is.null,reverted_at.is.null)");
+  else if (status) query = query.eq("status", status);
 
   const { data, error } = await query;
   if (error) {
@@ -79,7 +82,10 @@ export async function GET(req: Request) {
     })
   );
 
+  // Ownership labels + edit history per person (decisions 2026-11-07)
+  const ownerCtx = await ownerContextFor(admin, rows.map((r) => ({ user_id: r.user_id ?? null, place_id: String(r.place_id) })));
   const items = rows.map((row) => ({
+    owner: row.user_id ? ownerCtx[`${row.user_id}:${row.place_id}`] ?? null : null,
     ...row,
     user_email: row.user_id ? emailByUserId[String(row.user_id)] ?? null : null,
   }));

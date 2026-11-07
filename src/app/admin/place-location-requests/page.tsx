@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
+import { isInGivatayim } from "@/lib/place-location";
+import { OwnerLabels, type OwnerContextView } from "@/components/admin/OwnerLabels";
 
 type QueueStatus = "pending" | "approved" | "rejected";
 
@@ -25,6 +27,10 @@ type QueueItem = {
   reviewed_at: string | null;
   places?: { name?: string | null; address?: string | null; place_category?: string | null } | null;
   user_email?: string | null;
+  owner?: OwnerContextView | null;
+  auto_applied?: boolean;
+  reverted_at?: string | null;
+  admin_seen_at?: string | null;
 };
 
 function formatDate(iso: string | null): string {
@@ -108,7 +114,7 @@ export default function AdminPlaceLocationRequestsPage() {
   }, [user, loadQueue]);
 
   const decide = useCallback(
-    async (itemId: string, action: "approve" | "reject") => {
+    async (itemId: string, action: "approve" | "reject" | "revert" | "seen") => {
       if (!supabase || !user) return;
       setBusyId(itemId);
       setError(null);
@@ -207,6 +213,15 @@ export default function AdminPlaceLocationRequestsPage() {
                 <div>User: {item.user_email || item.user_id || "-"}</div>
               </div>
             </div>
+            {item.auto_applied && (
+              <div className="rounded px-2 py-1 text-sm font-bold font-hebrew" style={{ background: item.reverted_at ? "#FEE4E2" : "#DCF3E6", color: item.reverted_at ? "#B42318" : "#1D7F4F" }}>
+                {item.reverted_at ? `אושר אוטומטית – בעל/ת המקום · בוטל ${formatDate(item.reverted_at)}` : "אושר אוטומטית – בעל/ת המקום (כבר באתר)"}
+              </div>
+            )}
+            {!isInGivatayim(item.requested_lat, item.requested_lon) && (
+              <div className="rounded px-2 py-1 text-sm font-bold font-hebrew bg-rose-50 text-rose-700">מחוץ לגבעתיים</div>
+            )}
+            <OwnerLabels owner={item.owner} />
 
             {item.note && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 font-hebrew">
@@ -266,6 +281,19 @@ export default function AdminPlaceLocationRequestsPage() {
                     {hiddenIds.has(item.id) ? "החזרה לתור" : "דילוג (הסתרה)"}
                   </button>
                 </div>
+              </div>
+            ) : item.auto_applied && !item.reverted_at ? (
+              <div className="flex items-center gap-2">
+                {!item.admin_seen_at && (
+                  <button className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"
+                    disabled={busyId === item.id} onClick={() => decide(item.id, "seen")}>
+                    ראיתי, להשאיר
+                  </button>
+                )}
+                <button className="px-3 py-1.5 rounded bg-rose-600 text-white text-sm disabled:opacity-60"
+                  disabled={busyId === item.id} onClick={() => decide(item.id, "revert")}>
+                  ביטול ההזזה (החזרה למיקום הקודם)
+                </button>
               </div>
             ) : (
               <div className="text-sm text-gray-600">

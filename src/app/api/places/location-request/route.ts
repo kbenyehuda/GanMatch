@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { getCachedPlaceById } from "@/lib/server/fetch-place-by-id";
+import { applyPlaceLocation, isApprovedOwner } from "@/lib/server/place-owners";
+import { isInGivatayim } from "@/lib/place-location";
 import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
 
 // POST /api/places/location-request — request a pin-location change for an
@@ -60,9 +62,18 @@ export async function POST(req: Request) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
+  // An approved owner's pin move goes live at once and stays undoable from the queue
+  // (decision 2026-11-07). Outside Giv'atayim the app asks them first; it's labelled for the admin.
+  const owner = await isApprovedOwner(admin, userData.user.id, placeId);
+  if (owner) {
+    const applyErr = await applyPlaceLocation(admin, placeId, lat, lon, address ?? undefined);
+    if (applyErr) return NextResponse.json({ error: applyErr }, { status: 500 });
+  }
+
   const { data: inserted, error: insertErr } = await admin
     .from("place_location_requests")
     .insert({
+      ...(owner ? { status: "approved", auto_applied: true, reviewed_at: new Date().toISOString() } : {}),
       place_id: placeId,
       user_id: userData.user.id,
       requested_lat: lat,
@@ -81,6 +92,13 @@ export async function POST(req: Request) {
   }
 
   const maps = (la: number, lo: number) => `https://www.google.com/maps?q=${la},${lo}`;
+  // Owner moves are in the daily summary instead of one email each (decision 2026-11-07)
+  if (owner) {
+    return NextResponse.json({
+      success: true, applied: true, id: inserted.id, lat, lon, address: address ?? place.address,
+      outside_givatayim: !isInGivatayim(lat, lon),
+    });
+  }
   await notifyAdmins({
     subject: `בקשת שינוי מיקום: ${place.name}`,
     html: `<h2>בקשה חדשה לשינוי מיקום</h2>

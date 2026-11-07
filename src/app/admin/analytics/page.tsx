@@ -399,8 +399,11 @@ export default function AdminAnalyticsPage() {
                   <div className="rounded border p-2">
                     <div className="text-2xl font-bold text-[#0A2B6B]">{q.report_clicks} / {q.owner_clicks}</div>
                     &quot;Report&quot; / &quot;Your business?&quot; clicks
-                    <div className="text-xs text-gray-500">These open an email to you, so the requests are in your inbox.</div>
+                    <div className="text-xs text-gray-500">&quot;Report&quot; opens an email to you; &quot;Your business?&quot; opens the in-app owner form.</div>
                   </div>
+                  <a href="/admin/owner-claims" className="rounded border p-2 hover:bg-gray-50">
+                    <div className="text-2xl font-bold text-[#0A2B6B]">→</div>Owner requests (בקשות בעלות)
+                  </a>
                 </div>
                 {q.held_latest.length ? (
                   <>

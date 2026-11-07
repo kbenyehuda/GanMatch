@@ -27,11 +27,5 @@ export function reportPlaceMailto(place: { id: string; name: string }): string {
     `מקום: ${place.name}\n${placeUrl(place.id)}\n\nמה הבעיה? (למשל: פרטים לא נכונים, המקום נסגר, בקשה להסיר)\n`);
 }
 
-/** "זה העסק שלכם?": an owner wants to fix details or ask about their listing. */
-export function ownerMailto(place: { id: string; name: string }): string {
-  return contactMailto(`זה העסק שלי – ${place.name}`,
-    `מקום: ${place.name}\n${placeUrl(place.id)}\n\nשם ותפקיד:\nטלפון לחזרה:\nמה תרצו לעדכן?\n`);
-}
-
 /** The public name the WhatsApp import gives every recommendation (decision/route.ts). */
 export const WHATSAPP_REVIEWER_NAME = "חבר/ה מהשכונה";

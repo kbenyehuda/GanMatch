@@ -15,6 +15,7 @@ import { hasNoPin, kidsTypeOf, KIDS_GAN_TYPE } from "@/lib/apply-place-filters";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { AddPlaceModal } from "@/components/places/AddPlaceModal";
 import { RequestLocationChangeModal } from "@/components/places/RequestLocationChangeModal";
+import { DeleteAccountModal, DeletionScheduledNotice, announceAccountDeletion } from "@/components/auth/AccountDeletion";
 import { Toast, useToast } from "@/components/ui/Toast";
 import { useAllPlaces } from "@/hooks/useAllPlaces";
 import type { Bounds } from "@/lib/places-api";
@@ -507,6 +508,16 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     setPickingPin(true);
     setActiveTab("map");
   }, []);
+
+  // Location request sent. An approved owner's move is already live (decision 2026-11-07).
+  const handleLocationSuccess = useCallback((result?: { applied?: boolean; lat?: number; lon?: number; address?: string | null }) => {
+    if (result?.applied && locationRequestPlace) {
+      handlePlaceUpdated({ ...locationRequestPlace, lat: result.lat ?? null, lon: result.lon ?? null, address: result.address ?? locationRequestPlace.address });
+    }
+    setLocationRequestPlace(null);
+    setLocationRequestPin(null);
+    showToast(result?.applied ? "המיקום עודכן" : "הבקשה נשלחה, ממתינה לאישור מנהל 🙏");
+  }, [locationRequestPlace, handlePlaceUpdated, showToast]);
 
   // Called from inside RequestLocationChangeModal when user wants to pick a pin on the map
   const handlePickLocationPin = useCallback(() => {
@@ -1165,11 +1176,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               initialLocation={locationRequestPin}
               onClose={() => { setLocationRequestPlace(null); setLocationRequestPin(null); }}
               onPickPin={handlePickLocationPin}
-              onSuccess={() => {
-                setLocationRequestPlace(null);
-                setLocationRequestPin(null);
-                showToast("הבקשה נשלחה, ממתינה לאישור מנהל 🙏");
-              }}
+              onSuccess={handleLocationSuccess}
             />
           </div>
           {/* Desktop: centered card */}
@@ -1181,11 +1188,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 initialLocation={locationRequestPin}
                 onClose={() => { setLocationRequestPlace(null); setLocationRequestPin(null); }}
                 onPickPin={handlePickLocationPin}
-                onSuccess={() => {
-                  setLocationRequestPlace(null);
-                  setLocationRequestPin(null);
-                  showToast("הבקשה נשלחה, ממתינה לאישור מנהל 🙏");
-                }}
+                onSuccess={handleLocationSuccess}
               />
             </div>
           </div>
@@ -1262,6 +1265,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
 
       {/* Toast */}
       <Toast text={toastText} visible={toastVisible} />
+      <DeletionScheduledNotice />
     </div>
   );
 }
@@ -1383,6 +1387,7 @@ function ProfileScreen({
 }) {
   const displayName = user?.email?.split("@")[0] ?? "אורח";
   const initial = displayName[0]?.toUpperCase() ?? "א";
+  const [showDelete, setShowDelete] = useState(false);
   const [recCount, setRecCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -1489,6 +1494,13 @@ function ProfileScreen({
           )}
           {user ? "התנתקות" : "התחברות"}
         </button>
+        {user && (
+          <button type="button" onClick={() => setShowDelete(true)} className="w-full font-hebrew"
+            style={{ marginTop: 14, background: "none", border: 0, fontSize: 12.5, color: "#8A95A8", textDecoration: "underline", cursor: "pointer" }}>
+            מחיקת חשבון
+          </button>
+        )}
+        {showDelete && <DeleteAccountModal onClose={() => setShowDelete(false)} onScheduled={announceAccountDeletion} />}
       </div>
     </div>
   );

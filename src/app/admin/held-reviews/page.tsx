@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { HOLD_REASON_LABELS, type HoldReason } from "@/lib/hold-reasons";
+import { OwnerLabels, type OwnerContextView } from "@/components/admin/OwnerLabels";
 
 type HeldReview = {
   id: string;
@@ -14,6 +15,7 @@ type HeldReview = {
   reviewer_public_name: string | null;
   created_at: string;
   places?: { name?: string | null; address?: string | null; place_category?: string | null } | null;
+  owner?: OwnerContextView | null;
 };
 
 // Recommendations saved hidden: flagged by the automatic check, or rated 1–2. Approve to publish, or delete.
@@ -121,6 +123,7 @@ export default function AdminHeldReviewsPage() {
                 </span>
               ))}
             </div>
+            <OwnerLabels owner={item.owner} />
             {item.text ? <p className="text-sm leading-relaxed text-gray-800">&ldquo;{item.text}&rdquo;</p> : <p className="text-sm text-gray-400">(ללא טקסט)</p>}
             <div className="flex items-center gap-2 pt-1">
               <button className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { requireContactReviewerConfig } from "@/lib/env/server";
+import { ownedPlaceNames } from "@/lib/server/place-owners";
 
 function isEmailLike(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
@@ -139,13 +140,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Reviewer email unavailable" }, { status: 500 });
   }
 
+  // A verified owner can't message anonymously: the email always says what they own (user decision 2026-11-07)
+  // A pending request is said as such: "asked to register as owner, not verified yet"
+  const owned = await ownedPlaceNames(supabaseAdmin, userData.user.id);
+  const ownerLine = [
+    owned.approved.length ? `השולח/ת: בעל/ת ${owned.approved.join(", ")}` : "",
+    owned.pending.length ? `השולח/ת ביקש/ה להירשם כבעל/ת ${owned.pending.join(", ")}. עדיין לא אומת.` : "",
+  ].filter(Boolean).join("\n");
+
   const resend = new Resend(cfg.resendApiKey);
   const subject = `הודעה על ההמלצה שלך ב-GiveMyTime (${targetName})`;
   const replyNotice =
     "לתשומת ליבך: אם תשיבו למייל זה, כתובת האימייל שלכם תיחשף לשולח ההודעה הזה בלבד — לא תפורסם ולא תישלח לאף אחד אחר.";
   const text = `מישהו שלח לך הודעה דרך GiveMyTime לגבי ההמלצה שפרסמת על: ${targetName}\n${
     targetLine ? `\n${targetLine}\n` : "\n"
-  }\nההודעה:\n${messageText.trim()}\n\nאפשר להשיב ישירות למייל הזה כדי לענות לשולח.\n\n${replyNotice}`;
+  }${ownerLine ? `\n${ownerLine}\n` : ""}\nההודעה:\n${messageText.trim()}\n\nאפשר להשיב ישירות למייל הזה כדי לענות לשולח.\n\n${replyNotice}`;
 
   const html = `
     <div dir="rtl" style="font-family: Arial, sans-serif; line-height: 1.5;">
@@ -154,6 +163,7 @@ export async function POST(req: Request) {
       <p><strong>${escapeHtml(targetName)}</strong></p>
       ${targetLine ? `<p style="color:#666">${escapeHtml(targetLine)}</p>` : ""}
       <hr />
+      ${ownerLine ? `<p style="background:#E8F0FB;border-radius:6px;padding:8px 10px;white-space:pre-line;"><strong>${escapeHtml(ownerLine)}</strong></p>` : ""}
       <p><strong>ההודעה:</strong></p>
       <pre style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(
         messageText.trim()

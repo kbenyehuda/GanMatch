@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
-import { KIDS_FIELD_LABELS, diffKidsChanges, formatKidsValue, parseKidsChanges, type KidsChanges } from "@/lib/kids-attributes";
+import { KIDS_FIELD_LABELS, applyKidsChanges, diffKidsChanges, formatKidsValue, parseKidsChanges, type KidsChanges } from "@/lib/kids-attributes";
+import { isApprovedOwner } from "@/lib/server/place-owners";
 
 function changesTableHtml(changes: KidsChanges, previous: KidsChanges): string {
   const cell = "padding:4px 8px;text-align:right";
@@ -17,6 +18,8 @@ function changesTableHtml(changes: KidsChanges, previous: KidsChanges): string {
 // body: { place_id, ...any KidsAttributes fields, hours?, kosher? }
 // Saves the fields that differ from the place as a pending request (place_detail_requests);
 // the place changes only when an admin approves it (user decision 2026-10-30).
+// An approved owner's change is applied at once and logged as auto_applied, so the admin
+// still sees it and can undo it (user decision 2026-11-07).
 export async function POST(req: NextRequest) {
   const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
   const anon = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -70,17 +73,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "לא שיניתם אף פרט" }, { status: 400 });
   }
 
+  const owner = await isApprovedOwner(admin, userData.user.id, placeId);
+  let placePatch: Record<string, unknown> | null = null;
+  if (owner) {
+    const update = applyKidsChanges(place, changes);
+    const { error: applyErr } = await admin.from("places").update(update).eq("id", placeId);
+    if (applyErr) return NextResponse.json({ error: applyErr.message }, { status: 500 });
+    const { updated_at: _u, ...rest } = update;
+    placePatch = rest;
+  }
+
   const { data: inserted, error: insertErr } = await admin.from("place_detail_requests").insert({
     place_id: placeId,
     user_id: userData.user.id,
     changes,
     previous,
+    ...(owner ? { status: "approved", auto_applied: true, reviewed_at: new Date().toISOString() } : {}),
   }).select("id").single();
   if (insertErr || !inserted) {
     return NextResponse.json({ error: insertErr?.message ?? "שגיאה בשמירת הבקשה" }, { status: 500 });
   }
 
-  await notifyAdmins({
+  // Owner edits go in the daily summary instead of an email each (2026-11-07)
+  if (!owner) await notifyAdmins({
     subject: `בקשת עדכון פרטים: ${place.name}`,
     html: `<h2>בקשה חדשה לעדכון פרטים</h2>
       <p>מישהו ביקש לעדכן פרטים ב<strong>${escapeHtml(place.name)}</strong>:</p>
@@ -88,5 +103,6 @@ export async function POST(req: NextRequest) {
       ${requestLinksHtml(new URL(req.url).origin, "place-detail-requests", inserted.id)}`,
   });
 
+  if (owner) return NextResponse.json({ success: true, applied: true, place: placePatch, changed: Object.keys(changes).length });
   return NextResponse.json({ success: true, pending: true, changed: Object.keys(changes).length });
 }

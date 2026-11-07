@@ -96,9 +96,11 @@ export interface EditKidsAttributesModalProps {
   onClose: () => void;
   onSaved: (place: Place) => void;
   onShowToast?: (msg: string) => void;
+  /** An approved owner: nothing is locked, and the change goes live at once. */
+  isOwner?: boolean;
 }
 
-export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }: EditKidsAttributesModalProps) {
+export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, isOwner = false }: EditKidsAttributesModalProps) {
   const { session } = useSession();
   const a = (place.attributes ?? {}) as KidsAttributes;
 
@@ -135,12 +137,13 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
 
   // Keys the place already has a value for, fixed when the form opens.
   const knownKeys = useMemo(() => {
+    if (isOwner) return [];
     const values = { attributes: (place.attributes ?? {}) as Record<string, unknown>, hours: place.hours, kosher: place.kosher };
     return Object.keys(KIDS_FIELD_LABELS).filter((key) => {
       const v = currentKidsValue(values, key);
       return v != null && !(Array.isArray(v) && v.length === 0);
     });
-  }, [place.attributes, place.hours, place.kosher]);
+  }, [isOwner, place.attributes, place.hours, place.kosher]);
   const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   const isLocked = (key: string) => knownKeys.includes(key) && !unlocked.has(key);
   const lockedKeys = knownKeys.filter(isLocked);
@@ -203,8 +206,14 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
-      // Nothing changes on the place until an admin approves the request.
-      onShowToast?.("תודה! נבדוק את העדכון ונפרסם אותו בקרוב 🙏");
+      if (data.applied && data.place) {
+        // An approved owner's change is already live
+        onSaved({ ...place, ...data.place });
+        onShowToast?.("השינויים נשמרו ומופיעים באתר");
+      } else {
+        // Nothing changes on the place until an admin approves the request.
+        onShowToast?.("תודה! נבדוק את העדכון ונפרסם אותו בקרוב 🙏");
+      }
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה בשמירה");
@@ -231,7 +240,9 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast }
             כל שדה אופציונלי — מלאו מה שאתם יודעים, זה עוזר לכל ההורים שמחפשים גן.
           </p>
           <p className="font-hebrew" style={{ fontSize: 12, color: "#4A5568", marginBottom: 14, lineHeight: 1.5, background: "#FBF1D8", borderRadius: 10, padding: "8px 10px" }}>
-            כל עדכון נבדק על ידינו לפני שהוא מופיע באתר, כדי שהמידע יישאר אמין.
+            {isOwner
+              ? "אתם בעלי המקום, אז השינויים יופיעו באתר מיד."
+              : "כל עדכון נבדק על ידינו לפני שהוא מופיע באתר, כדי שהמידע יישאר אמין."}
           </p>
           <LockedContext.Provider value={isLocked}>
           <div className="grid grid-cols-2 gap-3">

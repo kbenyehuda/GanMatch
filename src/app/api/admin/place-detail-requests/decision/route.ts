@@ -3,9 +3,30 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { applyKidsChanges } from "@/lib/kids-attributes";
+import { applyBasicChanges, isBasicKey } from "@/lib/place-basic-details";
+
+/** The places update for a change set that may mix kids and basic fields. */
+function placeUpdate(place: any, changes: Record<string, unknown>): Record<string, unknown> {
+  const kids: Record<string, unknown> = {};
+  const basic: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(changes)) {
+    // "hours" is in both sets; the kids path writes the same column
+    if (isBasicKey(k) && k !== "hours") basic[k] = v; else kids[k] = v;
+  }
+  let update: Record<string, unknown> = {};
+  if (Object.keys(basic).length) update = { ...update, ...applyBasicChanges(place, basic) };
+  if (Object.keys(kids).length) {
+    const withAttrs = { ...place, attributes: (update.attributes as Record<string, unknown>) ?? place.attributes };
+    update = { ...update, ...applyKidsChanges(withAttrs, kids) };
+  }
+  return update;
+}
 
 // POST /api/admin/place-detail-requests/decision — approve applies the change set to the place
-// body: { id, action: "approve" | "reject", moderation_reason? }
+// body: { id, action: "approve" | "reject" | "revert" | "seen", moderation_reason? }
+// "seen" keeps an owner's auto-applied edit and takes it off the pending queue.
+// "revert" undoes an owner's auto-applied edit: the fields go back to their previous values.
+// Approving a remove_listing request hides the place (places.is_hidden).
 export async function POST(req: Request) {
   const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
   const anon = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -45,8 +66,8 @@ export async function POST(req: Request) {
   const moderationReason =
     typeof body?.moderation_reason === "string" ? body.moderation_reason.trim() || null : null;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  if (action !== "approve" && action !== "reject") {
-    return NextResponse.json({ error: "action must be approve or reject" }, { status: 400 });
+  if (action !== "approve" && action !== "reject" && action !== "revert" && action !== "seen") {
+    return NextResponse.json({ error: "action must be approve, reject, revert or seen" }, { status: 400 });
   }
 
   const admin = createClient(url, serviceKey, {
@@ -55,12 +76,42 @@ export async function POST(req: Request) {
 
   const { data: existing, error: existingErr } = await admin
     .from("place_detail_requests")
-    .select("id,place_id,status,changes")
+    .select("id,place_id,status,changes,previous,auto_applied,reverted_at")
     .eq("id", id)
     .single();
   if (existingErr || !existing) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
+
+  if (action === "seen") {
+    const { error: seenErr } = await admin.from("place_detail_requests")
+      .update({ admin_seen_at: new Date().toISOString() }).eq("id", id).eq("auto_applied", true);
+    if (seenErr) return NextResponse.json({ error: seenErr.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "revert") {
+    if (!existing.auto_applied || existing.reverted_at) {
+      return NextResponse.json({ error: "Only an owner edit that wasn't undone yet can be undone" }, { status: 409 });
+    }
+    const { data: place, error: placeErr } = await admin
+      .from("places").select("attributes, hours, kosher").eq("id", existing.place_id).single();
+    if (placeErr || !place) return NextResponse.json({ error: "Place not found" }, { status: 404 });
+    const previous = (existing.previous ?? {}) as Record<string, unknown>;
+    const back: Record<string, unknown> = {};
+    for (const k of Object.keys(existing.changes ?? {})) back[k] = previous[k] ?? null;
+    const removal = (existing.changes as Record<string, unknown>)?.remove_listing === true;
+    const { error: applyErr } = removal
+      ? await admin.from("places").update({ is_hidden: false, updated_at: new Date().toISOString() }).eq("id", existing.place_id)
+      : await admin.from("places").update(placeUpdate(place, back)).eq("id", existing.place_id);
+    if (applyErr) return NextResponse.json({ error: applyErr.message }, { status: 500 });
+    const { error: updateErr } = await admin.from("place_detail_requests")
+      .update({ reverted_at: new Date().toISOString(), reverted_by: userData.user.id, admin_seen_at: new Date().toISOString(), moderation_reason: moderationReason })
+      .eq("id", id);
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
   if (existing.status !== "pending") {
     return NextResponse.json({ error: `Already ${existing.status}` }, { status: 409 });
   }
@@ -72,6 +123,11 @@ export async function POST(req: Request) {
       .eq("id", id);
 
   if (action === "reject") {
+    // A declined removal request puts the place back on the site (it was hidden when asked)
+    if ((existing.changes as Record<string, unknown>)?.remove_listing === true) {
+      const { error: showErr } = await admin.from("places").update({ is_hidden: false, updated_at: now }).eq("id", existing.place_id);
+      if (showErr) return NextResponse.json({ error: showErr.message }, { status: 500 });
+    }
     const { error: updateErr } = await markAs("rejected");
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
     return NextResponse.json({ success: true });
@@ -82,9 +138,10 @@ export async function POST(req: Request) {
     .from("places").select("attributes, hours, kosher").eq("id", existing.place_id).single();
   if (placeErr || !place) return NextResponse.json({ error: "Place not found" }, { status: 404 });
 
-  const { error: applyErr } = await admin.from("places")
-    .update(applyKidsChanges(place, existing.changes as Record<string, unknown>))
-    .eq("id", existing.place_id);
+  const changes = existing.changes as Record<string, unknown>;
+  const { error: applyErr } = changes.remove_listing === true
+    ? await admin.from("places").update({ is_hidden: true, updated_at: now }).eq("id", existing.place_id)
+    : await admin.from("places").update(placeUpdate(place, changes)).eq("id", existing.place_id);
   if (applyErr) return NextResponse.json({ error: applyErr.message }, { status: 500 });
 
   const { error: updateErr } = await markAs("approved");

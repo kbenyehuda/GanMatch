@@ -1,13 +1,16 @@
 "use client";
 
-import { LogIn, LogOut, UserRound } from "lucide-react";
+import { useState } from "react";
+import { LogIn, LogOut, Trash2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import { signInWithGoogle } from "@/lib/sign-in";
+import { DeleteAccountModal, announceAccountDeletion } from "./AccountDeletion";
 
 export function AuthButton() {
   const { user, loading } = useSession();
+  const [showDelete, setShowDelete] = useState(false);
 
   const signIn = () => signInWithGoogle();
 
@@ -47,9 +50,13 @@ export function AuthButton() {
           {user.user_metadata?.full_name || user.email || "מחובר"}
         </span>
       </div>
-      <Button type="button" size="sm" variant="ghost" onClick={signOut} className="h-7 px-2">
+      <Button type="button" size="sm" variant="ghost" onClick={signOut} className="h-7 px-2" title="התנתקות">
         <LogOut className="w-4 h-4" />
       </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setShowDelete(true)} className="h-7 px-2" title="מחיקת חשבון">
+        <Trash2 className="w-4 h-4 text-gray-400" />
+      </Button>
+      {showDelete && <DeleteAccountModal onClose={() => setShowDelete(false)} onScheduled={announceAccountDeletion} />}
     </div>
   );
 }

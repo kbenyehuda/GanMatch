@@ -6,7 +6,8 @@ export type HoldReason =
   | "contact_or_ad"   // phone, email, link, or advertising
   | "offensive"
   | "low_rating"
-  | "check_unavailable";
+  | "check_unavailable"
+  | "owner_related";  // the writer asked to own this place, or owns a competitor (2026-11-07)
 
 export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
   negative: "טון שלילי",
@@ -16,4 +17,5 @@ export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
   offensive: "שפה פוגענית",
   low_rating: "דירוג 1–2",
   check_unavailable: "הבדיקה האוטומטית לא הייתה זמינה",
+  owner_related: "הכותב/ת ביקש/ה בעלות על המקום או על מקום מתחרה",
 };

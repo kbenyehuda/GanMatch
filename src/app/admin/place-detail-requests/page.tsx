@@ -4,8 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { KIDS_FIELD_LABELS, formatKidsValue } from "@/lib/kids-attributes";
+import { BASIC_FIELD_LABELS, formatBasicValue } from "@/lib/place-basic-details";
+import { OwnerLabels, type OwnerContextView } from "@/components/admin/OwnerLabels";
 
-type QueueStatus = "pending" | "approved" | "rejected";
+const fieldLabel = (k: string) => KIDS_FIELD_LABELS[k] ?? BASIC_FIELD_LABELS[k] ?? k;
+const fieldValue = (k: string, v: unknown) => (k in KIDS_FIELD_LABELS ? formatKidsValue(k, v) : formatBasicValue(k, v));
+
+type QueueStatus = "pending" | "approved" | "rejected" | "owner";
 
 const HIDDEN_KEY = "gmt_admin_hidden_detail_requests";
 
@@ -21,6 +26,10 @@ type QueueItem = {
   reviewed_at: string | null;
   places?: { name?: string | null; address?: string | null; place_category?: string | null } | null;
   user_email?: string | null;
+  auto_applied?: boolean;
+  reverted_at?: string | null;
+  admin_seen_at?: string | null;
+  owner?: OwnerContextView | null;
 };
 
 function formatDate(iso: string | null): string {
@@ -101,7 +110,7 @@ export default function AdminPlaceDetailRequestsPage() {
   }, [user, loadQueue]);
 
   const decide = useCallback(
-    async (itemId: string, action: "approve" | "reject") => {
+    async (itemId: string, action: "approve" | "reject" | "revert" | "seen") => {
       if (!supabase || !user) return;
       setBusyId(itemId);
       setError(null);
@@ -116,7 +125,8 @@ export default function AdminPlaceDetailRequestsPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Decision failed");
-        setItems((prev) => prev.filter((i) => i.id !== itemId));
+        if (action === "revert" && status !== "pending") setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, reverted_at: new Date().toISOString() } : i)));
+        else setItems((prev) => prev.filter((i) => i.id !== itemId));
         if (focusId === itemId) showAll();
       } catch (e: any) {
         setError(typeof e?.message === "string" ? e.message : "Decision failed");
@@ -124,12 +134,13 @@ export default function AdminPlaceDetailRequestsPage() {
         setBusyId(null);
       }
     },
-    [reasonById, user, focusId, showAll]
+    [reasonById, user, focusId, showAll, status]
   );
 
   const title = useMemo(() => {
     if (status === "pending") return "ממתינות";
     if (status === "approved") return "אושרו";
+    if (status === "owner") return "שינויים של בעלי מקומות";
     return "נדחו";
   }, [status]);
 
@@ -162,6 +173,12 @@ export default function AdminPlaceDetailRequestsPage() {
           onClick={() => setStatus("rejected")}
         >
           נדחו
+        </button>
+        <button
+          className={`px-3 py-1.5 rounded border text-sm ${status === "owner" ? "bg-black text-white" : "bg-white"}`}
+          onClick={() => setStatus("owner")}
+        >
+          שינויים של בעלים (אושרו אוטומטית)
         </button>
         <button className="px-3 py-1.5 rounded border text-sm bg-white" onClick={loadQueue} disabled={reloading}>
           {reloading ? "מרענן..." : "רענון"}
@@ -200,21 +217,34 @@ export default function AdminPlaceDetailRequestsPage() {
                 <div>User: {item.user_email || item.user_id || "-"}</div>
               </div>
             </div>
+            {item.auto_applied && (
+              <div className="rounded px-2 py-1 text-sm font-bold font-hebrew" style={{ background: item.reverted_at ? "#FEE4E2" : "#DCF3E6", color: item.reverted_at ? "#B42318" : "#1D7F4F" }}>
+                {item.reverted_at ? `אושר אוטומטית – בעל/ת המקום · בוטל ${formatDate(item.reverted_at)}` : "אושר אוטומטית – בעל/ת המקום (כבר באתר)"}
+              </div>
+            )}
+            {item.changes?.remove_listing === true && (
+              <div className="rounded px-2 py-1 text-sm font-bold font-hebrew bg-rose-50 text-rose-700">
+                {item.status === "pending"
+                  ? "בקשה להסרת הרישום. המקום כבר מוסתר מהאתר. אישור ישאיר אותו מוסתר, דחייה תחזיר אותו (המידע לא נמחק)."
+                  : "בקשה להסרת הרישום."}
+              </div>
+            )}
+            <OwnerLabels owner={item.owner} />
 
             <table className="w-full text-sm font-hebrew">
               <thead>
                 <tr className="text-xs text-gray-500">
                   <th className="text-start font-semibold pb-1">שדה</th>
-                  <th className="text-start font-semibold pb-1">עכשיו</th>
-                  <th className="text-start font-semibold pb-1">מבוקש</th>
+                  <th className="text-start font-semibold pb-1">{item.auto_applied ? "לפני" : "עכשיו"}</th>
+                  <th className="text-start font-semibold pb-1">{item.auto_applied ? "אחרי" : "מבוקש"}</th>
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(item.changes ?? {}).map(([key, value]) => (
                   <tr key={key} className="border-t">
-                    <td className="py-1.5 font-semibold">{KIDS_FIELD_LABELS[key] ?? key}</td>
-                    <td className="py-1.5 text-gray-500">{formatKidsValue(key, item.previous?.[key])}</td>
-                    <td className="py-1.5 text-emerald-700 font-semibold">{formatKidsValue(key, value)}</td>
+                    <td className="py-1.5 font-semibold">{fieldLabel(key)}</td>
+                    <td className="py-1.5 text-gray-500">{fieldValue(key, item.previous?.[key])}</td>
+                    <td className="py-1.5 text-emerald-700 font-semibold">{fieldValue(key, value)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -249,6 +279,34 @@ export default function AdminPlaceDetailRequestsPage() {
                     onClick={() => toggleHidden(item.id)}
                   >
                     {hiddenIds.has(item.id) ? "החזרה לתור" : "דילוג (הסתרה)"}
+                  </button>
+                </div>
+              </div>
+            ) : item.auto_applied && !item.reverted_at ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  placeholder="סיבה לביטול (לא חובה)"
+                  value={reasonById[item.id] ?? ""}
+                  onChange={(e) => setReasonById((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                  className="w-full rounded border p-2 text-sm"
+                  rows={2}
+                />
+                <div className="flex items-center gap-2">
+                  {!item.admin_seen_at && (
+                    <button
+                      className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"
+                      disabled={busyId === item.id}
+                      onClick={() => decide(item.id, "seen")}
+                    >
+                      ראיתי, להשאיר
+                    </button>
+                  )}
+                  <button
+                    className="px-3 py-1.5 rounded bg-rose-600 text-white text-sm disabled:opacity-60"
+                    disabled={busyId === item.id}
+                    onClick={() => decide(item.id, "revert")}
+                  >
+                    ביטול השינוי (החזרה לערכים הקודמים)
                   </button>
                 </div>
               </div>
