@@ -549,8 +549,10 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           {/* Share */}
           <button type="button" data-track="share"
             onClick={() => {
-              if (navigator.share) navigator.share({ title: place.name, url: location.href }).catch(() => {});
-              else { navigator.clipboard?.writeText(location.href).catch(() => {}); onShowToast?.("קישור הועתק"); }
+              // The place's own link — the address bar stays on "/" when a place is opened from the map or list.
+              const url = `${location.origin}/place/${place.id}`;
+              if (navigator.share) navigator.share({ title: place.name, url }).catch(() => {});
+              else { navigator.clipboard?.writeText(url).catch(() => {}); onShowToast?.("קישור הועתק"); }
             }}
             className="flex items-center justify-center"
             style={{ width: 38, height: 38, borderRadius: 14, background: "rgba(255,255,255,.95)", border: 0, cursor: "pointer", boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}>
