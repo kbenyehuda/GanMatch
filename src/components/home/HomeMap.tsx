@@ -1259,7 +1259,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
       />
 
       {/* Phone: add to home screen (after looking around) / open in the real browser (in-app browsers) */}
-      {activeTab === "home" && !detailPlace && !showAddModal && !locationRequestPlace && !pickingPin && !pickingLocationPin && !showShareBanner && (
+      {(activeTab === "home" || activeTab === "map") && !detailPlace && !showAddModal && !locationRequestPlace && !pickingPin && !pickingLocationPin && !showShareBanner && (
         <InstallPrompt engaged={openedPlace} />
       )}
 

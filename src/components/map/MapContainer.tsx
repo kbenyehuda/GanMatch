@@ -575,7 +575,7 @@ export function MapContainer({
             >
               <div
                 title={tooltip}
-                className="flex items-center justify-center rounded-full bg-[#0A2B6B] text-white font-semibold text-sm min-w-[28px] h-7 px-2 shadow-md border-2 border-white hover:brightness-95"
+                className="flex items-center justify-center rounded-full bg-[#0A2B6B] text-white font-semibold text-sm min-w-[28px] h-7 px-2 shadow-md border-2 border-white [@media(hover:hover)]:hover:brightness-95"
               >
                 {count}
               </div>
@@ -604,7 +604,7 @@ export function MapContainer({
           >
             <div
               title={approximate ? `${place.name} (${APPROXIMATE_LOCATION_LABEL})` : place.name}
-              className={`flex items-center justify-center rounded-full text-base border-2 shadow-md transition-all duration-150 hover:scale-110 ${approximate ? "border-dashed" : "border-white"} ${isSelected ? "scale-125 shadow-lg" : ""}`}
+              className={`flex items-center justify-center rounded-full text-base border-2 shadow-md transition-all duration-150 [@media(hover:hover)]:hover:scale-110 ${approximate ? "border-dashed" : "border-white"} ${isSelected ? "scale-125 shadow-lg" : ""}`}
               style={{
                 backgroundColor: approximate ? "#FFFFFF" : color,
                 borderColor: approximate ? color : undefined,
