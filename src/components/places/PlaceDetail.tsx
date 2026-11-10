@@ -936,7 +936,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       {/* ── Bottom CTA bar ────────────────────────────────────────────────────── */}
       <div
         className="absolute inset-x-0 bottom-0 flex gap-2"
-        style={{ padding: "14px 18px calc(22px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)", zIndex: 6 }}
+        style={{ padding: "14px 18px 14px", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)", zIndex: 6 }}
       >
         {/* Directions */}
         {place.lat != null && place.lon != null ? (

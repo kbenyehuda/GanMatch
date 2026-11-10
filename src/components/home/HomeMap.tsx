@@ -1122,7 +1122,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
 
       {/* Mobile full-screen PlaceDetail overlay (not mounted on desktop, see above) */}
       {detailPlace && !pickingLocationPin && !isDesktop && (
-        <div className="md:hidden absolute inset-0 z-40 overflow-hidden" style={{ background: "#F6F9FE" }}>
+        <div className="md:hidden absolute inset-x-0 top-0 z-40 overflow-hidden" style={{ background: "#F6F9FE", bottom: "calc(72px + var(--safe-bottom, 0px))" }}>
           <PlaceDetail
             place={detailPlace}
             onClose={() => setDetailPlace(null)}
