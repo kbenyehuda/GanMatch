@@ -84,7 +84,8 @@ export function DeleteAccountModal({ onClose, onScheduled }: { onClose: () => vo
             <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto space-y-4" style={{ padding: "0 20px 24px", fontSize: 14, lineHeight: 1.55 }}>
+        {/* On phones the bottom menu covers the lowest 72px, so keep the submit button above it */}
+        <div className="flex-1 overflow-y-auto space-y-4 pb-[calc(96px+var(--safe-bottom,0px))] md:pb-6" style={{ paddingInline: 20, fontSize: 14, lineHeight: 1.55 }}>
           <p style={{ color: "#4A5568", fontSize: 13 }}>
             החשבון יימחק בעוד 30 יום. עד אז אפשר לבטל: פשוט להתחבר שוב ולבחור &quot;ביטול המחיקה&quot;.
             השם, האימייל וההתחברות שלך יימחקו.
