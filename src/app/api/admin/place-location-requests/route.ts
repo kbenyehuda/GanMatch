@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { ownerContextFor } from "@/lib/server/place-owners";
-import { privateJson } from "@/lib/server/no-store";
+import { privateJson, noStoreFetch } from "@/lib/server/no-store";
 
 // Answers depend on who is signed in: never serve a cached copy (a stale one showed "no request").
 export const dynamic = "force-dynamic";
@@ -52,6 +52,7 @@ export async function GET(req: Request) {
   const limit = parseLimit(searchParams.get("limit"));
 
   const admin = createClient(url, serviceKey, {
+    global: { fetch: noStoreFetch },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
+import { noStoreFetch } from "@/lib/server/no-store";
 
 /** The admin's service-role client, or an error response for anyone else. */
 export async function requireAdmin(req: Request): Promise<{ admin: SupabaseClient; error?: undefined } | { error: NextResponse; admin?: undefined }> {
@@ -31,6 +32,7 @@ export async function requireAdmin(req: Request): Promise<{ admin: SupabaseClien
   }
   await ensureAdminFullAccessForUser({ userId: userData.user.id, email });
   const admin = createClient(url, serviceKey, {
+    global: { fetch: noStoreFetch },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   return { admin };

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
+import { noStoreFetch } from "@/lib/server/no-store";
 import { ensureAdminFullAccessForUser } from "@/lib/entitlements/service";
 import { applyKidsChanges } from "@/lib/kids-attributes";
 import { applyBasicChanges, isBasicKey } from "@/lib/place-basic-details";
@@ -71,6 +72,7 @@ export async function POST(req: Request) {
   }
 
   const admin = createClient(url, serviceKey, {
+    global: { fetch: noStoreFetch },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
