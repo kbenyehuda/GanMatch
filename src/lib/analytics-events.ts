@@ -15,6 +15,7 @@ export const ANALYTICS_EVENT_LABELS: Record<string, string> = {
   save: "Saved to favorites",
   reviews_seen: "Read the reviews",
   review_start: "Started a review",
+  contribute_prompt: "Tapped the \"know this place? write a recommendation\" prompt",
   review_submitted: "Sent a review",
   helpful: "\"Helped me\"",
   contact_reviewer: "Contacted a reviewer",

@@ -801,6 +801,21 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               המלצות {reviews.length > 0 && <span style={{ fontWeight: 600, color: "#8A95A8", fontSize: 12 }}>{reviews.length}</span>}
             </h4>
 
+            {/* A prompt at the TOP of the reviews: the "write a recommendation" button below is under all of them,
+                and only ~7% of people who opened a place started a recommendation (2026-11-18). */}
+            {!reviewsLoading && reviews.length > 0 && !showForm && !submitSuccess && !isMyPlace && !reviews.some((r) => r.is_mine) && (
+              <button type="button" data-track="review_start"
+                onClick={() => {
+                  track("contribute_prompt", { name: place.name, category: place.place_category, signed_in: !!user }, place.id);
+                  if (user) setShowForm(true); else signInWithGoogle(`/place/${place.id}`);
+                }}
+                className="w-full font-hebrew flex items-center justify-between gap-3"
+                style={{ padding: "10px 14px", marginBottom: 10, borderRadius: 14, background: "#F6F9FE", border: "1px solid #D7E3F7", color: "#0A2B6B", fontSize: 13, cursor: "pointer", textAlign: "start" }}>
+                <span><strong>מכירים את המקום?</strong> {user ? "כתבו המלצה קצרה, זה עוזר להורים אחרים" : "התחברו וכתבו המלצה קצרה, זה עוזר להורים אחרים"}</span>
+                <span style={{ fontWeight: 800, whiteSpace: "nowrap" }}>כתבו ←</span>
+              </button>
+            )}
+
             {reviewsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="animate-spin" style={{ width: 20, height: 20, color: "#0A2B6B" }} /></div>
             ) : reviews.length === 0 ? (
