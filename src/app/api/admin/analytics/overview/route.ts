@@ -93,6 +93,16 @@ export async function GET(req: Request) {
     move: windows(rows.move),
   };
 
+  // Map coverage (a pin with no recommendation frustrates parents) and every visit start, to see who comes BACK
+  const [coverAll, coverRec, coverKids, coverKidsRec, appOpen] = await Promise.all([
+    db.from("places").select("id", { count: "exact", head: true }).eq("is_hidden", false),
+    db.from("places").select("id", { count: "exact", head: true }).eq("is_hidden", false).gt("rec_count", 0),
+    db.from("places").select("id", { count: "exact", head: true }).eq("is_hidden", false).eq("place_category", "kids"),
+    db.from("places").select("id", { count: "exact", head: true }).eq("is_hidden", false).eq("place_category", "kids").gt("rec_count", 0),
+    db.from("telemetry_events").select("visitor_id,created_at").eq("event_name", "app_open").not("visitor_id", "is", null)
+      .order("created_at", { ascending: true }).limit(20000),
+  ]);
+
   const evRows = (ev.data ?? []) as { visitor_id: string | null; event_name: string; created_at: string }[];
   const REAL_WORLD = new Set(["call", "whatsapp", "website", "navigate"]);
   const actionsIn = (from: Date, to: Date | null) => {
@@ -142,11 +152,23 @@ export async function GET(req: Request) {
     return m;
   };
   const byKind = { review: bucket(rows.review), place: bucket(rows.place), edit: bucket(rows.edit), move: bucket(rows.move), claim: bucket(rows.claim) };
+  // "Came back" = opened the site on a LATER day than the first day this browser was ever seen
+  const firstDay = new Map<string, string>();
+  const visitorsByDay = new Map<string, Set<string>>();
+  for (const r of (appOpen.data ?? []) as { visitor_id: string; created_at: string }[]) {
+    const d = dayKey(new Date(r.created_at));
+    if (!firstDay.has(r.visitor_id)) firstDay.set(r.visitor_id, d);
+    const set = visitorsByDay.get(d) ?? new Set<string>();
+    set.add(r.visitor_id);
+    visitorsByDay.set(d, set);
+  }
+  const returningOn = (key: string) => Array.from(visitorsByDay.get(key) ?? []).filter((v) => (firstDay.get(v) ?? key) < key).length;
   const trend = Array.from({ length: 14 }, (_, i) => {
     const key = dayKey(new Date(israelMidnight(i - 13).getTime() + 12 * 3_600_000)); // noon of that Israel day
     return {
       day: key,
       visitors: peopleByDay.get(key) ?? 0,
+      returning: returningOn(key),
       review: byKind.review.get(key) ?? 0,
       place: byKind.place.get(key) ?? 0,
       edit: byKind.edit.get(key) ?? 0,
@@ -154,6 +176,15 @@ export async function GET(req: Request) {
       claim: byKind.claim.get(key) ?? 0,
     };
   });
+
+  // Different people who came back at least once in the last 7 days vs the 7 days before
+  const returnersIn = (keys: string[]) => {
+    const s = new Set<string>();
+    for (const k of keys) for (const v of Array.from(visitorsByDay.get(k) ?? [])) if ((firstDay.get(v) ?? k) < k) s.add(v);
+    return s.size;
+  };
+  const trendKeys = trend.map((t) => t.day);
+  const returning = { week: returnersIn(trendKeys.slice(7)), before: returnersIn(trendKeys.slice(0, 7)) };
 
   const latest: Item[] = [
     ...rows.review.map((r): Item => ({ kind: "review", at: r.created_at, label: `${r.places?.name ?? ""} · ${"★".repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))}${r.is_hidden ? " (held)" : ""}` })),
@@ -172,6 +203,8 @@ export async function GET(req: Request) {
     contributors,
     actions,
     week: { people: weekDay.people },
+    returning,
+    coverage: { all: coverAll.count ?? 0, all_rec: coverRec.count ?? 0, kids: coverKids.count ?? 0, kids_rec: coverKidsRec.count ?? 0 },
     trend,
     latest,
   });

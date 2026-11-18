@@ -14,7 +14,7 @@ type Day = {
 type Win = { today: number; yesterday: number; week: number };
 type Stat = { times: number; people: number };
 type Actions = { real: Stat; saved: Stat; shared: Stat };
-type TrendDay = { day: string; visitors: number; review: number; place: number; edit: number; move: number; claim: number };
+type TrendDay = { day: string; visitors: number; returning: number; review: number; place: number; edit: number; move: number; claim: number };
 
 const STACK: { key: "review" | "place" | "edit" | "move" | "claim"; label: string; color: string }[] = [
   { key: "review", label: "Recommendations", color: "#1F5BB5" },
@@ -117,7 +117,52 @@ function UsefulActions({ data }: { data: Overview }) {
   );
 }
 
-function Direction({ trend }: { trend: TrendDay[] }) {
+/** Map coverage: a pin with no recommendation frustrates parents. Kids' places come first. */
+function CoverageCard({ c }: { c?: Overview["coverage"] }) {
+  if (!c) return null;
+  const bar = (n: number, of: number, color: string) => (
+    <div className="h-2.5 flex-1 rounded bg-gray-100 overflow-hidden">
+      <div className="h-full rounded" style={{ width: `${of ? Math.max(n ? 2 : 0, (n / of) * 100) : 0}%`, background: color }} />
+    </div>
+  );
+  const row = (label: string, n: number, of: number, color: string) => (
+    <div className="space-y-0.5">
+      <div className="flex items-baseline justify-between text-sm">
+        <span>{label}</span>
+        <span className="font-semibold">{n} of {of}{of ? <span className="ml-1 text-xs font-normal text-gray-500">({Math.round((n / of) * 100)}%)</span> : null}</span>
+      </div>
+      <div className="flex">{bar(n, of, color)}</div>
+    </div>
+  );
+  return (
+    <div className="rounded-xl border bg-white p-4 shadow-sm space-y-3">
+      <h3 className="font-bold text-[#0A2B6B]">Map coverage: places with a recommendation</h3>
+      <p className="text-xs text-gray-500">A pin with no recommendation frustrates parents. Visible places only. Kids&apos; places (gan, daycare, afternoon care) come first.</p>
+      {row("Kids' places with 1+ recommendation", c.kids_rec, c.kids, "#16A34A")}
+      {row("All places with 1+ recommendation", c.all_rec, c.all, "#1F5BB5")}
+    </div>
+  );
+}
+
+function ReturningChart({ trend }: { trend: TrendDay[] }) {
+  const max = Math.max(0, ...trend.map((d) => d.visitors));
+  return (
+    <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
+      <h3 className="font-bold text-[#0A2B6B]">First-time visitors vs people who came back</h3>
+      <p className="text-xs text-gray-500">
+        &quot;Came back&quot; = opened the site on a later day than the first day we ever saw that browser. A new phone or browser counts as new.
+      </p>
+      <DayBars days={trend} max={max}
+        parts={(d) => [{ value: Math.max(0, d.visitors - d.returning), color: "#1F5BB5" }, { value: d.returning, color: "#16A34A" }]} />
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600">
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#1F5BB5" }} />First time</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#16A34A" }} />Came back</span>
+      </div>
+    </div>
+  );
+}
+
+function Direction({ trend, returning }: { trend: TrendDay[]; returning?: { week: number; before: number } }) {
   const prev = trend.slice(0, 7);
   const cur = trend.slice(7);
   const sumOf = (a: TrendDay[], f: (d: TrendDay) => number) => a.reduce((n, d) => n + f(d), 0);
@@ -133,6 +178,10 @@ function Direction({ trend }: { trend: TrendDay[] }) {
     // A rate built from a handful of items is noise: only judge it when both weeks have real numbers
     { label: "New information per 100 visitors", cur: rate.cur.toFixed(1), prev: rate.prev.toFixed(1),
       v: info.prev < 5 || vis.prev < 20 ? compare(0, 0, 1) : compare(rate.cur, rate.prev, 0.1, 1) },
+    ...(returning ? [{
+      label: "People who came back (a later day than their first visit)",
+      cur: String(returning.week), prev: String(returning.before), v: compare(returning.week, returning.before, 5),
+    }] : []),
   ];
   return (
     <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
@@ -203,6 +252,8 @@ type Overview = {
   contributors: Win;
   actions: { today: Actions; yesterday: Actions; week: Actions };
   week: { people: number };
+  returning: { week: number; before: number };
+  coverage: { all: number; all_rec: number; kids: number; kids_rec: number };
   trend: TrendDay[];
   latest: { kind: "review" | "place" | "claim" | "edit" | "move"; label: string; at: string }[];
 };
@@ -367,8 +418,12 @@ export default function NewInfoOverview() {
             </div>
           </div>
           <UsefulActions data={data} />
-          <Direction trend={data.trend ?? []} />
+          <Direction trend={data.trend ?? []} returning={data.returning} />
           <TrendCharts trend={data.trend ?? []} />
+          <div className="grid lg:grid-cols-2 gap-4">
+            <ReturningChart trend={data.trend ?? []} />
+            <CoverageCard c={data.coverage} />
+          </div>
         </>
       ) : null}
     </section>
