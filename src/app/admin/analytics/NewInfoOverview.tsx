@@ -12,11 +12,137 @@ type Day = {
   sources: { src: string; people: number }[];
 };
 type Win = { today: number; yesterday: number; week: number };
+type TrendDay = { day: string; visitors: number; review: number; place: number; edit: number; move: number; claim: number };
+
+const STACK: { key: "review" | "place" | "edit" | "move" | "claim"; label: string; color: string }[] = [
+  { key: "review", label: "Recommendations", color: "#1F5BB5" },
+  { key: "place", label: "New places", color: "#16A34A" },
+  { key: "edit", label: "Place edits", color: "#F59E0B" },
+  { key: "move", label: "Pin moves", color: "#9333EA" },
+  { key: "claim", label: "Owner claims", color: "#E11D48" },
+];
+const dayTotal = (d: TrendDay) => d.review + d.place + d.edit + d.move + d.claim;
+const dayShort = (iso: string) => `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}`;
+
+/** Compare the last 7 days with the 7 days before. Tiny numbers are called "too early", not a percentage. */
+function compare(cur: number, prev: number, minPrev: number) {
+  if (prev < minPrev) return { verdict: "early" as const, text: "Too early to tell", pct: null as number | null };
+  const pct = Math.round(((cur - prev) / prev) * 100);
+  if (pct >= 10) return { verdict: "up" as const, text: `Up ${pct}%`, pct };
+  if (pct <= -10) return { verdict: "down" as const, text: `Down ${Math.abs(pct)}%`, pct };
+  return { verdict: "flat" as const, text: "About the same", pct };
+}
+
+function Verdict({ v }: { v: ReturnType<typeof compare> }) {
+  const cls = v.verdict === "up" ? "bg-emerald-100 text-emerald-800" : v.verdict === "down" ? "bg-rose-100 text-rose-800"
+    : v.verdict === "flat" ? "bg-gray-100 text-gray-700" : "bg-amber-50 text-amber-800";
+  const arrow = v.verdict === "up" ? "▲ " : v.verdict === "down" ? "▼ " : "";
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>{arrow}{v.text}</span>;
+}
+
+/** Bars per day; `parts` are stacked segments (one colour each). */
+function DayBars({ days, parts, max }: { days: TrendDay[]; parts: (d: TrendDay) => { value: number; color: string }[]; max: number }) {
+  const H = 110;
+  return (
+    <div className="flex items-end gap-1" style={{ height: H + 34 }}>
+      {days.map((d) => {
+        const segs = parts(d);
+        const total = segs.reduce((n, s) => n + s.value, 0);
+        return (
+          <div key={d.day} className="flex flex-1 flex-col items-center justify-end min-w-0" title={`${d.day}: ${total}`}>
+            <span className="text-[10px] text-gray-600 h-4">{total || ""}</span>
+            <div className="flex w-full flex-col-reverse overflow-hidden rounded-t" style={{ height: max ? (total / max) * H : 0, minHeight: total ? 3 : 0 }}>
+              {segs.filter((s) => s.value > 0).map((s, i) => (
+                <div key={i} style={{ height: `${(s.value / total) * 100}%`, background: s.color }} />
+              ))}
+            </div>
+            <span className="mt-1 text-[10px] text-gray-500 h-4">{dayShort(d.day)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Direction({ trend }: { trend: TrendDay[] }) {
+  const prev = trend.slice(0, 7);
+  const cur = trend.slice(7);
+  const sumOf = (a: TrendDay[], f: (d: TrendDay) => number) => a.reduce((n, d) => n + f(d), 0);
+  const vis = { cur: sumOf(cur, (d) => d.visitors), prev: sumOf(prev, (d) => d.visitors) };
+  const info = { cur: sumOf(cur, dayTotal), prev: sumOf(prev, dayTotal) };
+  const rate = {
+    cur: vis.cur ? (info.cur / vis.cur) * 100 : 0,
+    prev: vis.prev ? (info.prev / vis.prev) * 100 : 0,
+  };
+  const rows = [
+    { label: "Visitors (people per day, added up)", cur: String(vis.cur), prev: String(vis.prev), v: compare(vis.cur, vis.prev, 20) },
+    { label: "New information (items)", cur: String(info.cur), prev: String(info.prev), v: compare(info.cur, info.prev, 5) },
+    // A rate built from a handful of items is noise: only judge it when both weeks have real numbers
+    { label: "New information per 100 visitors", cur: rate.cur.toFixed(1), prev: rate.prev.toFixed(1),
+      v: info.prev < 5 || vis.prev < 20 ? compare(0, 0, 1) : compare(rate.cur, rate.prev, 0.1) },
+  ];
+  return (
+    <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
+      <h3 className="font-bold text-[#0A2B6B]">Are we heading in the right direction?</h3>
+      <p className="text-xs text-gray-500">
+        Last 7 days compared with the 7 days before. With very small numbers it says &quot;Too early to tell&quot; instead of a misleading percentage.
+        The best sign is more new information per 100 visitors.
+      </p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-gray-500">
+            <th className="text-left font-semibold py-1"></th>
+            <th className="text-right font-semibold">Last 7 days</th>
+            <th className="text-right font-semibold">Before</th>
+            <th className="text-right font-semibold pl-3">Direction</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className="border-t">
+              <td className="py-1.5">{r.label}</td>
+              <td className="text-right font-semibold">{r.cur}</td>
+              <td className="text-right">{r.prev}</td>
+              <td className="text-right pl-3"><Verdict v={r.v} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TrendCharts({ trend }: { trend: TrendDay[] }) {
+  const maxVisitors = Math.max(0, ...trend.map((d) => d.visitors));
+  const maxInfo = Math.max(0, ...trend.map(dayTotal));
+  return (
+    <div className="grid lg:grid-cols-2 gap-4">
+      <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
+        <h3 className="font-bold text-[#0A2B6B]">Visitors per day</h3>
+        <p className="text-xs text-gray-500">Different people who opened the site, last 14 days (Israel days).</p>
+        <DayBars days={trend} max={maxVisitors} parts={(d) => [{ value: d.visitors, color: "#1F5BB5" }]} />
+      </div>
+      <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
+        <h3 className="font-bold text-[#0A2B6B]">New information per day</h3>
+        <p className="text-xs text-gray-500">Items people added, by type. This is the bar we want to see growing.</p>
+        <DayBars days={trend} max={maxInfo} parts={(d) => STACK.map((s) => ({ value: d[s.key], color: s.color }))} />
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600">
+          {STACK.map((s) => (
+            <span key={s.key} className="inline-flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />{s.label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 type Overview = {
   generated_at: string;
   today: Day;
   yesterday: Day;
   contributions: { review: Win; place: Win; claim: Win; edit: Win; move: Win };
+  trend: TrendDay[];
   latest: { kind: "review" | "place" | "claim" | "edit" | "move"; label: string; at: string }[];
 };
 
@@ -173,6 +299,8 @@ export default function NewInfoOverview() {
               </div>
             </div>
           </div>
+          <Direction trend={data.trend ?? []} />
+          <TrendCharts trend={data.trend ?? []} />
         </>
       ) : null}
     </section>

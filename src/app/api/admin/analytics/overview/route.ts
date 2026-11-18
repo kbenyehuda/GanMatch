@@ -32,6 +32,7 @@ export async function GET(req: Request) {
   const todayStart = israelMidnight(0);
   const yesterdayStart = israelMidnight(-1);
   const weekStart = israelMidnight(-6);
+  const trendStart = israelMidnight(-13); // 14 Israel days including today, for the "right direction" charts
 
   const day = async (since: Date, until: Date) => {
     const { data } = await db.rpc("analytics_summary", { p_since: since.toISOString(), p_until: until.toISOString(), p_category: null });
@@ -47,15 +48,16 @@ export async function GET(req: Request) {
     };
   };
 
-  const since = weekStart.toISOString();
-  const [today, yesterday, rev, pl, cl, de, lo] = await Promise.all([
+  const since = trendStart.toISOString();
+  const [today, yesterday, rev, pl, cl, de, lo, trendRpc] = await Promise.all([
     day(todayStart, now),
     day(yesterdayStart, todayStart),
-    db.from("place_reviews").select("id,created_at,rating,is_hidden,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(500),
-    db.from("places").select("id,created_at,name,is_hidden").eq("source", "community").gte("created_at", since).order("created_at", { ascending: false }).limit(500),
-    db.from("place_owner_claims").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(500),
-    db.from("place_detail_requests").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(500),
-    db.from("place_location_requests").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(500),
+    db.from("place_reviews").select("id,created_at,rating,is_hidden,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("places").select("id,created_at,name,is_hidden").eq("source", "community").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_owner_claims").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_detail_requests").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_location_requests").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.rpc("analytics_summary", { p_since: trendStart.toISOString(), p_until: now.toISOString(), p_category: null }),
   ]);
 
   const rows = {
@@ -84,6 +86,29 @@ export async function GET(req: Request) {
     move: windows(rows.move),
   };
 
+  // One entry per Israel day for the last 14 days: visitors (people) and new information by type
+  const dayKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: TZ }); // YYYY-MM-DD
+  const peopleByDay = new Map<string, number>();
+  for (const d of ((trendRpc.data?.by_day ?? []) as { day: string; people: number }[])) peopleByDay.set(d.day, Number(d.people));
+  const bucket = (list: any[]) => {
+    const m = new Map<string, number>();
+    for (const r of list) m.set(dayKey(new Date(r.created_at)), (m.get(dayKey(new Date(r.created_at))) ?? 0) + 1);
+    return m;
+  };
+  const byKind = { review: bucket(rows.review), place: bucket(rows.place), edit: bucket(rows.edit), move: bucket(rows.move), claim: bucket(rows.claim) };
+  const trend = Array.from({ length: 14 }, (_, i) => {
+    const key = dayKey(new Date(israelMidnight(i - 13).getTime() + 12 * 3_600_000)); // noon of that Israel day
+    return {
+      day: key,
+      visitors: peopleByDay.get(key) ?? 0,
+      review: byKind.review.get(key) ?? 0,
+      place: byKind.place.get(key) ?? 0,
+      edit: byKind.edit.get(key) ?? 0,
+      move: byKind.move.get(key) ?? 0,
+      claim: byKind.claim.get(key) ?? 0,
+    };
+  });
+
   const latest: Item[] = [
     ...rows.review.map((r): Item => ({ kind: "review", at: r.created_at, label: `${r.places?.name ?? ""} · ${"★".repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))}${r.is_hidden ? " (held)" : ""}` })),
     // A private person (babysitter) is hidden until she agrees: keep her name out of the page
@@ -98,6 +123,7 @@ export async function GET(req: Request) {
     today,
     yesterday,
     contributions,
+    trend,
     latest,
   });
 }
