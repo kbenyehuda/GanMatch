@@ -460,6 +460,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
   // "זה העסק שלכם?" panel, and the gan editor opened from it in owner mode
   const [showOwner, setShowOwner] = useState(false);
   const [attrEditAsOwner, setAttrEditAsOwner] = useState(false);
+  // Which field a "+ מחיר" chip should jump to when the edit form opens
+  const [attrEditField, setAttrEditField] = useState<string | undefined>(undefined);
   const [showIconLegend, setShowIconLegend] = useState(false);
 
   // Review form
@@ -808,30 +810,30 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
               </div>
               <KidsAttributeChips attrs={attrs} parentTags={detailParentTags(reviews, place)} />
               {(() => {
-                const missing: string[] = [];
-                if (attrs.monthly_price_nis == null) missing.push("מחיר");
-                if (attrs.vacancy_status == null || attrs.vacancy_status === "UNKNOWN") missing.push("מקום פנוי");
-                if (attrs.min_age_months == null) missing.push("טווח גילאים");
+                const missing: { key: string; label: string }[] = [];
+                if (attrs.monthly_price_nis == null) missing.push({ key: "monthly_price_nis", label: "מחיר" });
+                if (attrs.vacancy_status == null || attrs.vacancy_status === "UNKNOWN") missing.push({ key: "vacancy_status", label: "מקום פנוי" });
+                if (attrs.min_age_months == null) missing.push({ key: "min_age_months", label: "טווח גילאים" });
                 // Shown to guests too: they didn't know they could help, or that it needs a Google login
                 const cta = user
                   ? (missing.length > 0 ? "עזרו לנו למלא ←" : "ערכו פרטים ←")
                   : (missing.length > 0 ? "התחברו עם Google כדי לעזור למלא ←" : "התחברו עם Google כדי לעדכן פרטים ←");
-                const open = () => (user ? setShowAttrEdit(true) : signInWithGoogle(`/place/${place.id}`));
+                const open = (field?: string) => { if (user) { setAttrEditField(field); setShowAttrEdit(true); } else signInWithGoogle(`/place/${place.id}`); };
                 return (
                   <>
                     {/* Each missing fact is a tappable chip: it opens the same edit form (guests sign in first) */}
                     {missing.length > 0 && (
                       <div className="flex flex-wrap gap-1.5" style={{ marginTop: 8 }}>
                         {missing.map((m) => (
-                          <button key={m} type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"} onClick={open}
+                          <button key={m.key} type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"} onClick={() => open(m.key)}
                             className="font-hebrew"
                             style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 8, background: "#fff", color: "#1F5BB5", border: "1px dashed #9EC5FF", cursor: "pointer" }}>
-                            + {m}
+                            + {m.label}
                           </button>
                         ))}
                       </div>
                     )}
-                    <button type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"} onClick={open}
+                    <button type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"} onClick={() => open()}
                       className="font-hebrew text-start w-full"
                       style={{ marginTop: 8, fontSize: 12, color: "#1F5BB5", fontWeight: 700, background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
                       {cta}
@@ -1082,7 +1084,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         <EditKidsAttributesModal
           place={place}
           isOwner={attrEditAsOwner}
-          onClose={() => { setShowAttrEdit(false); setAttrEditAsOwner(false); }}
+          focusField={attrEditField}
+          onClose={() => { setShowAttrEdit(false); setAttrEditAsOwner(false); setAttrEditField(undefined); }}
           onSaved={(updated) => { onPlaceUpdated?.(updated); loadOwnerInfo(); }}
           onShowToast={onShowToast}
         />

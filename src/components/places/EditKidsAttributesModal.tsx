@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import type { Place, KidsAttributes, SpokenLanguage, KosherStatus } from "@/types/places";
 import { useSession } from "@/lib/useSession";
@@ -71,7 +71,7 @@ function Field({ label, children, k, span = false }: { label: string; children: 
   const isLocked = useContext(LockedContext);
   if (k && isLocked(k)) return null;
   return (
-    <div className={span ? "col-span-2" : undefined}>
+    <div className={span ? "col-span-2" : undefined} data-field={k}>
       <label className="font-hebrew block mb-1" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 600 }}>{label}</label>
       {children}
     </div>
@@ -98,10 +98,19 @@ export interface EditKidsAttributesModalProps {
   onShowToast?: (msg: string) => void;
   /** An approved owner: nothing is locked, and the change goes live at once. */
   isOwner?: boolean;
+  /** Opened from a "+ מחיר" style chip: scroll to this field (its key, e.g. monthly_price_nis) and focus it. */
+  focusField?: string;
 }
 
-export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, isOwner = false }: EditKidsAttributesModalProps) {
+export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, isOwner = false, focusField }: EditKidsAttributesModalProps) {
   const { session } = useSession();
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusField) return;
+    const el = bodyRef.current?.querySelector<HTMLElement>(`[data-field="${focusField}"]`);
+    el?.scrollIntoView({ block: "center" });
+    el?.querySelector<HTMLElement>("input,select")?.focus({ preventScroll: true });
+  }, [focusField]);
   const a = (place.attributes ?? {}) as KidsAttributes;
 
   const [ganCategory, setGanCategory] = useState(a.gan_category ?? "");
@@ -235,7 +244,7 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
             <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto" style={{ padding: "0 20px 12px" }}>
+        <div ref={bodyRef} className="flex-1 overflow-y-auto" style={{ padding: "0 20px 12px" }}>
           <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", marginBottom: 6, lineHeight: 1.5 }}>
             כל שדה אופציונלי — מלאו מה שאתם יודעים, זה עוזר לכל ההורים שמחפשים גן.
           </p>
