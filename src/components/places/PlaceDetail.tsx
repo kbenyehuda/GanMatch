@@ -21,7 +21,7 @@ import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME, reportReviewMailto, reportPlaceM
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { OwnerModal } from "./OwnerModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
-import { GAN_APPROACH_LABELS, displayTags, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
+import { GAN_APPROACH_LABELS, displayTags, normalizeTag, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -131,7 +131,7 @@ function ReviewSourceInfo() {
             כדי לשמור על פרטיות הכותבים, ההמלצות <strong>סוכמו ונוסחו מחדש באופן אוטומטי</strong> (בעזרת בינה מלאכותית). לכן הניסוח אינו ציטוט מדויק, וייתכנו אי-דיוקים.
           </span>
           <span className="block" style={{ marginTop: 4 }}>
-            <strong>גם מספר הכוכבים נקבע אוטומטית</strong> לפי מה שנכתב, ולא על ידי ההורה עצמו, וייתכן שההורה היה נותן דירוג אחר.
+            <strong>גם מספר הכוכבים הוא דירוג משוער</strong>: הוא נקבע אוטומטית לפי מה שנכתב, ולא על ידי ההורה עצמו, וייתכן שההורה היה נותן דירוג אחר.
           </span>
           <span className="block" style={{ marginTop: 4 }}>זו דעה אישית של מי שכתב אותה, ולא בדיקה מקצועית או המלצה של GiveMyTime.</span>
           <span className="block" style={{ marginTop: 4 }}>
@@ -189,10 +189,7 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
             </svg>
           ))}
         </div>
-        {/* WhatsApp stars were set automatically from the text, not by the parent who wrote it */}
-        {review.reviewer_public_name === WHATSAPP_REVIEWER_NAME && (
-          <span className="font-hebrew" style={{ fontSize: 11, color: "#8A95A8" }}>דירוג משוער</span>
-        )}
+        {/* "Estimated rating" is explained once, in the (?) next to the name */}
       </div>
       {/* Text */}
       {review.text && <p className="font-hebrew" style={{ fontSize: 13, lineHeight: 1.5, color: "#4A5568" }}>&ldquo;{review.text}&rdquo;</p>}
@@ -262,8 +259,17 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
 
 // ─── Kids attribute chips ─────────────────────────────────────────────────────
 
-function KidsAttributeChips({ attrs }: { attrs: Record<string, unknown> }) {
-  const chips: { key: string; icon?: React.ReactNode; text: string }[] = [];
+/** Chips shown before "+N נוספים": about two lines on a phone. */
+const DETAIL_CHIPS_VISIBLE = 6;
+
+/**
+ * One list for the place's own facts and what parents mention (2026-11-18). A fact parents also mention
+ * shows once, with "· N הורים". Mentioned ones come first (most mentioned first), the rest after,
+ * and everything past the first few folds into a "+N נוספים" pill.
+ */
+function KidsAttributeChips({ attrs, parentTags = [] }: { attrs: Record<string, unknown>; parentTags?: { label: string; count: number }[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const chips: { key: string; icon?: React.ReactNode; text: string; count?: number }[] = [];
   if (attrs.min_age_months != null && attrs.max_age_months != null) {
     const toLabel = (m: number) => m < 24 ? `${m} חודשים` : `${Math.floor(m / 12)} שנים`;
     chips.push({ key: "age", text: `גיל: ${toLabel(Number(attrs.min_age_months))}–${toLabel(Number(attrs.max_age_months))}` });
@@ -315,15 +321,33 @@ function KidsAttributeChips({ attrs }: { attrs: Record<string, unknown> }) {
   if (Array.isArray(attrs.workshop_types) && attrs.workshop_types.length > 0) {
     chips.push({ key: "workshops", text: `סדנה: ${(attrs.workshop_types as string[]).join(", ")}` });
   }
+  // Merge in what parents mention: same fact → count on the existing chip, otherwise a chip of its own
+  const byLabel = new Map(chips.map((c) => [normalizeTag(c.text), c]));
+  for (const t of parentTags) {
+    const existing = byLabel.get(normalizeTag(t.label));
+    if (existing) existing.count = t.count;
+    else chips.push({ key: `said-${t.label}`, text: t.label, count: t.count });
+  }
+  // Array.prototype.sort is stable: chips with equal counts keep their order
+  chips.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
   if (!chips.length) return null;
+  const hidden = expanded ? 0 : Math.max(0, chips.length - DETAIL_CHIPS_VISIBLE);
+  const shown = hidden > 0 ? chips.slice(0, DETAIL_CHIPS_VISIBLE) : chips;
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">
-      {chips.map(c => (
-        <span key={c.key} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 12, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>
+      {shown.map(c => (
+        <span key={c.key} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 12, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: c.count ? "#DCF3E6" : "#E8F0FB", color: c.count ? "#1D7F4F" : "#0A2B6B" }}>
           {c.icon}
           {c.text}
+          {!!c.count && c.count > 1 && <span style={{ fontWeight: 500, opacity: 0.8 }}>· {c.count} הורים</span>}
         </span>
       ))}
+      {hidden > 0 && (
+        <button type="button" onClick={() => setExpanded(true)} className="font-hebrew"
+          style={{ fontSize: 12, fontWeight: 700, padding: "4px 9px", borderRadius: 8, background: "#fff", color: "#1F5BB5", border: "1px solid #D5DEEC", cursor: "pointer" }}>
+          +{hidden} נוספים
+        </button>
+      )}
     </div>
   );
 }
@@ -508,7 +532,8 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
   // Tags for detail view
   const detailTags: { label: string; style: React.CSSProperties }[] = [
-    { label: PLACE_CATEGORY_LABELS[place.place_category], style: { background: "#E8F0FB", color: "#0A2B6B" } },
+    // Kids: category and type in one tag (ילדים • גני ילדים), so the type needs no row of its own
+    { label: place.place_category === "kids" && placeTypeLabel(place) ? `${PLACE_CATEGORY_LABELS[place.place_category]} • ${placeTypeLabel(place)}` : PLACE_CATEGORY_LABELS[place.place_category], style: { background: "#E8F0FB", color: "#0A2B6B" } },
   ];
   for (const h of place.hmo ?? []) {
     if (HMO_LABELS[h]) detailTags.push({ label: HMO_LABELS[h], style: { background: "#FBF1D8", color: "#9C7A21" } });
@@ -579,7 +604,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       </div>
 
       {/* ── Scrollable body ───────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: 120 }}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide-touch" style={{ paddingBottom: 120 }}>
         <div style={{ padding: 20 }}>
 
           {/* Tags */}
@@ -623,7 +648,13 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
 
           {/* Sub */}
           <div className="font-hebrew mb-3.5" style={{ fontSize: 13, color: "#8A95A8" }}>
-            {[place.address?.split(",")[0], neighborhood, dist ? `${dist} ממך` : null].filter(Boolean).join(" · ")}
+            {/* The exact street is in the "כתובת" row below: here, neighborhood, else the city from the address.
+                The street is shown only when there's nothing else, so the line is never empty. */}
+            {(() => {
+              const addrParts = place.address?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+              const where = neighborhood ?? addrParts[1] ?? addrParts[0] ?? null;
+              return [where, dist ? `${dist} ממך` : null].filter(Boolean).join(" · ");
+            })()}
           </div>
 
           {/* Stats box */}
@@ -722,9 +753,9 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
           )}
 
           {/* Type: gan type / kids type, doctor specialty (+ לילדים), cosmetics type */}
-          {(place.place_category === "doctor" || place.place_category === "cosmetics" || (place.place_category === "kids" && placeTypeLabel(place))) && (
+          {(place.place_category === "doctor" || place.place_category === "cosmetics") && (
             <div style={{ padding: "14px 0", borderTop: "1px solid #E5E9F0" }}>
-              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700 }}>{place.place_category === "kids" ? "סוג" : "תחום התמחות"}</span>
+              <span className="font-hebrew block mb-2" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700 }}>תחום התמחות</span>
               {placeTypeLabel(place) ? (
                 <span className="font-hebrew font-semibold" style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "#E8F0FB", color: "#0A2B6B" }}>{placeTypeLabel(place)}</span>
               ) : (
@@ -747,7 +778,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                   </button>
                 )}
               </div>
-              {Object.keys(attrs).length > 0 && <KidsAttributeChips attrs={attrs} />}
+              <KidsAttributeChips attrs={attrs} parentTags={reviewTagCounts(reviews, place)} />
               {(() => {
                 const missing: string[] = [];
                 if (attrs.monthly_price_nis == null) missing.push("מחיר");
@@ -757,21 +788,36 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                 const cta = user
                   ? (missing.length > 0 ? "עזרו לנו למלא ←" : "ערכו פרטים ←")
                   : (missing.length > 0 ? "התחברו עם Google כדי לעזור למלא ←" : "התחברו עם Google כדי לעדכן פרטים ←");
+                const open = () => (user ? setShowAttrEdit(true) : signInWithGoogle(`/place/${place.id}`));
                 return (
-                  <button type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"}
-                    onClick={() => (user ? setShowAttrEdit(true) : signInWithGoogle(`/place/${place.id}`))}
-                    className="font-hebrew text-start w-full"
-                    style={{ marginTop: 8, fontSize: 12, color: "#8A95A8", background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
-                    {missing.length > 0 && <>עדיין אין לנו מידע על: {missing.join(", ")} — האפליקציה יודעת לשמור את זה, רק צריך שמישהו יעדכן. </>}
-                    <span style={{ color: "#1F5BB5", fontWeight: 700 }}>{cta}</span>
-                  </button>
+                  <>
+                    {/* Each missing fact is a tappable chip: it opens the same edit form (guests sign in first) */}
+                    {missing.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5" style={{ marginTop: 8 }}>
+                        {missing.map((m) => (
+                          <button key={m} type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"} onClick={open}
+                            className="font-hebrew"
+                            style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 8, background: "#fff", color: "#1F5BB5", border: "1px dashed #9EC5FF", cursor: "pointer" }}>
+                            + {m}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"} onClick={open}
+                      className="font-hebrew text-start w-full"
+                      style={{ marginTop: 8, fontSize: 12, color: "#1F5BB5", fontWeight: 700, background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 1.5 }}>
+                      {cta}
+                    </button>
+                  </>
                 );
               })()}
             </div>
           )}
 
-          {/* What parents say: facts from review tags, most mentioned first */}
+          {/* What parents say: facts from review tags, most mentioned first. Kids places show these
+              inside "פרטים נוספים" above (one merged list), so only other categories get this block. */}
           {(() => {
+            if (place.place_category === "kids") return null;
             const said = reviewTagCounts(reviews, place);
             if (!said.length) return null;
             return (
@@ -973,9 +1019,10 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         )}
         {/* WhatsApp: only for Israeli mobile numbers (landlines can't receive it) */}
         {(() => {
-          const wa = whatsappLink(place.phone, `שלום, ראיתי אתכם באתר GiveMyTime`);
+          // A message TO the place (not a share): the prefilled text names it, and the button says so
+          const wa = whatsappLink(place.phone, `שלום, ראיתי את ${place.name} ב-GiveMyTime`);
           return wa ? (
-            <a href={wa} target="_blank" rel="noopener noreferrer" data-track="whatsapp" aria-label="שליחת הודעה בוואטסאפ"
+            <a href={wa} target="_blank" rel="noopener noreferrer" data-track="whatsapp" aria-label="שליחת הודעה בוואטסאפ למקום" title="שליחת הודעה בוואטסאפ למקום"
               className="flex items-center justify-center"
               style={{ width: 52, background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, textDecoration: "none" }}>
               <WhatsAppIcon className="w-5 h-5" />
@@ -984,7 +1031,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
         })()}
         {/* Call */}
         {place.phone?.[0] && (
-          <a href={`tel:${place.phone[0]}`} data-track="call"
+          <a href={`tel:${place.phone[0]}`} data-track="call" aria-label="התקשרות" title="התקשרות"
             className="flex items-center justify-center"
             style={{ width: 52, background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, textDecoration: "none" }}>
             <Phone style={{ width: 18, height: 18, color: "#0A2B6B" }} />

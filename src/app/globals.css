@@ -69,6 +69,11 @@
 /* ── Utilities ─────────────────────────────────────────────────────────────── */
 .scrollbar-hide                      { scrollbar-width: none; -ms-overflow-style: none; }
 .scrollbar-hide::-webkit-scrollbar   { display: none; }
+/* Touch devices only: desktop keeps its scrollbar */
+@media (hover: none) {
+  .scrollbar-hide-touch                    { scrollbar-width: none; -ms-overflow-style: none; }
+  .scrollbar-hide-touch::-webkit-scrollbar { display: none; }
+}
 
 /* ── RTL ───────────────────────────────────────────────────────────────────── */
 [dir="rtl"] { direction: rtl; }
