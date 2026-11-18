@@ -1,6 +1,8 @@
 "use client";
 
 import { track } from "@/lib/analytics";
+import { whatsappLink } from "@/lib/whatsapp";
+import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Phone, Globe, Clock, MapPin, Loader2, Send, Navigation, Shield, Medal, Leaf, Fish, Camera, Mail, HelpCircle, Flag } from "lucide-react";
@@ -969,6 +971,17 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
             אין מיקום
           </div>
         )}
+        {/* WhatsApp: only for Israeli mobile numbers (landlines can't receive it) */}
+        {(() => {
+          const wa = whatsappLink(place.phone, `שלום, ראיתי אתכם באתר GiveMyTime`);
+          return wa ? (
+            <a href={wa} target="_blank" rel="noopener noreferrer" data-track="whatsapp" aria-label="שליחת הודעה בוואטסאפ"
+              className="flex items-center justify-center"
+              style={{ width: 52, background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, textDecoration: "none" }}>
+              <WhatsAppIcon className="w-5 h-5" />
+            </a>
+          ) : null;
+        })()}
         {/* Call */}
         {place.phone?.[0] && (
           <a href={`tel:${place.phone[0]}`} data-track="call"
