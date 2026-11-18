@@ -128,6 +128,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
   const [isPrivate, setIsPrivate] = useState(false);
   const [consentContact, setConsentContact] = useState("");
   const [savedHidden, setSavedHidden] = useState(false);
+  const [savedHeld, setSavedHeld] = useState(false); // a normal place the automatic check held for a quick look
   const isPrivatePerson = category === "kids" && isPrivate;
 
   // Review
@@ -173,7 +174,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
-      if (data.hidden) { setSavedHidden(true); return; }
+      if (data.hidden) { setSavedHeld(!!data.held); setSavedHidden(true); return; }
       onSuccess(data.place as Place);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "שגיאה");
@@ -192,9 +193,9 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
     return (
       <div className="flex flex-col h-full bg-white items-center justify-center text-center" dir="rtl" style={{ padding: 28 }}>
         <span style={{ fontSize: 36 }}>🙏</span>
-        <h2 className="font-hebrew font-bold mt-3" style={{ fontSize: 17, color: "#0A2B6B" }}>תודה! ההמלצה נשמרה</h2>
+        <h2 className="font-hebrew font-bold mt-3" style={{ fontSize: 17, color: "#0A2B6B" }}>{savedHeld ? "תודה! המקום נשמר" : "תודה! ההמלצה נשמרה"}</h2>
         <p className="font-hebrew mt-2" style={{ fontSize: 14, color: "#4A5568", lineHeight: 1.7, maxWidth: 320 }}>
-          נפנה אליה לבקש הסכמה, והיא תופיע באתר רק אחרי שתאשר.
+          {savedHeld ? "נעבור עליו בקצרה והוא יופיע באתר. תודה שאתם עוזרים להשלים את המפה." : "נפנה אליה לבקש הסכמה, והיא תופיע באתר רק אחרי שתאשר."}
         </p>
         <button type="button" onClick={onClose} className="font-hebrew font-bold mt-5"
           style={{ padding: "11px 28px", borderRadius: 14, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", fontSize: 14, border: "none", cursor: "pointer" }}>

@@ -6,6 +6,8 @@ import type { Place, PlaceCategory } from "@/types/places";
 import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
 import { checkReview } from "@/lib/review-check";
 import { HOLD_REASON_LABELS } from "@/lib/hold-reasons";
+import { checkNewPlace } from "@/lib/place-check";
+import { PLACE_HOLD_LABELS } from "@/lib/place-hold-reasons";
 import { cleanPlaceName } from "@/lib/place-name";
 
 const VALID_CATEGORIES: PlaceCategory[] = [
@@ -208,6 +210,26 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Automatic check of the place itself (name and description), decision 2026-11-18: a clean place is shown at
+  // once, a flagged one (or one the check couldn't run on) is saved hidden and waits in /admin/held-places.
+  let placeHeld = false;
+  if (!isPrivatePerson && !existing) {
+    const pc = await checkNewPlace({ name: cleanName, category, description });
+    if (!pc.publish) {
+      placeHeld = true;
+      await admin.from("places").update({
+        is_hidden: true,
+        attributes: { place_hold: { reasons: pc.reasons, at: new Date().toISOString() } },
+      }).eq("id", placeId);
+      await notifyAdmins({
+        subject: `מקום חדש ממתין לאישור: ${cleanName}`,
+        html: `<p>נוסף מקום חדש <b>${escapeHtml(cleanName)}</b> והוא נשמר מוסתר: ${escapeHtml(pc.reasons.map((r) => PLACE_HOLD_LABELS[r]).join(", "))}.</p>
+          ${description ? `<blockquote style="border-inline-start:3px solid #ccc;padding-inline-start:8px">${escapeHtml(description)}</blockquote>` : ""}
+          ${requestLinksHtml(new URL(request.url).origin, "held-places", placeId)}`,
+      });
+    }
+  }
+
   // Optional first recommendation. It goes through the same automatic check as any other
   // recommendation: before 2026-11-18 it skipped the check and was published at once.
   let reviewPublished = false;
@@ -251,6 +273,9 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ hidden: true }, { status: 201 });
   }
+
+  // A held place is not shown on the map: the form tells the person it will appear after a short check
+  if (placeHeld) return NextResponse.json({ hidden: true, held: true }, { status: 201 });
 
   // Return the new place as a full Place object
   const newPlace: Place = {

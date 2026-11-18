@@ -1567,6 +1567,7 @@ function ProfileScreen({
             <ProfileListCard icon={<MapPin style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות שינוי מיקום" sub="אישור עדכוני מיקום ממשתמשים" onClick={() => (window.location.href = "/admin/place-location-requests")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות עדכון פרטים" sub="אישור פרטים שהורים מילאו בגנים" onClick={() => (window.location.href = "/admin/place-detail-requests")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="המלצות ממתינות" sub="המלצות שהבדיקה עצרה או בדירוג 1–2" onClick={() => (window.location.href = "/admin/held-reviews")} />
+            <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="מקומות חדשים ממתינים" sub="מקומות שגולשים הוסיפו והבדיקה עצרה" onClick={() => (window.location.href = "/admin/held-places")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="הסכמות להופיע באתר" sub="בייביסיטרים ומטפלות שמוסתרים עד שיסכימו" onClick={() => (window.location.href = "/admin/consents")} />
           </>
         )}
