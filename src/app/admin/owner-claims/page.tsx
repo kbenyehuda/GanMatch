@@ -19,6 +19,8 @@ type Claim = {
   decided_at: string | null;
   user_email: string | null;
   other_claims: { place: string; status: ClaimStatus }[];
+  added_this_place?: boolean;
+  reviews_here?: { n: number; stars: number[] };
   places?: { name?: string | null; address?: string | null; place_category?: string | null; phone?: string[] | null } | null;
 };
 
@@ -123,6 +125,14 @@ export default function AdminOwnerClaimsPage() {
           {c.note && <div><strong>הערה:</strong> {c.note}</div>}
           {c.other_claims.length > 0 && (
             <div className="text-amber-800"><strong>בקשות נוספות של אותו חשבון:</strong> {c.other_claims.map((o) => `${o.place} (${STATUS_HE[o.status]})`).join(", ")}</div>
+          )}
+          {(c.added_this_place || (c.reviews_here?.n ?? 0) > 0) && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-2 text-amber-900">
+              <strong>שימו לב:</strong>
+              {c.added_this_place ? " החשבון הזה הוסיף את המקום לאתר." : ""}
+              {(c.reviews_here?.n ?? 0) > 0 ? ` הוא/היא כתבו ${c.reviews_here!.n} המלצה על המקום (${c.reviews_here!.stars.join(", ")} כוכבים).` : ""}
+              {c.status === "pending" && (c.reviews_here?.n ?? 0) > 0 ? " כשתאשרו בעלות, ההמלצה שלהם תוסתר עד שתבדקו אותה ב\"המלצות ממתינות\"." : ""}
+            </div>
           )}
           <div className="text-gray-500">נשלח: {fmt(c.created_at)}{c.decided_at ? ` · הוחלט: ${fmt(c.decided_at)}` : ""}</div>
           {c.verification_note && <div className="text-gray-700"><strong>איך אומת:</strong> {c.verification_note}</div>}

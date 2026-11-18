@@ -35,10 +35,29 @@ export async function GET(req: Request) {
     for (const c of (all ?? []) as any[]) (otherByUser[c.user_id] ??= []).push({ id: c.id, place: c.places?.name ?? "", status: c.status });
   }
 
+  // Did this person ADD the place, or already WRITE recommendations on it? (admin-only context for the decision)
+  const placeIds = Array.from(new Set(rows.map((r) => r.place_id).filter(Boolean))) as string[];
+  const addedBy: Record<string, string | null> = {};
+  const reviewsByPair: Record<string, { n: number; stars: number[] }> = {};
+  if (userIds.length && placeIds.length) {
+    const [{ data: ps }, { data: rs }] = await Promise.all([
+      admin.from("places").select("id,suggested_by").in("id", placeIds),
+      admin.from("place_reviews").select("user_id,place_id,rating").in("user_id", userIds).in("place_id", placeIds),
+    ]);
+    for (const p of (ps ?? []) as any[]) addedBy[p.id] = p.suggested_by ?? null;
+    for (const r of (rs ?? []) as any[]) {
+      const entry = (reviewsByPair[`${r.user_id}:${r.place_id}`] ??= { n: 0, stars: [] });
+      entry.n++;
+      entry.stars.push(Number(r.rating));
+    }
+  }
+
   const items = rows.map((r) => ({
     ...r,
     user_email: r.user_id ? emailByUser[r.user_id] ?? null : null,
     other_claims: r.user_id ? (otherByUser[r.user_id] ?? []).filter((c) => c.id !== r.id) : [],
+    added_this_place: !!r.user_id && addedBy[r.place_id] === r.user_id,
+    reviews_here: (r.user_id && reviewsByPair[`${r.user_id}:${r.place_id}`]) || { n: 0, stars: [] },
   }));
   return privateJson({ items });
 }
@@ -66,7 +85,7 @@ export async function POST(req: Request) {
     return privateJson({ error: "כתבי איך אימתת (למשל: התקשרתי לטלפון שברישום)" }, { status: 400 });
   }
 
-  const { data: claim } = await admin.from("place_owner_claims").select("id,status").eq("id", id).maybeSingle();
+  const { data: claim } = await admin.from("place_owner_claims").select("id,status,user_id,place_id").eq("id", id).maybeSingle();
   if (!claim) return privateJson({ error: "Not found" }, { status: 404 });
   const allowedFrom: Record<string, string[]> = { approve: ["pending"], decline: ["pending"], revoke: ["approved"] };
   if (!allowedFrom[action as string].includes(claim.status)) {
@@ -80,5 +99,16 @@ export async function POST(req: Request) {
     ...(note ? { verification_note: note } : {}),
   }).eq("id", id);
   if (error) return privateJson({ error: error.message }, { status: 500 });
-  return privateJson({ success: true });
+
+  // Decision 2026-11-18: when someone becomes the approved owner of a place they already recommended,
+  // that recommendation is hidden until the admin has looked at it (it appears in /admin/held-reviews).
+  let hidden = 0;
+  if (action === "approve" && claim.user_id && claim.place_id) {
+    const { data: held } = await admin.from("place_reviews")
+      .update({ is_hidden: true, check_status: "held", hold_reasons: ["owner_related"], approved_at: null })
+      .eq("user_id", claim.user_id).eq("place_id", claim.place_id).eq("is_hidden", false)
+      .select("id");
+    hidden = held?.length ?? 0;
+  }
+  return privateJson({ success: true, hidden_reviews: hidden });
 }
