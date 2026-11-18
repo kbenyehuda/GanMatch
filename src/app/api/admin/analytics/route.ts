@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/server/require-admin";
+import { lookupUsers } from "@/lib/server/user-lookup";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 const CATEGORIES = new Set(["kids", "doctor", "cosmetics", "cafe", "sport", "attraction", "food"]);
@@ -33,16 +34,7 @@ export async function GET(req: Request) {
   for (const p of (data?.people ?? []) as { person: string }[]) if (UUID_RE.test(p.person)) ids.add(p.person);
   for (const r of (data?.recent ?? []) as { person: string }[]) if (UUID_RE.test(r.person)) ids.add(r.person);
 
-  const users: Record<string, { name: string | null; email: string | null }> = {};
-  await Promise.all(
-    Array.from(ids).map(async (id) => {
-      const { data: u } = await auth.admin.auth.admin.getUserById(id);
-      if (!u?.user) return;
-      const meta = (u.user.user_metadata ?? {}) as Record<string, unknown>;
-      const name = [meta.full_name, meta.name].find((v) => typeof v === "string" && v.trim()) as string | undefined;
-      users[id] = { name: name ?? null, email: u.user.email ?? null };
-    })
-  );
+  const users = await lookupUsers(auth.admin, Array.from(ids));
 
   return NextResponse.json({ ...data, prev_pulse: prev.data?.pulse ?? null, users, days, category });
 }
