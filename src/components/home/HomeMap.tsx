@@ -660,6 +660,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     return () => mq.removeEventListener?.("change", sync);
   }, []);
   const onMapView = isDesktop || activeTab === "map";
+  // Wide layout: the side panel shows the list, or the saved places, or the profile (phones use bottom-menu tabs)
+  const [panelView, setPanelView] = useState<"feed" | "saved" | "profile">("feed");
+  useBackClose(isDesktop && panelView !== "feed", () => setPanelView("feed"));
   useBackClose(!isDesktop && activeTab !== "home", () => setActiveTab("home"));
   useBackClose(searching, () => { setMapSearchQuery(""); setFilters(f => ({ ...f, search_query: null })); });
   useBackClose(onMapView && !!selectedClusterPlaces, () => setSelectedClusterPlaces(null));
@@ -758,7 +761,9 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           className="shrink-0 h-full border-e border-[#E5E9F0] overflow-hidden"
           style={{ width: feedCollapsed ? 0 : 400, transition: "width .2s ease" }}
         >
-          <div style={{ width: 400, height: "100%" }}>
+          <div style={{ width: 400, height: "100%", position: "relative" }}>
+            {/* The list stays mounted (search text, filters, scroll) while saved/profile are open on top */}
+            <div style={{ height: "100%", display: panelView === "feed" ? "block" : "none" }}>
             <PlaceFeedPanel
               places={filteredPlaces}
               selectedPlaceId={selectedPlace?.id ?? null}
@@ -776,7 +781,40 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               onToggleSave={(id) => { const wasSaved = savedIds.has(id); toggleSave(id); showToast(wasSaved ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️"); }}
               searchQuery={mapSearchQuery}
               onSearchQueryChange={(q) => { setMapSearchQuery(q); setFilters(f => ({ ...f, search_query: q.trim() || null })); }}
+              savedCount={savedIds.size}
+              onOpenSaved={() => setPanelView("saved")}
+              onGoProfile={() => setPanelView("profile")}
             />
+            </div>
+            {panelView === "saved" && (
+              <SavedScreen
+                places={places}
+                savedIds={savedIds}
+                onToggleSave={(id) => { toggleSave(id); showToast("הוסר מהמועדפים"); }}
+                savedProgress={savedProgress}
+                onToggleProgress={togglePlaceProgress}
+                onSelectPlace={(p) => { setSelectedClusterPlaces(null); setSelectedPlace(p); setDetailPlace(p); }}
+                userLocation={userLocation}
+                onGoProfile={() => setPanelView("profile")}
+                userInitial={user?.email?.[0]?.toUpperCase() ?? "א"}
+                onBack={() => setPanelView("feed")}
+              />
+            )}
+            {panelView === "profile" && (
+              <ProfileScreen
+                user={user}
+                savedIds={savedIds}
+                isAdmin={isAdmin}
+                onGoSaved={() => setPanelView("saved")}
+                onLogout={async () => {
+                  await supabase?.auth.signOut();
+                  try { window.localStorage.removeItem(SKIP_LOGIN_STORAGE_KEY); } catch {}
+                  setSkipLogin(false);
+                  setPanelView("feed");
+                }}
+                onBack={() => setPanelView("feed")}
+              />
+            )}
           </div>
         </div>
 
@@ -1305,8 +1343,19 @@ function ProgressChips({
   );
 }
 
+/** Back arrow for the screens when they sit inside the wide layout's side panel (RTL: points right). */
+function PanelBackButton({ onBack }: { onBack: () => void }) {
+  return (
+    <button type="button" onClick={onBack} aria-label="חזרה לרשימה" title="חזרה לרשימה"
+      className="flex items-center justify-center shrink-0"
+      style={{ width: 44, height: 44, borderRadius: "50%", background: "#E8F0FB", color: "#0A2B6B", border: 0, cursor: "pointer" }}>
+      <ChevronRight style={{ width: 20, height: 20 }} />
+    </button>
+  );
+}
+
 function SavedScreen({
-  places, savedIds, onToggleSave, savedProgress, onToggleProgress, onSelectPlace, userLocation, onGoProfile, userInitial,
+  places, savedIds, onToggleSave, savedProgress, onToggleProgress, onSelectPlace, userLocation, onGoProfile, userInitial, onBack,
 }: {
   places: Place[];
   savedIds: Set<string>;
@@ -1317,6 +1366,8 @@ function SavedScreen({
   userLocation: { lon: number; lat: number } | null;
   onGoProfile: () => void;
   userInitial: string;
+  /** Set when shown inside the wide layout's side panel (adds a back arrow, no bottom-menu spacing). */
+  onBack?: () => void;
 }) {
   const saved = places.filter(p => savedIds.has(p.id));
 
@@ -1325,19 +1376,21 @@ function SavedScreen({
       {/* Topbar */}
       <div style={{ background: "#fff", flexShrink: 0, padding: "6px 20px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div className="flex items-center gap-2">
-          <img src="/app-icon.png" alt="GiveMyTime" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.12)" }} />
+          {onBack ? <PanelBackButton onBack={onBack} /> : (
+            <img src="/app-icon.png" alt="GiveMyTime" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.12)" }} />
+          )}
           <div>
             <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 500, lineHeight: 1.1 }}>מקומות שמורים</div>
             <div className="font-hebrew" style={{ fontSize: 17, fontWeight: 800, color: "#0A2B6B", marginTop: 2 }}>המועדפים שלך</div>
           </div>
         </div>
-        <button type="button" onClick={onGoProfile} className="flex items-center justify-center font-hebrew font-bold"
-          style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "pointer" }}>
+        <button type="button" onClick={onGoProfile} aria-label="הפרופיל שלי" className="flex items-center justify-center font-hebrew font-bold"
+          style={{ width: onBack ? 44 : 38, height: onBack ? 44 : 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "pointer" }}>
           {userInitial}
         </button>
       </div>
       {/* Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide" style={{ padding: "0 20px 96px" }}>
+      <div className="flex-1 overflow-y-auto scrollbar-hide" style={{ padding: onBack ? "0 20px 24px" : "0 20px 96px" }}>
         {saved.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#E8F0FB", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, color: "#1F5BB5" }}>
@@ -1378,13 +1431,15 @@ function SavedScreen({
 // ─── ProfileScreen ────────────────────────────────────────────────────────────
 
 function ProfileScreen({
-  user, savedIds, isAdmin = false, onGoSaved, onLogout,
+  user, savedIds, isAdmin = false, onGoSaved, onLogout, onBack,
 }: {
   user: { id?: string; email?: string | null; created_at?: string } | null;
   savedIds: Set<string>;
   isAdmin?: boolean;
   onGoSaved: () => void;
   onLogout: () => void;
+  /** Set when shown inside the wide layout's side panel (adds a back arrow, no bottom-menu spacing). */
+  onBack?: () => void;
 }) {
   const displayName = user?.email?.split("@")[0] ?? "אורח";
   const initial = displayName[0]?.toUpperCase() ?? "א";
@@ -1409,7 +1464,9 @@ function ProfileScreen({
       <div className="relative shrink-0" style={{ background: "linear-gradient(160deg,#0A2B6B,#1F5BB5)", padding: "calc(var(--safe-top, 0px) + 24px) 20px 56px" }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(300px 200px at 90% 10%,rgba(200,162,75,.3),transparent 60%)" }} />
         <div className="flex items-center gap-3.5 relative">
-          <img src="/app-icon.png" alt="GiveMyTime" className="shrink-0" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.3)", opacity: 0.9 }} />
+          {onBack ? <PanelBackButton onBack={onBack} /> : (
+            <img src="/app-icon.png" alt="GiveMyTime" className="shrink-0" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.3)", opacity: 0.9 }} />
+          )}
           <div className="flex items-center justify-center shrink-0" style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 22, fontWeight: 800, border: "3px solid rgba(255,255,255,.3)" }}>
             {initial}
           </div>
@@ -1441,7 +1498,7 @@ function ProfileScreen({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide" style={{ padding: "50px 20px 100px" }}>
+      <div className="flex-1 overflow-y-auto scrollbar-hide" style={{ padding: onBack ? "50px 20px 32px" : "50px 20px 100px" }}>
         <div className="font-hebrew flex items-center justify-between" style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E", margin: "18px 0 10px" }}>
           הרשימות שלך
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, ChevronDown, Loader2, LogOut, LogIn } from "lucide-react";
+import { Search, X, ChevronDown, Loader2, LogOut, LogIn, Heart } from "lucide-react";
 import type { Place, PlaceCategory } from "@/types/places";
 import { searchPlaces } from "@/lib/places-api";
 import { PlaceCard } from "./PlaceCard";
@@ -105,6 +105,9 @@ export interface PlaceFeedPanelProps {
   searchQuery?: string;
   onSearchQueryChange?: (q: string) => void;
   onGoProfile?: () => void;
+  /** Wide layout: a heart next to the avatar opens the saved places (the phone has a bottom-menu tab for it). */
+  onOpenSaved?: () => void;
+  savedCount?: number;
 }
 
 // ─── Sort bottom sheet ────────────────────────────────────────────────────────
@@ -181,8 +184,12 @@ export function PlaceFeedPanel({
   searchQuery: externalSearchQuery,
   onSearchQueryChange,
   onGoProfile,
+  onOpenSaved,
+  savedCount = 0,
 }: PlaceFeedPanelProps) {
   const { user } = useSession();
+  // Touch targets: 44px on the wide layout (iPad); the phone layout keeps its size
+  const avatarSize = variant === "desktop" ? 44 : 38;
   const [sort, setSort] = useState<SortOption>("top");
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const searchQuery = externalSearchQuery ?? internalSearchQuery;
@@ -246,12 +253,26 @@ export function PlaceFeedPanel({
           <img src="/app-icon.png" alt="GiveMyTime" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(10,43,107,.12)" }} />
           <div className="font-hebrew" style={{ fontSize: 17, fontWeight: 800, color: "#0A2B6B" }}>{greeting}</div>
         </div>
-        <div className="relative shrink-0">
+        <div className="relative shrink-0 flex items-center gap-2">
+          {onOpenSaved && (
+            <button
+              type="button"
+              onClick={onOpenSaved}
+              aria-label={`המועדפים שלי, ${savedCount} מקומות שמורים`}
+              title="המועדפים שלי"
+              className="flex items-center justify-center gap-1.5 font-hebrew font-bold shrink-0"
+              style={{ minWidth: 44, height: 44, padding: "0 12px", borderRadius: 999, background: "#fff", border: "1px solid #E5E9F0", color: "#0F1A2E", fontSize: 14, boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "pointer" }}
+            >
+              <Heart style={{ width: 18, height: 18, color: "#D86B7D", fill: savedCount > 0 ? "#D86B7D" : "none" }} />
+              {savedCount > 0 && <span>{savedCount}</span>}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => (onGoProfile ? onGoProfile() : setShowProfileMenu(v => !v))}
+            aria-label="הפרופיל שלי"
             className="flex items-center justify-center font-hebrew font-bold shrink-0"
-            style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "pointer" }}
+            style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", background: "linear-gradient(135deg,#E59A2C,#C8A24B)", color: "#fff", fontSize: 13, border: "2px solid #fff", boxShadow: "0 2px 8px rgba(10,43,107,.06)", cursor: "pointer" }}
           >
             {userInitial}
           </button>

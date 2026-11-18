@@ -1,23 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { LogIn, LogOut, Trash2, UserRound } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import { signInWithGoogle } from "@/lib/sign-in";
-import { DeleteAccountModal, announceAccountDeletion } from "./AccountDeletion";
 
+/**
+ * Wide layout, top of the map: the sign-in button for visitors who are not signed in.
+ * Once signed in it shows nothing: the avatar and heart at the top of the side panel open the
+ * profile (sign out, delete account, about) and the saved places.
+ */
 export function AuthButton() {
   const { user, loading } = useSession();
-  const [showDelete, setShowDelete] = useState(false);
 
   const signIn = () => signInWithGoogle();
-
-  const signOut = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-  };
 
   if (loading) {
     return (
@@ -27,37 +23,18 @@ export function AuthButton() {
     );
   }
 
-  if (!user) {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        onClick={signIn}
-        className="bg-white/95 backdrop-blur text-gan-dark hover:bg-white border border-gan-accent/30 shadow-lg"
-        variant="secondary"
-      >
-        <LogIn className="w-4 h-4" />
-        התחברות (Google)
-      </Button>
-    );
-  }
+  if (user) return null;
 
   return (
-    <div className="flex items-center gap-2 bg-white/95 backdrop-blur px-3 py-2 rounded-full shadow-lg border border-gan-accent/30">
-      <div className="flex items-center gap-2 min-w-0">
-        <UserRound className="w-4 h-4 text-gan-primary" />
-        <span className="text-xs text-gray-700 font-hebrew truncate max-w-[10rem]">
-          {user.user_metadata?.full_name || user.email || "מחובר"}
-        </span>
-      </div>
-      <Button type="button" size="sm" variant="ghost" onClick={signOut} className="h-7 px-2" title="התנתקות">
-        <LogOut className="w-4 h-4" />
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => setShowDelete(true)} className="h-7 px-2" title="מחיקת חשבון">
-        <Trash2 className="w-4 h-4 text-gray-400" />
-      </Button>
-      {showDelete && <DeleteAccountModal onClose={() => setShowDelete(false)} onScheduled={announceAccountDeletion} />}
-    </div>
+    <Button
+      type="button"
+      size="sm"
+      onClick={signIn}
+      className="bg-white/95 backdrop-blur text-gan-dark hover:bg-white border border-gan-accent/30 shadow-lg"
+      variant="secondary"
+    >
+      <LogIn className="w-4 h-4" />
+      התחברות (Google)
+    </Button>
   );
 }
-

@@ -177,14 +177,21 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
         <ol style={{ margin: "10px 0 0", padding: 0, listStyle: "none", fontSize: 13.5, lineHeight: 1.5 }}>
           {kind === "ios" ? (
             <>
-              <li className="flex items-center gap-2">
-                <StepNum n={1} /> לחצו על כפתור השיתוף
-                <Share style={{ width: 17, height: 17 }} aria-label="שיתוף" />
-                <span style={{ opacity: 0.8, fontSize: 12 }}>(בתחתית המסך או ליד הכתובת)</span>
+              <li className="flex items-start gap-2">
+                <StepNum n={1} />
+                <span>
+                  לחצו על כפתור השיתוף של Safari{" "}
+                  <Share style={{ width: 17, height: 17, display: "inline", verticalAlign: "middle" }} aria-label="שיתוף" />{" "}
+                  {window.matchMedia?.("(min-width: 768px)").matches ? "בשורת הכתובת למעלה" : "בשורת הכתובת או בתחתית המסך"}
+                  <span style={{ opacity: 0.8, fontSize: 12 }}> (לא הכפתור שבתוך האתר)</span>
+                </span>
               </li>
-              <li className="flex items-center gap-2" style={{ marginTop: 6 }}>
-                <StepNum n={2} /> גללו ובחרו ״הוספה למסך הבית״
-                <SquarePlus style={{ width: 17, height: 17 }} aria-hidden />
+              <li className="flex items-start gap-2" style={{ marginTop: 6 }}>
+                <StepNum n={2} />
+                <span>
+                  גללו למטה ברשימה ובחרו ״הוספה למסך הבית״{" "}
+                  <SquarePlus style={{ width: 17, height: 17, display: "inline", verticalAlign: "middle" }} aria-hidden />
+                </span>
               </li>
             </>
           ) : (
