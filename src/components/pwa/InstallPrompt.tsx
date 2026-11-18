@@ -69,7 +69,8 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
   const [showSteps, setShowSteps] = useState(false);
 
   useEffect(() => {
-    const phone = window.matchMedia?.("(max-width: 767px)").matches ?? false;
+    // Phones, and iPads: iOS has no automatic install prompt, so the "how to add" steps matter there too
+    const phone = (window.matchMedia?.("(max-width: 767px)").matches ?? false) || phoneKind() === "ios";
     if (!phone || isInstalled()) return;
     setKind(phoneKind());
     setInApp(isInAppBrowser());
@@ -98,7 +99,7 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
 
   if (showInApp) {
     return (
-      <div className="md:hidden fixed z-[450] font-hebrew" style={bannerStyle} dir="rtl" role="status">
+      <div className="fixed z-[450] font-hebrew" style={bannerStyle} dir="rtl" role="status">
         <div className="flex items-start gap-2.5">
           <ExternalLink style={{ width: 20, height: 20, flexShrink: 0, marginTop: 2 }} />
           <div className="flex-1 min-w-0">
@@ -154,7 +155,7 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
   };
 
   return (
-    <div className="md:hidden fixed z-[450] font-hebrew" style={bannerStyle} dir="rtl" role="dialog" aria-label="הוספה למסך הבית">
+    <div className="fixed z-[450] font-hebrew" style={bannerStyle} dir="rtl" role="dialog" aria-label="הוספה למסך הבית">
       <div className="flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/icon-192.png" alt="" width={44} height={44} style={{ borderRadius: 11, flexShrink: 0, background: "#fff" }} />

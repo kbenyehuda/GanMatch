@@ -902,13 +902,14 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           )}
 
           {/* Auth */}
-          <div className="absolute top-4 start-4 z-10 flex items-center gap-2">
+          {/* wraps inside the map pane: on a tablet the admin shortcuts + about + name chip are wider than it */}
+          <div className="absolute top-4 start-4 z-10 flex flex-wrap items-center gap-2 max-w-[calc(100%-2rem)]">
             {isAdmin && (
               <>
                 <button
                   type="button"
                   onClick={() => (window.location.href = "/admin/whatsapp")}
-                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew whitespace-nowrap border border-[#E5E9F0] hover:bg-[#F5F6FA]"
                   style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
                 >
                   טריאז&apos; WhatsApp
@@ -916,7 +917,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 <button
                   type="button"
                   onClick={() => (window.location.href = "/admin/triage")}
-                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew whitespace-nowrap border border-[#E5E9F0] hover:bg-[#F5F6FA]"
                   style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
                 >
                   טריאז&apos; גנים
@@ -924,7 +925,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 <button
                   type="button"
                   onClick={() => (window.location.href = "/admin/analytics")}
-                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+                  className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew whitespace-nowrap border border-[#E5E9F0] hover:bg-[#F5F6FA]"
                   style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
                 >
                   מי נכנס ומה לחצו
@@ -934,7 +935,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             <button
               type="button"
               onClick={() => (window.location.href = "/about")}
-              className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew border border-[#E5E9F0] hover:bg-[#F5F6FA]"
+              className="bg-white px-3 py-2 rounded-2xl text-xs font-hebrew whitespace-nowrap border border-[#E5E9F0] hover:bg-[#F5F6FA]"
               style={{ boxShadow: "0 2px 8px rgba(10,43,107,.06)" }}
             >
               אודות
