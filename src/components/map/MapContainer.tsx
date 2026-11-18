@@ -108,6 +108,8 @@ interface MapContainerProps {
   } | null;
   initialMapFocus?: { lon: number; lat: number; zoom?: number } | null;
   loading?: boolean;
+  /** The person's location as the app knows it: the blue dot also shows when it arrived after the map loaded (e.g. via the "center on me" button). */
+  youAreHere?: { lon: number; lat: number } | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -124,6 +126,7 @@ export function MapContainer({
   fitToAddress,
   initialMapFocus = null,
   loading = false,
+  youAreHere = null,
 }: MapContainerProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -131,6 +134,7 @@ export function MapContainer({
     lon: number;
     lat: number;
   } | null>(null);
+  const dotLocation = userLocation ?? youAreHere;
   const [hasCenteredOnUser, setHasCenteredOnUser] = useState(() =>
     Boolean(initialMapFocus)
   );
@@ -446,11 +450,11 @@ export function MapContainer({
       onMouseUp={onMapClick ? handleMouseUp : undefined}
     >
 
-      {userLocation && (
+      {dotLocation && (
         <Marker
           key="user-location"
-          longitude={userLocation.lon}
-          latitude={userLocation.lat}
+          longitude={dotLocation.lon}
+          latitude={dotLocation.lat}
           anchor="center"
           onClick={(e) => e.originalEvent.stopPropagation()}
         >

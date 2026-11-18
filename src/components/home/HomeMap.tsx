@@ -373,6 +373,34 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     );
   }, []);
 
+  // "Center the map on me": uses the known location, or asks for it when it isn't known yet
+  const [locating, setLocating] = useState(false);
+  const centerOnMe = useCallback(() => {
+    if (locating) return;
+    if (userLocation) {
+      setFitToAddress({ lon: userLocation.lon, lat: userLocation.lat, zoom: 15 });
+      return;
+    }
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      showToast("המכשיר לא מאפשר לקבל מיקום");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setUserLocation(loc);
+        setFitToAddress({ lon: loc.lon, lat: loc.lat, zoom: 15 });
+        setLocating(false);
+      },
+      () => {
+        setLocating(false);
+        showToast("לא הצלחנו לקבל את המיקום. אפשר לאשר גישה למיקום בהגדרות הדפדפן");
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  }, [locating, userLocation, showToast]);
+
   // Every place in the city, loaded once. Like Google Maps, the list doesn't follow
   // the map: zooming or panning never hides places from the list or the filters.
   const {
@@ -839,6 +867,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
         {/* Map */}
         <div className="flex-1 relative">
           <MapContainer
+            youAreHere={userLocation}
             places={filteredPlaces}
             selectedPlaceId={selectedPlace?.id ?? null}
             initialMapFocus={seedPlace?.lon != null && seedPlace?.lat != null ? { lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 } : null}
@@ -938,6 +967,22 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               הוסף מקום
             </button>
           )}
+
+          {/* Center the map on my location (wide layout; the phone has its own on the map tab) */}
+          <button
+            type="button"
+            onClick={centerOnMe}
+            disabled={locating}
+            aria-label="מרכז את המפה למיקום שלי"
+            title="המיקום שלי"
+            className="absolute z-10 hidden md:flex items-center justify-center"
+            style={{ right: 16, bottom: 156, width: 44, height: 44, borderRadius: 14, background: "#fff", border: 0, cursor: "pointer", boxShadow: "0 8px 20px rgba(10,43,107,.18)", opacity: locating ? 0.6 : 1 }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="#0A2B6B" strokeWidth="2" style={{ width: 20, height: 20 }}>
+              <circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="9" />
+              <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+            </svg>
+          </button>
 
           {/* Auth */}
           {/* wraps inside the map pane: on a tablet the admin shortcuts + about + name chip are wider than it */}
@@ -1052,6 +1097,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
         {/* MAP TAB: full-screen map (always mounted to keep map state) */}
         <div className={`absolute inset-0 ${activeTab === "map" ? "z-0" : "-z-10"}`}>
           <MapContainer
+            youAreHere={userLocation}
             places={filteredPlaces}
             selectedPlaceId={selectedPlace?.id ?? null}
             initialMapFocus={seedPlace?.lon != null && seedPlace?.lat != null ? { lon: seedPlace.lon, lat: seedPlace.lat, zoom: 16 } : null}
@@ -1065,19 +1111,20 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
           />
 
           {/* Recenter button — physical right side, hide when peek showing */}
-          {activeTab === "map" && userLocation && !showPeek && (
+          {activeTab === "map" && !showPeek && (
             <button
               type="button"
-              onClick={() => setFitToAddress({ lon: userLocation.lon, lat: userLocation.lat, zoom: 15 })}
+              onClick={centerOnMe}
+              disabled={locating}
               className="absolute flex items-center justify-center"
               style={{
                 insetInlineStart: 14,
                 bottom: "calc(86px + env(safe-area-inset-bottom, 0px) + 12px)",
-                width: 42, height: 42, borderRadius: 14,
+                width: 44, height: 44, borderRadius: 14,
                 background: "#fff", border: 0, cursor: "pointer",
-                boxShadow: "0 8px 24px rgba(10,43,107,.10)", zIndex: 400,
+                boxShadow: "0 8px 24px rgba(10,43,107,.10)", zIndex: 400, opacity: locating ? 0.6 : 1,
               }}
-              aria-label="מרכז מפה"
+              aria-label="מרכז את המפה למיקום שלי"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="#0A2B6B" strokeWidth="2" style={{ width: 18, height: 18 }}>
                 <circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/>
