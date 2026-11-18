@@ -49,7 +49,7 @@ export async function GET(req: Request) {
   };
 
   const since = trendStart.toISOString();
-  const [today, yesterday, rev, pl, cl, de, lo, trendRpc] = await Promise.all([
+  const [today, yesterday, rev, pl, cl, de, lo, trendRpc, weekDay, ev] = await Promise.all([
     day(todayStart, now),
     day(yesterdayStart, todayStart),
     db.from("place_reviews").select("id,created_at,user_id,rating,is_hidden,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
@@ -58,6 +58,11 @@ export async function GET(req: Request) {
     db.from("place_detail_requests").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
     db.from("place_location_requests").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
     db.rpc("analytics_summary", { p_since: trendStart.toISOString(), p_until: now.toISOString(), p_category: null }),
+    day(weekStart, now),
+    // "Useful actions" = the map solved a real-world need (call, website, navigate), plus saves and shares
+    db.from("telemetry_events").select("visitor_id,event_name,created_at")
+      .in("event_name", ["call", "whatsapp", "website", "navigate", "share", "save"])
+      .gte("created_at", since).limit(5000),
   ]);
 
   const rows = {
@@ -84,6 +89,25 @@ export async function GET(req: Request) {
     claim: windows(rows.claim),
     edit: windows(rows.edit),
     move: windows(rows.move),
+  };
+
+  const evRows = (ev.data ?? []) as { visitor_id: string | null; event_name: string; created_at: string }[];
+  const REAL_WORLD = new Set(["call", "whatsapp", "website", "navigate"]);
+  const actionsIn = (from: Date, to: Date | null) => {
+    const inRange = evRows.filter((r) => {
+      const t = new Date(r.created_at).getTime();
+      return t >= from.getTime() && (!to || t < to.getTime());
+    });
+    const stat = (match: (name: string) => boolean) => {
+      const rs = inRange.filter((r) => match(r.event_name));
+      return { times: rs.length, people: new Set(rs.map((r) => r.visitor_id).filter(Boolean)).size };
+    };
+    return { real: stat((n) => REAL_WORLD.has(n)), saved: stat((n) => n === "save"), shared: stat((n) => n === "share") };
+  };
+  const actions = {
+    today: actionsIn(todayStart, null),
+    yesterday: actionsIn(yesterdayStart, todayStart),
+    week: actionsIn(weekStart, null),
   };
 
   // Different PEOPLE who added something: one person adding 2 things counts once ("one-person show" check)
@@ -144,6 +168,8 @@ export async function GET(req: Request) {
     yesterday,
     contributions,
     contributors,
+    actions,
+    week: { people: weekDay.people },
     trend,
     latest,
   });

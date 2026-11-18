@@ -12,6 +12,8 @@ type Day = {
   sources: { src: string; people: number }[];
 };
 type Win = { today: number; yesterday: number; week: number };
+type Stat = { times: number; people: number };
+type Actions = { real: Stat; saved: Stat; shared: Stat };
 type TrendDay = { day: string; visitors: number; review: number; place: number; edit: number; move: number; claim: number };
 
 const STACK: { key: "review" | "place" | "edit" | "move" | "claim"; label: string; color: string }[] = [
@@ -63,6 +65,54 @@ function DayBars({ days, parts, max, marks }: { days: TrendDay[]; parts: (d: Tre
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** The second KPI: did the map solve a real-world need? Counts PEOPLE (times in small print). */
+function UsefulActions({ data }: { data: Overview }) {
+  const a = data.actions;
+  if (!a) return null;
+  const rows: { label: string; key: keyof Actions; hint: string }[] = [
+    { label: "Real-world actions (call, website, navigate)", key: "real", hint: "The map helped someone reach a place" },
+    { label: "Places saved for later", key: "saved", hint: "Added to favorites" },
+    { label: "Places shared with others", key: "shared", hint: "Sent to someone else: your best free growth" },
+  ];
+  const rate = (p: number, total: number) => (total ? `${p} of ${total} visitors (${Math.round((p / total) * 100)}%)` : `${p} of ${total} visitors`);
+  return (
+    <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
+      <h3 className="font-bold text-[#0A2B6B]">Is the map useful? (useful actions)</h3>
+      <p className="text-xs text-gray-500">
+        Different people who did it (the number of times is in small print). Small numbers: read the counts, not the percentages.
+        WhatsApp isn&apos;t counted because places have no WhatsApp button yet (only a phone call).
+      </p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-gray-500">
+            <th className="text-left font-semibold py-1"></th>
+            <th className="text-right font-semibold">Today</th>
+            <th className="text-right font-semibold">Yesterday</th>
+            <th className="text-right font-semibold">Last 7 days</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key} className="border-t" title={r.hint}>
+              <td className="py-1.5">{r.label}</td>
+              {(["today", "yesterday", "week"] as const).map((w) => (
+                <td key={w} className={`text-right ${w === "today" ? "font-semibold" : ""}`}>
+                  {a[w][r.key].people}
+                  <span className="ml-1 text-[11px] font-normal text-gray-400">({a[w][r.key].times}×)</span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="text-sm text-gray-700">
+        Visitors who took a real-world action: today <strong>{rate(a.today.real.people, data.today.people)}</strong>
+        {" · "}last 7 days <strong>{rate(a.week.real.people, data.week?.people ?? 0)}</strong>
+      </div>
     </div>
   );
 }
@@ -151,6 +201,8 @@ type Overview = {
   yesterday: Day;
   contributions: { review: Win; place: Win; claim: Win; edit: Win; move: Win };
   contributors: Win;
+  actions: { today: Actions; yesterday: Actions; week: Actions };
+  week: { people: number };
   trend: TrendDay[];
   latest: { kind: "review" | "place" | "claim" | "edit" | "move"; label: string; at: string }[];
 };
@@ -314,6 +366,7 @@ export default function NewInfoOverview() {
               </div>
             </div>
           </div>
+          <UsefulActions data={data} />
           <Direction trend={data.trend ?? []} />
           <TrendCharts trend={data.trend ?? []} />
         </>
