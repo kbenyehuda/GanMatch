@@ -3,7 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 import { publicEnv } from "@/lib/env/public";
 import { serverEnv } from "@/lib/env/server";
 import type { Place, PlaceCategory } from "@/types/places";
-import { escapeHtml, notifyAdmins } from "@/lib/admin-notify";
+import { escapeHtml, notifyAdmins, requestLinksHtml } from "@/lib/admin-notify";
+import { checkReview } from "@/lib/review-check";
+import { HOLD_REASON_LABELS } from "@/lib/hold-reasons";
 import { cleanPlaceName } from "@/lib/place-name";
 
 const VALID_CATEGORIES: PlaceCategory[] = [
@@ -153,19 +155,35 @@ export async function POST(request: NextRequest) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
+  const cleanName = cleanPlaceName(name, category);
+
+  // The same place added again within a day (a retry when the site was slow, or two people adding the
+  // same business) returns the one that already exists instead of making a duplicate (2026-11-18:
+  // one dietitian was added twice during the outage).
+  const { data: existing } = isPrivatePerson ? { data: null } : await admin.from("places")
+    .select("id").eq("source", "community").eq("is_hidden", false).eq("name", cleanName)
+    .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+
   // Insert the place using raw SQL so we can use ST_MakePoint
-  const { data: inserted, error: insertErr } = await admin.rpc("insert_community_place", {
-    p_name: cleanPlaceName(name, category),
-    p_category: category,
-    p_lon: isPrivatePerson ? null : lon,
-    p_lat: isPrivatePerson ? null : lat,
-    p_address: isPrivatePerson ? null : address,
-    p_description: description,
-    p_phone: phone ? [phone] : null,
-    p_website: website,
-    p_hours: hours,
-    p_user_id: userData.user.id,
-  });
+  let inserted: unknown = existing?.id ?? null;
+  let insertErr: { message: string } | null = null;
+  if (!existing) {
+    const res = await admin.rpc("insert_community_place", {
+      p_name: cleanName,
+      p_category: category,
+      p_lon: isPrivatePerson ? null : lon,
+      p_lat: isPrivatePerson ? null : lat,
+      p_address: isPrivatePerson ? null : address,
+      p_description: description,
+      p_phone: phone ? [phone] : null,
+      p_website: website,
+      p_hours: hours,
+      p_user_id: userData.user.id,
+    });
+    inserted = res.data;
+    insertErr = res.error;
+  }
 
   if (insertErr || !inserted) {
     // Fallback: if RPC doesn't exist yet, return a helpful error
@@ -190,16 +208,37 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Optional review
+  // Optional first recommendation. It goes through the same automatic check as any other
+  // recommendation: before 2026-11-18 it skipped the check and was published at once.
+  let reviewPublished = false;
   if (reviewRating !== null && reviewRating >= 1 && reviewRating <= 5) {
-    await admin.from("place_reviews").insert({
-      user_id: userData.user.id,
-      place_id: placeId,
-      rating: reviewRating,
-      text: reviewText,
-      is_anonymous: reviewAnonymous,
-      reviewer_public_name: reviewerName,
-    });
+    const { data: mine } = await admin.from("place_reviews").select("id")
+      .eq("user_id", userData.user.id).eq("place_id", placeId).maybeSingle();
+    if (!mine) {
+      const check = await checkReview({ placeName: cleanName, rating: reviewRating, text: reviewText });
+      const { data: review } = await admin.from("place_reviews").insert({
+        user_id: userData.user.id,
+        place_id: placeId,
+        rating: reviewRating,
+        text: reviewText,
+        is_anonymous: reviewAnonymous,
+        reviewer_public_name: reviewerName,
+        is_hidden: !check.publish,
+        check_status: check.publish ? "auto_ok" : "held",
+        hold_reasons: check.publish ? null : check.reasons,
+        approved_at: check.publish ? new Date().toISOString() : null,
+      }).select("id").single();
+      reviewPublished = !!review?.id && check.publish;
+      if (!check.publish && review?.id) {
+        await notifyAdmins({
+          subject: `המלצה ממתינה לאישור: ${cleanName}`,
+          html: `<p>המלצה חדשה על <b>${escapeHtml(cleanName)}</b> (נוספה יחד עם מקום חדש) נשמרה מוסתרת: ${escapeHtml(check.reasons.map((r) => HOLD_REASON_LABELS[r]).join(", "))}.</p>
+            <p>דירוג: ${reviewRating} מתוך 5</p>
+            ${reviewText ? `<blockquote style="border-inline-start:3px solid #ccc;padding-inline-start:8px">${escapeHtml(reviewText)}</blockquote>` : ""}
+            ${requestLinksHtml(new URL(request.url).origin, "held-reviews", review.id)}`,
+        });
+      }
+    }
   }
 
   if (isPrivatePerson) {
@@ -229,8 +268,8 @@ export async function POST(request: NextRequest) {
     hmo: null,
     photos: [],
     attributes: {},
-    avg_rating: reviewRating,
-    rec_count: reviewRating ? 1 : 0,
+    avg_rating: reviewPublished ? reviewRating : null,
+    rec_count: reviewPublished ? 1 : 0,
     is_verified: false,
     source: "community",
     lat,
