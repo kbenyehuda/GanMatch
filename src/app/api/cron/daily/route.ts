@@ -93,26 +93,26 @@ async function dailyDigest(admin: SupabaseClient, origin: string): Promise<numbe
       .gte("created_at", since).order("created_at"),
     admin.from("places").select("id,name,place_category,is_hidden,created_at,attributes")
       .eq("source", "community").gte("created_at", since).order("created_at"),
-    admin.from("place_owner_claims").select("id,status,created_at,places(name)")
+    admin.from("place_owner_claims").select("id,status,created_at,places(name,attributes)")
       .gte("created_at", since).order("created_at"),
-    admin.from("place_detail_requests").select("id,changes,reviewed_at,reverted_at,places(name)")
+    admin.from("place_detail_requests").select("id,changes,reviewed_at,reverted_at,places(name,attributes)")
       .eq("auto_applied", true).gte("reviewed_at", since).order("reviewed_at"),
-    admin.from("place_location_requests").select("id,requested_address,reviewed_at,reverted_at,places(name)")
+    admin.from("place_location_requests").select("id,requested_address,reviewed_at,reverted_at,places(name,attributes)")
       .eq("auto_applied", true).gte("reviewed_at", since).order("reviewed_at"),
   ]);
 
   const label = (k: string) => KIDS_FIELD_LABELS[k] ?? BASIC_FIELD_LABELS[k] ?? k;
-  // A place hidden as a duplicate (attributes.duplicate_of) and its recommendations are left out
+  // A place hidden as a duplicate (attributes.duplicate_of) and everything about it (recommendations, claims, edits, pin moves) is left out
   const notDuplicate = (r: any) => !(r.attributes ?? r.places?.attributes)?.duplicate_of;
   const reviewRows = ((reviews ?? []) as any[]).filter(notDuplicate);
   const placeRows = ((newPlaces ?? []) as any[]).filter(notDuplicate);
-  const claimRows = (claims ?? []) as any[];
+  const claimRows = ((claims ?? []) as any[]).filter(notDuplicate);
   const changeRows = [
-    ...((details ?? []) as any[]).map((d) => {
+    ...((details ?? []) as any[]).filter(notDuplicate).map((d) => {
       const what = Object.keys(d.changes ?? {}).map(label).join(", ");
       return { place: d.places?.name ?? "", what, undone: !!d.reverted_at };
     }),
-    ...((moves ?? []) as any[]).map((m) => ({ place: m.places?.name ?? "", what: `הזזת סיכה${m.requested_address ? `: ${m.requested_address}` : ""}`, undone: !!m.reverted_at })),
+    ...((moves ?? []) as any[]).filter(notDuplicate).map((m) => ({ place: m.places?.name ?? "", what: `הזזת סיכה${m.requested_address ? `: ${m.requested_address}` : ""}`, undone: !!m.reverted_at })),
   ];
   const total = reviewRows.length + placeRows.length + claimRows.length + changeRows.length;
 
