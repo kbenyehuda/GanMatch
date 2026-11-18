@@ -1345,9 +1345,11 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
       />
 
       {/* Phone: add to home screen (after looking around) / open in the real browser (in-app browsers) */}
-      {(activeTab === "home" || activeTab === "map") && !detailPlace && !showAddModal && !locationRequestPlace && !pickingPin && !pickingLocationPin && !showShareBanner && (
-        <InstallPrompt engaged={openedPlace} />
-      )}
+      {/* Always mounted so the "add as an app" button at the top can open it; `suppressed` only stops the automatic showing */}
+      <InstallPrompt
+        engaged={openedPlace}
+        suppressed={!((activeTab === "home" || activeTab === "map") && !detailPlace && !showAddModal && !locationRequestPlace && !pickingPin && !pickingLocationPin && !showShareBanner)}
+      />
 
       {/* Toast */}
       <Toast text={toastText} visible={toastVisible} />

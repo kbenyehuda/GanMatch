@@ -32,6 +32,17 @@ export function addedFromThisBrowser() {
 const listeners = new Set<() => void>();
 let started = false;
 
+/** Running from the home screen, or added from this browser. */
+export function isAppAdded() {
+  return isInstalled() || addedFromThisBrowser();
+}
+
+/** The person says they added it (iPhone gives the browser no signal). Hides the add buttons. */
+export function markAppAdded() {
+  markInstalled();
+  listeners.forEach((l) => l());
+}
+
 export function startInstallCapture() {
   if (started || typeof window === "undefined") return;
   started = true;
@@ -66,6 +77,18 @@ export async function promptInstall(): Promise<boolean> {
   const { outcome } = await e.userChoice;
   if (outcome === "accepted") markInstalled();
   return outcome === "accepted";
+}
+
+// The "add as an app" button at the top asks the banner to open, whatever its own rules say.
+const bannerRequestListeners = new Set<() => void>();
+
+export function requestInstallBanner() {
+  bannerRequestListeners.forEach((l) => l());
+}
+
+export function onInstallBannerRequest(fn: () => void) {
+  bannerRequestListeners.add(fn);
+  return () => { bannerRequestListeners.delete(fn); };
 }
 
 export type PhoneKind = "ios" | "android" | "other";

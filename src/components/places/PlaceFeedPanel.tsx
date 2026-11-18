@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, ChevronDown, Loader2, LogOut, LogIn, Heart } from "lucide-react";
+import { Search, X, ChevronDown, Loader2, LogOut, LogIn, Heart, Smartphone } from "lucide-react";
+import { isAppAdded, checkAlreadyInstalled, onInstallAvailabilityChange, requestInstallBanner } from "@/lib/install-prompt";
 import type { Place, PlaceCategory } from "@/types/places";
 import { searchPlaces } from "@/lib/places-api";
 import { PlaceCard } from "./PlaceCard";
@@ -201,6 +202,13 @@ export function PlaceFeedPanel({
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  // Hidden once the app is on the home screen (running from it, added from this browser, or she said so)
+  const [installed, setInstalled] = useState(true);
+  useEffect(() => {
+    setInstalled(isAppAdded());
+    void checkAlreadyInstalled().then((yes) => { if (yes) setInstalled(true); });
+    return onInstallAvailabilityChange(() => setInstalled(isAppAdded()));
+  }, []);
   useBackClose(showSortSheet, () => setShowSortSheet(false));
   useBackClose(showProfileMenu, () => setShowProfileMenu(false));
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -316,6 +324,21 @@ export function PlaceFeedPanel({
           )}
         </div>
       </div>
+
+      {/* ── Add as an app (everyone, until it's actually installed) ───────────── */}
+      {!installed && (
+        <div style={{ background: "#fff", padding: "0 20px 10px", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={requestInstallBanner}
+            className="w-full flex items-center justify-center gap-2 font-hebrew font-bold"
+            style={{ height: 40, borderRadius: 12, background: "#EEF4FE", border: "1px solid #D5E3FA", color: "#0A2B6B", fontSize: 13.5, cursor: "pointer" }}
+          >
+            <Smartphone style={{ width: 16, height: 16 }} />
+            הוספה כאפליקציה
+          </button>
+        </div>
+      )}
 
       {/* ── Search ───────────────────────────────────────────────────────────── */}
       <div style={{ background: "#fff", padding: "0 20px 12px", display: "flex", gap: 8, flexShrink: 0 }}>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { X, Share, SquarePlus, MoreVertical, ExternalLink } from "lucide-react";
 import { track } from "@/lib/analytics";
 import {
-  canPromptInstall, onInstallAvailabilityChange, promptInstall,
+  canPromptInstall, onInstallAvailabilityChange, onInstallBannerRequest, promptInstall, markAppAdded,
   phoneKind, isInstalled, isInAppBrowser, addedFromThisBrowser, checkAlreadyInstalled, type PhoneKind,
 } from "@/lib/install-prompt";
 
@@ -58,8 +58,11 @@ const bannerStyle: React.CSSProperties = {
   boxShadow: "0 12px 30px rgba(10,43,107,.35)",
 };
 
-export function InstallPrompt({ engaged }: { engaged: boolean }) {
+export function InstallPrompt({ engaged, suppressed = false }: { engaged: boolean; suppressed?: boolean }) {
   const [ready, setReady] = useState(false);
+  const [isPhone, setIsPhone] = useState(false);
+  // Opened by the "add as an app" button: shows regardless of visit count, dismissal or device
+  const [forced, setForced] = useState(false);
   const [kind, setKind] = useState<PhoneKind>("other");
   const [inApp, setInApp] = useState(false);
   const [visits, setVisits] = useState(1);
@@ -71,7 +74,8 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
   useEffect(() => {
     // Phones, and iPads: iOS has no automatic install prompt, so the "how to add" steps matter there too
     const phone = (window.matchMedia?.("(max-width: 767px)").matches ?? false) || phoneKind() === "ios";
-    if (!phone || isInstalled()) return;
+    if (isInstalled()) return;
+    setIsPhone(phone);
     setKind(phoneKind());
     setInApp(isInAppBrowser());
     setVisits(countVisit());
@@ -80,14 +84,21 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
     setCanPrompt(canPromptInstall());
     setReady(true);
     void checkAlreadyInstalled().then((yes) => { if (yes) setHidden(true); });
-    return onInstallAvailabilityChange(() => {
+    const offAvailability = onInstallAvailabilityChange(() => {
       setCanPrompt(canPromptInstall());
-      if (isInstalled() || addedFromThisBrowser()) setHidden(true);
+      if (isInstalled() || addedFromThisBrowser()) { setHidden(true); setForced(false); }
     });
+    const offRequest = onInstallBannerRequest(() => {
+      setCanPrompt(canPromptInstall());
+      setShowSteps(false);
+      setForced(true);
+      track("install_button_click", { kind: phoneKind() }, null);
+    });
+    return () => { offAvailability(); offRequest(); };
   }, []);
 
-  const showInApp = ready && inApp && !inAppHidden;
-  const showInstall = ready && !inApp && !hidden && (engaged || visits >= 2);
+  const showInApp = ready && inApp && (forced || (isPhone && !suppressed && !inAppHidden));
+  const showInstall = ready && !inApp && (forced || (isPhone && !suppressed && !hidden && (engaged || visits >= 2)));
 
   useEffect(() => {
     if (showInApp) trackShownOnce("inapp_note_shown", { kind });
@@ -126,6 +137,7 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
             onClick={() => {
               try { window.sessionStorage.setItem(INAPP_DISMISSED_KEY, "1"); } catch {}
               setInAppHidden(true);
+              setForced(false);
             }}
             style={{ background: "none", border: 0, color: "rgba(255,255,255,.75)", cursor: "pointer", padding: 2, lineHeight: 0 }}
           >
@@ -142,6 +154,7 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
     try { window.localStorage.setItem(DISMISSED_KEY, String(Date.now())); } catch {}
     track("install_dismissed", { kind }, null);
     setHidden(true);
+    setForced(false);
   };
 
   const onAdd = async () => {
@@ -149,7 +162,7 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
     if (canPrompt) {
       const accepted = await promptInstall();
       setCanPrompt(false);
-      if (accepted) { setHidden(true); return; }
+      if (accepted) { setHidden(true); setForced(false); return; }
     }
     setShowSteps(true);
   };
@@ -207,7 +220,23 @@ export function InstallPrompt({ engaged }: { engaged: boolean }) {
             </>
           )}
         </ol>
-      ) : (
+      ) : null}
+      {showSteps && (
+        <button
+          type="button"
+          onClick={() => {
+            markAppAdded();
+            track("install_marked_added", { kind }, null);
+            setHidden(true);
+            setForced(false);
+          }}
+          className="w-full font-bold"
+          style={{ marginTop: 10, background: "rgba(255,255,255,.14)", color: "#fff", border: 0, borderRadius: 12, padding: "9px 12px", fontSize: 13.5, cursor: "pointer" }}
+        >
+          כבר הוספתי
+        </button>
+      )}
+      {!showSteps && (
         <button
           type="button"
           onClick={onAdd}

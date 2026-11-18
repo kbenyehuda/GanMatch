@@ -3,6 +3,7 @@
 import { supabase } from "@/lib/supabase";
 import { publicEnv } from "@/lib/env/public";
 import { track, SIGNING_IN_KEY } from "@/lib/analytics";
+import { isInstalled, phoneKind } from "@/lib/install-prompt";
 
 /**
  * Google sign-in.
@@ -121,13 +122,31 @@ async function redirectSignIn(returnTo?: string): Promise<void> {
 }
 
 /**
+ * Running from the home screen on an iPhone/iPad. There the app's popups can't hand Google's
+ * answer back to the page (the popup closes, nothing arrives, and the visitor lands on the
+ * login screen again), so we always use the full-page redirect, which returns to the app.
+ * Other devices keep the popup: no problem was seen there.
+ */
+function inHomeScreenApp(): boolean {
+  try {
+    return isInstalled() && phoneKind() === "ios";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sign in from any of our own buttons. Opens Google's window on our page; if Google
- * won't show it, falls back to the redirect.
+ * won't show it, falls back to the redirect. From the home-screen app it goes straight
+ * to the redirect.
  * @param returnTo page to come back to after a redirect; defaults to the current page.
  */
 export async function signInWithGoogle(returnTo?: string): Promise<void> {
   if (!supabase || typeof window === "undefined") return;
-  track("sign_in_click", undefined, null);
+  const standalone = inHomeScreenApp();
+  track("sign_in_click", standalone ? { standalone: true } : undefined, null);
+
+  if (standalone) return redirectSignIn(returnTo);
 
   const gis = await loadGoogleSignIn();
   if (!gis) return redirectSignIn(returnTo);
@@ -148,6 +167,8 @@ export async function signInWithGoogle(returnTo?: string): Promise<void> {
  * sign-in isn't available (caller then shows its own button).
  */
 export async function renderGoogleButton(el: HTMLElement, opts?: { width?: number }): Promise<boolean> {
+  // Home-screen app: no Google popup button, the caller shows our own redirect button instead
+  if (inHomeScreenApp()) return false;
   const gis = await loadGoogleSignIn();
   if (!gis) return false;
   await initGoogle(gis, () => void redirectSignIn());

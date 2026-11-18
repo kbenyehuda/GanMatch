@@ -32,6 +32,8 @@ export const ANALYTICS_EVENT_LABELS: Record<string, string> = {
   install_banner_shown: "Saw \"add to home screen\"",
   install_click: "Tapped \"add to home screen\"",
   install_dismissed: "Closed \"add to home screen\"",
+  install_button_click: "Tapped the \"add as an app\" button at the top",
+  install_marked_added: "Said \"I already added it\"",
   app_installed: "Added the app to home screen",
   inapp_note_shown: "Saw \"open in browser\" (in-app browser)",
   open_in_browser_click: "Tapped \"open in Chrome\"",
