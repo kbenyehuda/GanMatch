@@ -21,6 +21,7 @@ import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME, reportReviewMailto, reportPlaceM
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
 import { OwnerModal } from "./OwnerModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
+import { formatMealTypeHe } from "@/lib/gan-display";
 import { GAN_APPROACH_LABELS, displayTags, normalizeTag, reviewTagCounts, type GanApproach } from "@/lib/place-facts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -259,6 +260,30 @@ function ReviewCard({ review, place, helpfulIds, onHelpful, currentUserId, onCon
 
 // ─── Kids attribute chips ─────────────────────────────────────────────────────
 
+const VACANCY_TAG = "יש מקום פנוי";
+/** A vacancy mention older than this is probably no longer true, so it isn't shown. */
+const VACANCY_MAX_AGE_DAYS = 92;
+
+/**
+ * Parent tags for the details list. Vacancy changes all the time, so it never gets a parent count:
+ * it shows only if the newest recommendation mentioning it is recent, and always with its month and year.
+ */
+function detailParentTags(reviews: PlaceReview[], place: Place): { label: string; count: number; note?: string }[] {
+  const tags: { label: string; count: number; note?: string }[] = reviewTagCounts(reviews, place).filter((t) => t.label !== VACANCY_TAG);
+  let newest = 0;
+  for (const r of reviews) {
+    if (!displayTags(r.tags, place).includes(VACANCY_TAG)) continue;
+    const t = new Date(r.created_at).getTime();
+    if (t > newest) newest = t;
+  }
+  if (newest > 0 && Date.now() - newest <= VACANCY_MAX_AGE_DAYS * 86_400_000) {
+    // Month and year only, like the review cards: the exact day could match it to a WhatsApp message
+    const when = new Date(newest).toLocaleDateString("he-IL", { month: "long", year: "numeric" });
+    tags.push({ label: VACANCY_TAG, count: 1, note: `נכון ל${when}` });
+  }
+  return tags;
+}
+
 /** Chips shown before "+N נוספים": about two lines on a phone. */
 const DETAIL_CHIPS_VISIBLE = 6;
 
@@ -267,14 +292,16 @@ const DETAIL_CHIPS_VISIBLE = 6;
  * shows once, with "· N הורים". Mentioned ones come first (most mentioned first), the rest after,
  * and everything past the first few folds into a "+N נוספים" pill.
  */
-function KidsAttributeChips({ attrs, parentTags = [] }: { attrs: Record<string, unknown>; parentTags?: { label: string; count: number }[] }) {
+function KidsAttributeChips({ attrs, parentTags = [] }: { attrs: Record<string, unknown>; parentTags?: { label: string; count: number; note?: string }[] }) {
   const [expanded, setExpanded] = useState(false);
-  const chips: { key: string; icon?: React.ReactNode; text: string; count?: number }[] = [];
+  const chips: { key: string; icon?: React.ReactNode; text: string; count?: number; note?: string }[] = [];
   if (attrs.min_age_months != null && attrs.max_age_months != null) {
     const toLabel = (m: number) => m < 24 ? `${m} חודשים` : `${Math.floor(m / 12)} שנים`;
     chips.push({ key: "age", text: `גיל: ${toLabel(Number(attrs.min_age_months))}–${toLabel(Number(attrs.max_age_months))}` });
   }
-  if (attrs.meal_type) chips.push({ key: "meal", text: `ארוחות: ${String(attrs.meal_type)}` });
+  // Hebrew label only (the raw value used to show as IN_HOUSE_COOK); "בישול במקום" then merges with the same parent tag
+  const mealLabel = formatMealTypeHe(attrs.meal_type as Parameters<typeof formatMealTypeHe>[0]);
+  if (mealLabel) chips.push({ key: "meal", text: mealLabel });
   if (attrs.has_outdoor_space) chips.push({ key: "outdoor", text: "חצר חיצונית" });
   if (attrs.monthly_price_nis) chips.push({ key: "price", text: `${Number(attrs.monthly_price_nis).toLocaleString("he-IL")} ₪ לחודש` });
   if (attrs.friday_schedule) {
@@ -325,8 +352,8 @@ function KidsAttributeChips({ attrs, parentTags = [] }: { attrs: Record<string, 
   const byLabel = new Map(chips.map((c) => [normalizeTag(c.text), c]));
   for (const t of parentTags) {
     const existing = byLabel.get(normalizeTag(t.label));
-    if (existing) existing.count = t.count;
-    else chips.push({ key: `said-${t.label}`, text: t.label, count: t.count });
+    if (existing) { existing.count = t.count; existing.note = t.note; }
+    else chips.push({ key: `said-${t.label}`, text: t.label, count: t.count, note: t.note });
   }
   // Array.prototype.sort is stable: chips with equal counts keep their order
   chips.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
@@ -339,7 +366,8 @@ function KidsAttributeChips({ attrs, parentTags = [] }: { attrs: Record<string, 
         <span key={c.key} className="font-hebrew inline-flex items-center gap-1" style={{ fontSize: 12, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: c.count ? "#DCF3E6" : "#E8F0FB", color: c.count ? "#1D7F4F" : "#0A2B6B" }}>
           {c.icon}
           {c.text}
-          {!!c.count && c.count > 1 && <span style={{ fontWeight: 500, opacity: 0.8 }}>· {c.count} הורים</span>}
+          {c.note ? <span style={{ fontWeight: 500, opacity: 0.8 }}>· {c.note}</span>
+            : !!c.count && c.count > 1 && <span style={{ fontWeight: 500, opacity: 0.8 }}>· {c.count} הורים</span>}
         </span>
       ))}
       {hidden > 0 && (
@@ -778,7 +806,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
                   </button>
                 )}
               </div>
-              <KidsAttributeChips attrs={attrs} parentTags={reviewTagCounts(reviews, place)} />
+              <KidsAttributeChips attrs={attrs} parentTags={detailParentTags(reviews, place)} />
               {(() => {
                 const missing: string[] = [];
                 if (attrs.monthly_price_nis == null) missing.push("מחיר");
