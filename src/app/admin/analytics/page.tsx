@@ -5,6 +5,7 @@ import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { ANALYTICS_EVENT_LABELS } from "@/lib/analytics-events";
 import { isBrowserExcluded, includeThisBrowser } from "@/lib/analytics";
+import NewInfoOverview from "./NewInfoOverview";
 
 // Admin-only page, in English by the admin's choice (2026-11-02). Layout: pulse KPIs → demand + funnel →
 // content inflow + moderation → who/when detail. Admins' own visits aren't counted.
@@ -282,6 +283,8 @@ export default function AdminAnalyticsPage() {
         {" "}Times are Israel time. The vertical buttons narrow place-related numbers; visits and searches are site-wide.
       </p>
       {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+
+      <NewInfoOverview />
 
       {data && p ? (
         <>
