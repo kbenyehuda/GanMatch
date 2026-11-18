@@ -387,6 +387,9 @@ export interface PlaceDetailProps {
   onClose: () => void;
   isSaved?: boolean;
   onToggleSave?: () => void;
+  /** Email updates for this saved place (signed-in only, off by default) */
+  alertsOn?: boolean;
+  onToggleAlerts?: () => void;
   onShowToast?: (msg: string) => void;
   userLocation?: { lon: number; lat: number } | null;
   onRequestLocationChange?: (place: Place) => void;
@@ -395,7 +398,7 @@ export interface PlaceDetailProps {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onShowToast, userLocation = null, onRequestLocationChange, onPlaceUpdated }: PlaceDetailProps) {
+export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, alertsOn = false, onToggleAlerts, onShowToast, userLocation = null, onRequestLocationChange, onPlaceUpdated }: PlaceDetailProps) {
   const { user, session } = useSession();
   const color = PLACE_CATEGORY_COLORS[place.place_category] ?? "#8A95A8";
   const lightColor = lightenColor(color);
@@ -636,6 +639,21 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, onS
       {/* ── Scrollable body ───────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide-touch" style={{ paddingBottom: 120 }}>
         <div style={{ padding: 20 }}>
+
+          {/* Email updates for a saved place: signed-in only, off until they switch it on */}
+          {isSaved && onToggleAlerts && user && (
+            <button type="button" role="switch" aria-checked={alertsOn} onClick={onToggleAlerts}
+              className="flex items-center justify-between gap-3 w-full font-hebrew mb-3"
+              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #DCE6F5", background: alertsOn ? "#EEF4FF" : "#fff", cursor: "pointer", textAlign: "start" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#0A2B6B" }}>
+                עדכונים במייל כשמשהו משתנה
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "#6B7A99" }}>מייל אחד ביום, רק אם היה שינוי. אפשר לכבות בכל רגע.</span>
+              </span>
+              <span aria-hidden style={{ flexShrink: 0, width: 38, height: 22, borderRadius: 11, background: alertsOn ? "#0A2B6B" : "#C7D2E6", position: "relative" }}>
+                <span style={{ position: "absolute", top: 2, insetInlineStart: alertsOn ? 18 : 2, width: 18, height: 18, borderRadius: 9, background: "#fff", transition: "inset-inline-start .15s" }} />
+              </span>
+            </button>
+          )}
 
           {/* Tags */}
           <div className="flex gap-1.5 flex-wrap mb-2.5">

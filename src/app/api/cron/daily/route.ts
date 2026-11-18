@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env/server";
 import { escapeHtml, notifyAdmins } from "@/lib/admin-notify";
+import { sendFollowAlerts } from "@/lib/follow-alerts";
 import { KIDS_FIELD_LABELS } from "@/lib/kids-attributes";
 import { BASIC_FIELD_LABELS } from "@/lib/place-basic-details";
 
@@ -30,7 +31,10 @@ export async function GET(req: Request) {
 
   const deleted = await deleteDueAccounts(admin);
   const summarized = await dailyDigest(admin, new URL(req.url).origin);
-  return NextResponse.json({ deleted, summarized });
+  let alerts = { sent: 0, failed: 0 };
+  try { alerts = await sendFollowAlerts(admin, new URL(req.url).origin); }
+  catch (e) { console.error("[cron/daily] follow alerts failed:", e); }
+  return NextResponse.json({ deleted, summarized, alerts });
 }
 
 async function deleteDueAccounts(admin: SupabaseClient): Promise<{ done: number; failed: number }> {

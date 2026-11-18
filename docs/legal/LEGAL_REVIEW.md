@@ -179,3 +179,13 @@ Also read the mixed ones: reviews rated 4 whose text contains "אבל", "חבל"
 - Telemetry (`/api/telemetry/track`) is called only from legacy `GanDetail.tsx`, which the live app doesn't use, so the live app doesn't log behaviour.
 - Contact relay: `src/app/api/contact-reviewer/route.ts` logs sender id, email and message in `place_review_contact_messages` (no SELECT policy, so private) and sends via Resend with Reply-To = the body's `senderEmail`.
 - Google: `config/api-usage-limits.json` has `google_places.enabled=false`. The Google data in the DB came from the scripts.
+
+---
+
+## Added 2026-11-18: follow-a-place email updates (for the lawyer)
+
+- Signed-in people can switch on "עדכונים במייל" per saved place. **Off by default**; the opt-in time is stored (`place_follows.alerts_opted_in_at`) as proof of consent.
+- Approved place owners get the same daily email about new recommendations and edits by others on their place, without a separate switch (they can still use the unsubscribe link).
+- At most one email a day, only when something changed. Every email has an unsubscribe link (also the one-click header); unsubscribing turns off everything for that person.
+- Sent from a separate address (`updates@givemytimeapp.com`) through Resend. The content is information about places the person chose to follow, not an offer to buy anything.
+- **Lawyer questions:** (a) is a separate opt-in enough, or is anything more needed for owner alerts? (b) is the wording in privacy §3 ("מקומות שמורים ועדכונים במייל") fine? (c) does storing the saved places in the account change the retention section (§8)?

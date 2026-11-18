@@ -43,6 +43,9 @@ export const serverEnv = {
   SUPABASE_SERVICE_ROLE_KEY: getTrimmed("SUPABASE_SERVICE_ROLE_KEY"),
   RESEND_API_KEY: getTrimmed("RESEND_API_KEY"),
   RESEND_FROM_EMAIL: getTrimmed("RESEND_FROM_EMAIL"),
+  // Parent/owner update emails come from their own address, e.g. "GiveMyTime עדכונים <updates@givemytimeapp.com>"
+  RESEND_FROM_UPDATES_EMAIL: getTrimmed("RESEND_FROM_UPDATES_EMAIL"),
+  RESEND_REPLY_TO: getTrimmed("RESEND_REPLY_TO"),
   OPENAI_API_KEY: getTrimmed("OPENAI_API_KEY"),
   GOOGLE_PLACES_API_KEY: getTrimmed("GOOGLE_PLACES_API_KEY"),
   // Monthly dollar budgets for paid external API calls (OpenAI, Mapbox,

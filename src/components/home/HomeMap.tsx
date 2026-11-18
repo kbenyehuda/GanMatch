@@ -330,14 +330,68 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
     try { const s = window.localStorage.getItem("gmt_saved"); return s ? new Set(JSON.parse(s)) : new Set(); }
     catch { return new Set(); }
   });
+  // Signed-in people also keep their hearts in the database (works across devices, and lets them
+  // switch on email updates per place). Guests stay browser-only.
+  const [alertIds, setAlertIds] = useState<Set<string>>(new Set());
+  const followsApi = useCallback(async (init?: { method: "POST"; body: unknown }) => {
+    if (!supabase) return null;
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return null;
+      const res = await fetch("/api/places/follows", {
+        method: init?.method ?? "GET",
+        headers: { Authorization: `Bearer ${token}`, ...(init ? { "Content-Type": "application/json" } : {}) },
+        ...(init ? { body: JSON.stringify(init.body) } : {}),
+      });
+      return res.ok ? await res.json() : null;
+    } catch { return null; }
+  }, []);
+  const savedIdsRef = useRef(savedIds);
+  useEffect(() => { savedIdsRef.current = savedIds; }, [savedIds]);
   const toggleSave = useCallback((id: string) => {
+    const saved = !savedIdsRef.current.has(id);
     setSavedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (saved) next.add(id); else next.delete(id);
       try { window.localStorage.setItem("gmt_saved", JSON.stringify(Array.from(next))); } catch {}
       return next;
     });
-  }, []);
+    if (!saved) setAlertIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    void followsApi({ method: "POST", body: { place_id: id, following: saved } });
+  }, [followsApi]);
+  const toggleAlerts = useCallback((id: string) => {
+    if (!user) return;
+    const on = !alertIds.has(id);
+    setAlertIds(prev => { const n = new Set(prev); if (on) n.add(id); else n.delete(id); return n; });
+    if (on && !savedIdsRef.current.has(id)) {
+      setSavedIds(prev => {
+        const next = new Set(prev).add(id);
+        try { window.localStorage.setItem("gmt_saved", JSON.stringify(Array.from(next))); } catch {}
+        return next;
+      });
+    }
+    void followsApi({ method: "POST", body: { place_id: id, email_alerts: on } });
+  }, [alertIds, user, followsApi]);
+  // On sign-in: pull the saved places from the database and merge the browser's hearts into it
+  useEffect(() => {
+    if (!user) { setAlertIds(new Set()); return; }
+    let cancelled = false;
+    (async () => {
+      const data = await followsApi();
+      if (cancelled || !data?.follows) return;
+      const server = new Set<string>(data.follows.map((f: { place_id: string }) => f.place_id));
+      const local = Array.from(savedIdsRef.current);
+      const missing = local.filter((id) => !server.has(id));
+      if (missing.length) void followsApi({ method: "POST", body: { merge_ids: missing } });
+      setAlertIds(new Set<string>(data.follows.filter((f: { email_alerts: boolean }) => f.email_alerts).map((f: { place_id: string }) => f.place_id)));
+      setSavedIds((prev) => {
+        const next = new Set<string>(Array.from(prev).concat(Array.from(server)));
+        try { window.localStorage.setItem("gmt_saved", JSON.stringify(Array.from(next))); } catch {}
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [user, followsApi]);
 
   // ── Saved-place progress (contacted / visited / applied) ────────────────────
   const [savedProgress, setSavedProgress] = useState<Record<string, PlaceProgress>>(() => {
@@ -911,6 +965,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                     place={detailPlace}
                     onClose={() => { setDetailPlace(null); setSelectedPlace(null); }}
                     isSaved={savedIds.has(detailPlace.id)}
+                    alertsOn={alertIds.has(detailPlace.id)}
+                    onToggleAlerts={() => { const on = !alertIds.has(detailPlace.id); toggleAlerts(detailPlace.id); showToast(on ? "נעדכן אתכם במייל כשמשהו משתנה" : "העדכונים במייל כובו"); }}
                     onToggleSave={() => { toggleSave(detailPlace.id); showToast(savedIds.has(detailPlace.id) ? "הוסר מהמועדפים" : "נשמר למועדפים ❤️"); }}
                     onShowToast={showToast}
                     onRequestLocationChange={(p) => setLocationRequestPlace(p)}
@@ -1213,6 +1269,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
             place={detailPlace}
             onClose={() => setDetailPlace(null)}
             isSaved={savedIds.has(detailPlace.id)}
+            alertsOn={alertIds.has(detailPlace.id)}
+            onToggleAlerts={() => { const on = !alertIds.has(detailPlace.id); toggleAlerts(detailPlace.id); showToast(on ? "נעדכן אתכם במייל כשמשהו משתנה" : "העדכונים במייל כובו"); }}
             onRequestLocationChange={(p) => setLocationRequestPlace(p)}
             onToggleSave={() => {
               const wasSaved = savedIds.has(detailPlace.id);
