@@ -10,6 +10,12 @@ const VALID_CATEGORIES: PlaceCategory[] = [
   "doctor", "clinic", "cafe", "kids", "sport", "attraction", "food", "cosmetics",
 ];
 
+// Same data for every visitor (anon read), so the CDN can serve it without hitting the database.
+// A new/edited place can take up to a minute to show.
+const PUBLIC_CACHE_HEADERS = {
+  "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+};
+
 const supabaseUrl = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -35,7 +41,7 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    return NextResponse.json((data ?? []) as Place[]);
+    return NextResponse.json((data ?? []) as Place[], { headers: PUBLIC_CACHE_HEADERS });
   }
 
   const minLon = parseFloat(searchParams.get("minLon") ?? "");
@@ -76,7 +82,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json((data ?? []) as Place[]);
+  return NextResponse.json((data ?? []) as Place[], { headers: PUBLIC_CACHE_HEADERS });
 }
 
 // POST /api/places — add a new community place

@@ -41,7 +41,10 @@ export async function GET(request: NextRequest) {
   });
 
   if (!rpcError) {
-    return NextResponse.json({ places: (rpcData ?? []) as Place[] });
+    return NextResponse.json(
+      { places: (rpcData ?? []) as Place[] },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   }
 
   // PGRST202 = function not found (migration not applied yet) — fall back to direct query
