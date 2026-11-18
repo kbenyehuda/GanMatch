@@ -52,11 +52,11 @@ export async function GET(req: Request) {
   const [today, yesterday, rev, pl, cl, de, lo, trendRpc] = await Promise.all([
     day(todayStart, now),
     day(yesterdayStart, todayStart),
-    db.from("place_reviews").select("id,created_at,rating,is_hidden,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
-    db.from("places").select("id,created_at,name,is_hidden").eq("source", "community").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
-    db.from("place_owner_claims").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
-    db.from("place_detail_requests").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
-    db.from("place_location_requests").select("id,created_at,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_reviews").select("id,created_at,user_id,rating,is_hidden,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("places").select("id,created_at,suggested_by,name,is_hidden").eq("source", "community").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_owner_claims").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_detail_requests").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_location_requests").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
     db.rpc("analytics_summary", { p_since: trendStart.toISOString(), p_until: now.toISOString(), p_category: null }),
   ]);
 
@@ -84,6 +84,26 @@ export async function GET(req: Request) {
     claim: windows(rows.claim),
     edit: windows(rows.edit),
     move: windows(rows.move),
+  };
+
+  // Different PEOPLE who added something: one person adding 2 things counts once ("one-person show" check)
+  const idField = { review: "user_id", place: "suggested_by", claim: "user_id", edit: "user_id", move: "user_id" } as const;
+  const contributorsIn = (from: Date, to: Date | null) => {
+    const ids = new Set<string>();
+    for (const k of Object.keys(rows) as (keyof typeof rows)[]) {
+      for (const r of rows[k]) {
+        const t = new Date(r.created_at).getTime();
+        if (t < from.getTime() || (to && t >= to.getTime())) continue;
+        const id = r[idField[k]];
+        if (id) ids.add(String(id));
+      }
+    }
+    return ids.size;
+  };
+  const contributors = {
+    today: contributorsIn(todayStart, null),
+    yesterday: contributorsIn(yesterdayStart, todayStart),
+    week: contributorsIn(weekStart, null),
   };
 
   // One entry per Israel day for the last 14 days: visitors (people) and new information by type
@@ -123,6 +143,7 @@ export async function GET(req: Request) {
     today,
     yesterday,
     contributions,
+    contributors,
     trend,
     latest,
   });

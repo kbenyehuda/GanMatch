@@ -24,16 +24,18 @@ const STACK: { key: "review" | "place" | "edit" | "move" | "claim"; label: strin
 const dayTotal = (d: TrendDay) => d.review + d.place + d.edit + d.move + d.claim;
 const dayShort = (iso: string) => `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}`;
 
-/** Compare the last 7 days with the 7 days before. Tiny numbers are called "too early", not a percentage. */
-function compare(cur: number, prev: number, minPrev: number) {
-  if (prev < minPrev) return { verdict: "early" as const, text: "Too early to tell", pct: null as number | null };
-  const pct = Math.round(((cur - prev) / prev) * 100);
-  if (pct >= 10) return { verdict: "up" as const, text: `Up ${pct}%`, pct };
-  if (pct <= -10) return { verdict: "down" as const, text: `Down ${Math.abs(pct)}%`, pct };
-  return { verdict: "flat" as const, text: "About the same", pct };
+/** Compare the last 7 days with the 7 days before, in plain counts (no percentages: they mislead on tiny numbers). */
+type Compared = { verdict: "early" | "up" | "down" | "flat"; text: string };
+function compare(cur: number, prev: number, minPrev: number, decimals = 0): Compared {
+  if (prev < minPrev) return { verdict: "early", text: "Collecting baseline" };
+  const f = 10 ** decimals;
+  const diff = Math.round((cur - prev) * f) / f;
+  if (diff > 0) return { verdict: "up", text: `Up by ${diff}` };
+  if (diff < 0) return { verdict: "down", text: `Down by ${Math.abs(diff)}` };
+  return { verdict: "flat", text: "Same as before" };
 }
 
-function Verdict({ v }: { v: ReturnType<typeof compare> }) {
+function Verdict({ v }: { v: Compared }) {
   const cls = v.verdict === "up" ? "bg-emerald-100 text-emerald-800" : v.verdict === "down" ? "bg-rose-100 text-rose-800"
     : v.verdict === "flat" ? "bg-gray-100 text-gray-700" : "bg-amber-50 text-amber-800";
   const arrow = v.verdict === "up" ? "▲ " : v.verdict === "down" ? "▼ " : "";
@@ -41,7 +43,7 @@ function Verdict({ v }: { v: ReturnType<typeof compare> }) {
 }
 
 /** Bars per day; `parts` are stacked segments (one colour each). */
-function DayBars({ days, parts, max }: { days: TrendDay[]; parts: (d: TrendDay) => { value: number; color: string }[]; max: number }) {
+function DayBars({ days, parts, max, marks }: { days: TrendDay[]; parts: (d: TrendDay) => { value: number; color: string }[]; max: number; marks?: Record<string, string> }) {
   const H = 110;
   return (
     <div className="flex items-end gap-1" style={{ height: H + 34 }}>
@@ -57,6 +59,7 @@ function DayBars({ days, parts, max }: { days: TrendDay[]; parts: (d: TrendDay) 
               ))}
             </div>
             <span className="mt-1 text-[10px] text-gray-500 h-4">{dayShort(d.day)}</span>
+            <span className="text-[9px] font-semibold text-amber-600 h-3 leading-3">{marks?.[d.day] ?? ""}</span>
           </div>
         );
       })}
@@ -79,14 +82,14 @@ function Direction({ trend }: { trend: TrendDay[] }) {
     { label: "New information (items)", cur: String(info.cur), prev: String(info.prev), v: compare(info.cur, info.prev, 5) },
     // A rate built from a handful of items is noise: only judge it when both weeks have real numbers
     { label: "New information per 100 visitors", cur: rate.cur.toFixed(1), prev: rate.prev.toFixed(1),
-      v: info.prev < 5 || vis.prev < 20 ? compare(0, 0, 1) : compare(rate.cur, rate.prev, 0.1) },
+      v: info.prev < 5 || vis.prev < 20 ? compare(0, 0, 1) : compare(rate.cur, rate.prev, 0.1, 1) },
   ];
   return (
     <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
       <h3 className="font-bold text-[#0A2B6B]">Are we heading in the right direction?</h3>
       <p className="text-xs text-gray-500">
-        Last 7 days compared with the 7 days before. With very small numbers it says &quot;Too early to tell&quot; instead of a misleading percentage.
-        The best sign is more new information per 100 visitors.
+        Last 7 days compared with the 7 days before, in plain counts. It says &quot;Collecting baseline&quot; until the earlier week has enough data
+        (a launch week looks very different from a normal one). The best sign is more new information per 100 visitors.
       </p>
       <table className="w-full text-sm">
         <thead>
@@ -115,17 +118,22 @@ function Direction({ trend }: { trend: TrendDay[] }) {
 function TrendCharts({ trend }: { trend: TrendDay[] }) {
   const maxVisitors = Math.max(0, ...trend.map((d) => d.visitors));
   const maxInfo = Math.max(0, ...trend.map(dayTotal));
+  // Mark an obvious one-day spike (the WhatsApp launch) so a quiet day after it doesn't feel like a crash
+  const peak = trend.reduce((a, d) => (d.visitors > a.visitors ? d : a), trend[0] ?? { day: "", visitors: 0 } as TrendDay);
+  const others = trend.filter((d) => d.day !== peak.day);
+  const avgOthers = others.length ? others.reduce((n, d) => n + d.visitors, 0) / others.length : 0;
+  const marks: Record<string, string> = peak.visitors >= 30 && peak.visitors >= 5 * avgOthers ? { [peak.day]: "launch" } : {};
   return (
     <div className="grid lg:grid-cols-2 gap-4">
       <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
         <h3 className="font-bold text-[#0A2B6B]">Visitors per day</h3>
         <p className="text-xs text-gray-500">Different people who opened the site, last 14 days (Israel days).</p>
-        <DayBars days={trend} max={maxVisitors} parts={(d) => [{ value: d.visitors, color: "#1F5BB5" }]} />
+        <DayBars days={trend} max={maxVisitors} marks={marks} parts={(d) => [{ value: d.visitors, color: "#1F5BB5" }]} />
       </div>
       <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
         <h3 className="font-bold text-[#0A2B6B]">New information per day</h3>
         <p className="text-xs text-gray-500">Items people added, by type. This is the bar we want to see growing.</p>
-        <DayBars days={trend} max={maxInfo} parts={(d) => STACK.map((s) => ({ value: d[s.key], color: s.color }))} />
+        <DayBars days={trend} max={maxInfo} marks={marks} parts={(d) => STACK.map((s) => ({ value: d[s.key], color: s.color }))} />
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600">
           {STACK.map((s) => (
             <span key={s.key} className="inline-flex items-center gap-1">
@@ -142,6 +150,7 @@ type Overview = {
   today: Day;
   yesterday: Day;
   contributions: { review: Win; place: Win; claim: Win; edit: Win; move: Win };
+  contributors: Win;
   trend: TrendDay[];
   latest: { kind: "review" | "place" | "claim" | "edit" | "move"; label: string; at: string }[];
 };
@@ -256,6 +265,12 @@ export default function NewInfoOverview() {
                     <td className="text-right">{sum(data.contributions, "today")}</td>
                     <td className="text-right">{sum(data.contributions, "yesterday")}</td>
                     <td className="text-right">{sum(data.contributions, "week")}</td>
+                  </tr>
+                  <tr className="border-t text-gray-700">
+                    <td className="py-1">People who contributed <span className="text-xs text-gray-400">(different people)</span></td>
+                    <td className="text-right font-semibold">{data.contributors?.today ?? 0}</td>
+                    <td className="text-right">{data.contributors?.yesterday ?? 0}</td>
+                    <td className="text-right">{data.contributors?.week ?? 0}</td>
                   </tr>
                 </tbody>
               </table>
