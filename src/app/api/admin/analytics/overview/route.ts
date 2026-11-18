@@ -52,8 +52,8 @@ export async function GET(req: Request) {
   const [today, yesterday, rev, pl, cl, de, lo, trendRpc, weekDay, ev] = await Promise.all([
     day(todayStart, now),
     day(yesterdayStart, todayStart),
-    db.from("place_reviews").select("id,created_at,user_id,rating,is_hidden,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
-    db.from("places").select("id,created_at,suggested_by,name,is_hidden").eq("source", "community").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("place_reviews").select("id,created_at,user_id,rating,is_hidden,places(name,attributes)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+    db.from("places").select("id,created_at,suggested_by,name,is_hidden,attributes").eq("source", "community").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
     db.from("place_owner_claims").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
     db.from("place_detail_requests").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
     db.from("place_location_requests").select("id,created_at,user_id,places(name)").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
@@ -65,9 +65,11 @@ export async function GET(req: Request) {
       .gte("created_at", since).limit(5000),
   ]);
 
+  // A place hidden as a duplicate (attributes.duplicate_of) and its recommendations don't count as new information
+  const notDuplicate = (r: any) => !(r.attributes ?? r.places?.attributes)?.duplicate_of;
   const rows = {
-    review: (rev.data ?? []) as any[],
-    place: (pl.data ?? []) as any[],
+    review: ((rev.data ?? []) as any[]).filter(notDuplicate),
+    place: ((pl.data ?? []) as any[]).filter(notDuplicate),
     claim: (cl.data ?? []) as any[],
     edit: (de.data ?? []) as any[],
     move: (lo.data ?? []) as any[],

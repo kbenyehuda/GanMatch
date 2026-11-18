@@ -89,9 +89,9 @@ async function deleteAccount(admin: SupabaseClient, userId: string, keepReviews:
 async function dailyDigest(admin: SupabaseClient, origin: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const [{ data: reviews }, { data: newPlaces }, { data: claims }, { data: details }, { data: moves }] = await Promise.all([
-    admin.from("place_reviews").select("id,rating,text,is_hidden,created_at,places(name)")
+    admin.from("place_reviews").select("id,rating,text,is_hidden,created_at,places(name,attributes)")
       .gte("created_at", since).order("created_at"),
-    admin.from("places").select("id,name,place_category,is_hidden,created_at")
+    admin.from("places").select("id,name,place_category,is_hidden,created_at,attributes")
       .eq("source", "community").gte("created_at", since).order("created_at"),
     admin.from("place_owner_claims").select("id,status,created_at,places(name)")
       .gte("created_at", since).order("created_at"),
@@ -102,8 +102,10 @@ async function dailyDigest(admin: SupabaseClient, origin: string): Promise<numbe
   ]);
 
   const label = (k: string) => KIDS_FIELD_LABELS[k] ?? BASIC_FIELD_LABELS[k] ?? k;
-  const reviewRows = (reviews ?? []) as any[];
-  const placeRows = (newPlaces ?? []) as any[];
+  // A place hidden as a duplicate (attributes.duplicate_of) and its recommendations are left out
+  const notDuplicate = (r: any) => !(r.attributes ?? r.places?.attributes)?.duplicate_of;
+  const reviewRows = ((reviews ?? []) as any[]).filter(notDuplicate);
+  const placeRows = ((newPlaces ?? []) as any[]).filter(notDuplicate);
   const claimRows = (claims ?? []) as any[];
   const changeRows = [
     ...((details ?? []) as any[]).map((d) => {
