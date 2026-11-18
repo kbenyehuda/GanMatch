@@ -1473,10 +1473,13 @@ function ProfileScreen({
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span style={{ color: "#fff", fontSize: 19, fontWeight: 800 }}>{displayName}</span>
-              <span className="flex items-center gap-1" style={{ background: "rgba(200,162,75,.25)", color: "#FCE7B2", fontSize: 12, padding: "3px 7px", borderRadius: 6, fontWeight: 700 }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 10, height: 10 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
-                חשבון מאומת
-              </span>
+              {/* Only a signed-in account is "verified"; a guest has no account */}
+              {user && (
+                <span className="flex items-center gap-1" style={{ background: "rgba(200,162,75,.25)", color: "#FCE7B2", fontSize: 12, padding: "3px 7px", borderRadius: 6, fontWeight: 700 }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 10, height: 10 }}><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+                  חשבון מאומת
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 12, opacity: 0.7, color: "#fff", marginTop: 2 }} className="font-hebrew">{["גבעתיים", user?.created_at ? `באפליקציה מאז ${new Date(user.created_at).toLocaleDateString("he-IL", { month: "long", year: "numeric" })}` : null].filter(Boolean).join(" · ")}</div>
           </div>
