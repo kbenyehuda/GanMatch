@@ -25,6 +25,7 @@ function placeUpdate(place: any, changes: Record<string, unknown>): Record<strin
 
 // POST /api/admin/place-detail-requests/decision — approve applies the change set to the place
 // body: { id, action: "approve" | "reject" | "revert" | "seen", moderation_reason? }
+// "reopen" puts a decided (non-owner) request back to pending, undoing what the approval applied.
 // "seen" keeps an owner's auto-applied edit and takes it off the pending queue.
 // "revert" undoes an owner's auto-applied edit: the fields go back to their previous values.
 // Approving a remove_listing request hides the place (places.is_hidden).
@@ -67,8 +68,8 @@ export async function POST(req: Request) {
   const moderationReason =
     typeof body?.moderation_reason === "string" ? body.moderation_reason.trim() || null : null;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  if (action !== "approve" && action !== "reject" && action !== "revert" && action !== "seen") {
-    return NextResponse.json({ error: "action must be approve, reject, revert or seen" }, { status: 400 });
+  if (action !== "approve" && action !== "reject" && action !== "revert" && action !== "seen" && action !== "reopen") {
+    return NextResponse.json({ error: "action must be approve, reject, revert, seen or reopen" }, { status: 400 });
   }
 
   const admin = createClient(url, serviceKey, {
@@ -111,6 +112,35 @@ export async function POST(req: Request) {
       .update({ reverted_at: new Date().toISOString(), reverted_by: userData.user.id, admin_seen_at: new Date().toISOString(), moderation_reason: moderationReason })
       .eq("id", id);
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "reopen") {
+    if (existing.auto_applied || existing.status === "pending") {
+      return NextResponse.json({ error: "Only an approved or declined request can be reopened" }, { status: 409 });
+    }
+    const isRemoval = (existing.changes as Record<string, unknown>)?.remove_listing === true;
+    const nowIso = new Date().toISOString();
+    if (isRemoval) {
+      // Pending removal = place hidden. Approved already is hidden; a declined one was shown again.
+      if (existing.status === "rejected") {
+        const { error: hideErr } = await admin.from("places").update({ is_hidden: true, updated_at: nowIso }).eq("id", existing.place_id);
+        if (hideErr) return NextResponse.json({ error: hideErr.message }, { status: 500 });
+      }
+    } else if (existing.status === "approved") {
+      const { data: place, error: placeErr } = await admin
+        .from("places").select("attributes, hours, kosher").eq("id", existing.place_id).single();
+      if (placeErr || !place) return NextResponse.json({ error: "Place not found" }, { status: 404 });
+      const previous = (existing.previous ?? {}) as Record<string, unknown>;
+      const back: Record<string, unknown> = {};
+      for (const k of Object.keys(existing.changes ?? {})) back[k] = previous[k] ?? null;
+      const { error: applyErr } = await admin.from("places").update(placeUpdate(place, back)).eq("id", existing.place_id);
+      if (applyErr) return NextResponse.json({ error: applyErr.message }, { status: 500 });
+    }
+    const { error: reopenErr } = await admin.from("place_detail_requests")
+      .update({ status: "pending", moderation_reason: null, reviewed_at: null, reviewed_by: null })
+      .eq("id", id);
+    if (reopenErr) return NextResponse.json({ error: reopenErr.message }, { status: 500 });
     return NextResponse.json({ success: true });
   }
 

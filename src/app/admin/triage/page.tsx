@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
+import {
+  Banner, DecisionBar, DiffRow, EmptyState, InboxCard, InboxShell, InboxStyles, InboxTabs, ReasonField,
+  classify, markInboxSeen, relTime, useUndoToast, type InboxTab,
+} from "@/components/admin/inbox";
 
 type QueueStatus = "pending" | "approved" | "rejected";
 
@@ -15,436 +19,221 @@ type QueueItem = {
   moderation_reason: string | null;
   created_at: string;
   reviewed_at: string | null;
-  address: string | null;
-  city: string | null;
-  website_url: string | null;
-  operating_hours: string | null;
-  friday_schedule: string | null;
-  vacancy_status: string | null;
-  has_mamad: boolean | null;
-  has_outdoor_space: boolean | null;
-  first_aid_trained: boolean | null;
   metadata: Record<string, unknown> | null;
   ganim_v2?: { name_he?: string | null } | null;
   user_email?: string | null;
   engagement?: {
-    total_submissions?: number;
-    approved?: number;
-    pending?: number;
-    rejected?: number;
-    last_submission_at?: string | null;
+    total_submissions?: number; approved?: number; pending?: number; rejected?: number; last_submission_at?: string | null;
   } | null;
   diffs?: Array<{ field: string; label: string; before: string; after: string }>;
   requested_changes?: Array<{ field: string; label: string; value: string }>;
   guardrail_checks?: Array<{
-    key: string;
-    label: string;
-    direction: string;
-    baseThreshold: string;
-    multiplier: string;
-    threshold: string;
-    actual: string;
-    exceededBy: string;
-    passed: boolean;
+    key: string; label: string; direction: string; baseThreshold: string; multiplier: string;
+    threshold: string; actual: string; exceededBy: string; passed: boolean;
   }>;
 };
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("he-IL");
-}
+const TYPE_LABEL: Record<string, string> = {
+  edit_gan: "עריכת גן", edit: "עריכה", review: "ביקורת", suggest_gan: "הצעת גן חדש", suggest: "הצעה",
+};
 
-function formatAge(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "-";
-  const diffMs = Date.now() - then;
-  if (diffMs < 60_000) return "just now";
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
+const nameOf = (i: QueueItem) => i.ganim_v2?.name_he || "הגן";
 
+// Moderator inbox for gan edits / reviews / suggestions (user_inputs).
+// A decision is sent after 5 seconds so it can still be undone: approving here has side effects
+// (access grants, the background worker), so there is no "reopen" on the server for it.
 export default function AdminTriagePage() {
   const { user, loading } = useSession();
-  const [status, setStatus] = useState<QueueStatus>("pending");
+  const [tab, setTab] = useState<InboxTab>("pending");
   const [items, setItems] = useState<QueueItem[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
   const [reloading, setReloading] = useState(false);
+  const toast = useUndoToast();
+  const pendingSend = useRef<{ id: string; timer: ReturnType<typeof setTimeout>; send: (keepalive?: boolean) => Promise<void> } | null>(null);
+
+  const token = useCallback(async () => {
+    if (!supabase) throw new Error("Missing session");
+    const t = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
+    if (!t) throw new Error("Missing access token");
+    return t;
+  }, []);
 
   const loadQueue = useCallback(async () => {
     if (!supabase || !user) return;
     setReloading(true);
     setError(null);
     try {
-      const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
-      if (!token) throw new Error("Missing access token");
-      const res = await fetch(`/api/admin/triage?status=${status}&limit=200`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(`/api/admin/triage?status=all&limit=200`, { headers: { authorization: `Bearer ${await token()}` } });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Failed to load queue");
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "טעינת הבקשות נכשלה");
       setItems(Array.isArray(data?.items) ? data.items : []);
     } catch (e: any) {
-      setError(typeof e?.message === "string" ? e.message : "Failed to load queue");
-      setItems([]);
+      setError(typeof e?.message === "string" ? e.message : "טעינת הבקשות נכשלה");
     } finally {
       setReloading(false);
     }
-  }, [status, user]);
+  }, [user, token]);
 
+  useEffect(() => { if (user) loadQueue(); }, [user, loadQueue]);
+  useEffect(() => { if (user && !reloading) markInboxSeen("triage"); }, [user, reloading]);
+
+  const patch = useCallback((id: string, p: Partial<QueueItem>) => setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...p } : i))), []);
+
+  const flushPending = useCallback(() => {
+    const p = pendingSend.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingSend.current = null;
+    void p.send();
+  }, []);
+
+  // Don't lose a decision that is still inside its undo window when the page is closed.
   useEffect(() => {
-    if (!user) return;
-    loadQueue();
-  }, [user, loadQueue]);
+    const onHide = () => {
+      const p = pendingSend.current;
+      if (!p) return;
+      clearTimeout(p.timer);
+      pendingSend.current = null;
+      void p.send(true);
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, []);
 
-  const decide = useCallback(
-    async (itemId: string, nextStatus: "approved" | "rejected") => {
-      if (!supabase || !user) return;
-      setBusyId(itemId);
-      setError(null);
+  const decide = useCallback((item: QueueItem, next: "approved" | "rejected") => {
+    flushPending();
+    const before = { status: item.status, reviewed_at: item.reviewed_at, moderation_reason: item.moderation_reason };
+    const reason = (reasonById[item.id] ?? "").trim() || null;
+    patch(item.id, { status: next, reviewed_at: new Date().toISOString(), moderation_reason: reason });
+
+    const send = async (keepalive = false) => {
       try {
-        const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
-        if (!token) throw new Error("Missing access token");
-        const reason = (reasonById[itemId] ?? "").trim();
         const res = await fetch("/api/admin/triage/decision", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            id: itemId,
-            status: nextStatus,
-            moderation_reason: reason || null,
-          }),
+          method: "POST", keepalive,
+          headers: { "content-type": "application/json", authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ id: item.id, status: next, moderation_reason: reason }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Decision failed");
-        setItems((prev) => prev.filter((i) => i.id !== itemId));
+        if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "הפעולה נכשלה");
       } catch (e: any) {
-        setError(typeof e?.message === "string" ? e.message : "Decision failed");
-      } finally {
-        setBusyId(null);
+        patch(item.id, before);
+        setError(typeof e?.message === "string" ? e.message : "הפעולה נכשלה");
       }
-    },
-    [reasonById, user]
-  );
+    };
+    const timer = setTimeout(() => { pendingSend.current = null; void send(); }, 5000);
+    pendingSend.current = { id: item.id, timer, send };
+    toast.show(`השינוי עבור ${nameOf(item)} ${next === "approved" ? "אושר" : "נדחה"}`, () => {
+      clearTimeout(timer);
+      pendingSend.current = null;
+      patch(item.id, before);
+    });
+  }, [flushPending, reasonById, patch, token, toast]);
 
-  const title = useMemo(() => {
-    if (status === "pending") return "Pending";
-    if (status === "approved") return "Approved";
-    return "Rejected";
-  }, [status]);
+  const classified = useMemo(() => items.map((i) => ({ item: i, state: classify(i) })), [items]);
+  const counts = useMemo(() => ({
+    pending: classified.filter((c) => c.state === "pending").length,
+    approved: classified.filter((c) => c.state === "approved").length,
+    declined: classified.filter((c) => c.state === "declined").length,
+    all: classified.length,
+  }), [classified]);
+  const visible = classified.filter((c) => tab === "all" || c.state === tab);
 
-  if (loading) {
-    return <div className="p-6">Loading...</div>;
-  }
-  if (!user) {
-    return <div className="p-6">Sign in to access admin triage.</div>;
-  }
+  if (loading) return <div className="p-6">טוען...</div>;
+  if (!user) return <div className="p-6">יש להתחבר כדי לגשת לכלי הניהול.</div>;
 
   return (
-    <main className="mx-auto max-w-6xl p-4 md:p-6 space-y-4" dir="rtl">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold font-hebrew">Admin Triage</h1>
-        <a
-          href="/"
-          className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50"
-          title="Back to site"
-        >
-          Back to site
-        </a>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          className={`px-3 py-1.5 rounded border text-sm ${status === "pending" ? "bg-black text-white" : "bg-white"}`}
-          onClick={() => setStatus("pending")}
-        >
-          Pending
-        </button>
-        <button
-          className={`px-3 py-1.5 rounded border text-sm ${status === "approved" ? "bg-black text-white" : "bg-white"}`}
-          onClick={() => setStatus("approved")}
-        >
-          Approved
-        </button>
-        <button
-          className={`px-3 py-1.5 rounded border text-sm ${status === "rejected" ? "bg-black text-white" : "bg-white"}`}
-          onClick={() => setStatus("rejected")}
-        >
-          Rejected
-        </button>
-        <button className="px-3 py-1.5 rounded border text-sm bg-white" onClick={loadQueue} disabled={reloading}>
-          {reloading ? "Refreshing..." : "Refresh"}
-        </button>
-        <span className="text-sm text-gray-600">{title}: {items.length}</span>
-      </div>
+    <InboxShell title="תור אישורים">
+      <InboxStyles />
+      <InboxTabs tab={tab} onChange={setTab} counts={counts} onRefresh={loadQueue} reloading={reloading} />
+      {error && <div style={{ background: "#FEE4E2", color: "#B42318", borderRadius: 12, padding: "10px 12px", fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{error}</div>}
+      {visible.length === 0 && !reloading && <EmptyState tab={tab} />}
 
-      {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-
-      <div className="space-y-4">
-        {items.map((item) => (
-          <section key={item.id} className="rounded-xl border bg-white p-4 space-y-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
-              <div className="space-y-1">
-                <div className="font-semibold text-base">{item.ganim_v2?.name_he || "Gan"} ({item.input_type || "-"})</div>
-                <div className="text-gray-600">
-                  Submitted {formatAge(item.created_at)} ({formatDate(item.created_at)})
+      {visible.map(({ item, state }) => {
+        const diffs = item.diffs ?? [];
+        const failed = (item.guardrail_checks ?? []).filter((c) => !c.passed);
+        const failedFor = (field: string) => {
+          const f = field.toLowerCase();
+          return failed.filter((c) => {
+            const k = c.key.toLowerCase();
+            if (k.includes(f)) return true;
+            if (f === "monthly_price_nis" && k.includes("price_change")) return true;
+            if (f === "operating_hours" && k.includes("operating_hours_change")) return true;
+            if (f === "staff_child_ratio" && k.includes("staff_ratio_change")) return true;
+            if ((f === "min_age_months" || f === "max_age_months") && k.includes("age_logic")) return true;
+            if ((f === "price_notes" || f === "suggested_type") && k.includes("min_length")) return true;
+            return false;
+          });
+        };
+        const eng = item.engagement;
+        return (
+          <InboxCard key={item.id} state={state} name={nameOf(item)} chip={TYPE_LABEL[item.input_type ?? ""] ?? item.input_type}
+            meta={<>{relTime(item.created_at)} · {item.user_email || item.user_id || "—"}</>}
+            stamp={state === "pending" ? null : relTime(item.reviewed_at ?? item.created_at)}
+            banner={state === "pending" && failed.length > 0 ? <Banner tone="amber">⚠ {failed.length} בדיקות חריגה נכשלו. כדאי לבדוק לפני אישור</Banner> : null}
+            footer={state === "pending" ? (
+              <DecisionBar onApprove={() => decide(item, "approved")} onDecline={() => decide(item, "rejected")}
+                extra={<ReasonField value={reasonById[item.id] ?? ""} onChange={(v) => setReasonById((p) => ({ ...p, [item.id]: v }))} />} />
+            ) : null}>
+            {diffs.length > 0 ? diffs.map((d) => {
+              const bad = failedFor(d.field);
+              return (
+                <div key={`${item.id}-${d.field}`} title={bad.map((c) => `${c.label}: ${c.actual} (מותר ${c.threshold})`).join("\n") || undefined}
+                  style={bad.length ? { background: "#FFF1F2", borderRadius: 8, padding: "0 6px" } : undefined}>
+                  <DiffRow state={state} label={d.label} before={d.before} after={d.after} />
                 </div>
+              );
+            }) : (item.requested_changes ?? []).length > 0 ? (
+              <>
+                <div style={{ fontSize: 13, color: "#6B7689", marginBottom: 4 }}>אין השוואה לערכים הקיימים. אלה הערכים שנשלחו:</div>
+                {(item.requested_changes ?? []).map((c) => (
+                  <div key={`${item.id}-rq-${c.field}`} className="flex gap-2" style={{ padding: "7px 0", borderTop: "1px solid #EEF1F6", fontSize: 14 }}>
+                    <div style={{ flex: "0 0 30%", fontWeight: 700, color: "#374151" }}>{c.label}</div>
+                    <div style={{ flex: 1, wordBreak: "break-word" }}>{c.value}</div>
+                  </div>
+                ))}
+              </>
+            ) : <div style={{ fontSize: 13, color: "#6B7689" }}>אין שינויי שדות בבקשה הזו.</div>}
+
+            {eng && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1" style={{ marginTop: 10, fontSize: 12.5, color: "#6B7689" }}>
+                <span>משתמש/ת: {eng.total_submissions ?? 0} הגשות</span>
+                <span style={{ color: "#047857" }}>✓ {eng.approved ?? 0}</span>
+                <span style={{ color: "#B45309" }}>● {eng.pending ?? 0}</span>
+                <span style={{ color: "#BE123C" }}>✕ {eng.rejected ?? 0}</span>
               </div>
-              <div className="px-2 py-1 rounded-full text-xs border bg-gray-50">
-                {(() => {
-                  const nd = item.diffs?.length ?? 0;
-                  const nr = item.requested_changes?.length ?? 0;
-                  if (nd > 0) return `Changes: ${nd}`;
-                  if (nr > 0) return `Submitted fields: ${nr} (no diff)`;
-                  return "Changes: 0";
-                })()}
-              </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm rounded-lg border bg-gray-50 p-3">
-              <div><span className="font-semibold">Gan ID:</span> {item.gan_id || "-"}</div>
-              <div><span className="font-semibold">User ID:</span> {item.user_id || "-"}</div>
-              <div><span className="font-semibold">User email:</span> {item.user_email || "—"}</div>
-            </div>
-
-            <div className="rounded-lg border bg-gray-50 p-3">
-              <div className="text-sm font-semibold mb-2">User engagement</div>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
-                <div className="rounded border bg-white px-2 py-1">
-                  <div className="text-gray-500 text-xs">Total submissions</div>
-                  <div className="font-semibold">{item.engagement?.total_submissions ?? 0}</div>
-                </div>
-                <div className="rounded border bg-white px-2 py-1">
-                  <div className="text-gray-500 text-xs">Approved</div>
-                  <div className="font-semibold text-emerald-700">{item.engagement?.approved ?? 0}</div>
-                </div>
-                <div className="rounded border bg-white px-2 py-1">
-                  <div className="text-gray-500 text-xs">Pending</div>
-                  <div className="font-semibold text-amber-700">{item.engagement?.pending ?? 0}</div>
-                </div>
-                <div className="rounded border bg-white px-2 py-1">
-                  <div className="text-gray-500 text-xs">Rejected</div>
-                  <div className="font-semibold text-rose-700">{item.engagement?.rejected ?? 0}</div>
-                </div>
-                <div className="rounded border bg-white px-2 py-1">
-                  <div className="text-gray-500 text-xs">Last submission</div>
-                  <div className="font-semibold text-xs">{formatDate(item.engagement?.last_submission_at ?? null)}</div>
-                </div>
-              </div>
-            </div>
-
-            {(item.diffs ?? []).length === 0 && (item.requested_changes ?? []).length > 0 ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
-                <span className="font-semibold">No before/after diff for this row.</span>{" "}
-                <span className="text-amber-900/90">
-                  Check &quot;All values in this submission&quot; below for what was sent. If this persists after deploy,
-                  the triage API may need additional columns on the query.
-                </span>
-              </div>
-            ) : null}
-
-            <div className="rounded-lg border overflow-hidden" dir="ltr">
-              <div className="text-left text-xs text-gray-500 px-3 pt-2 pb-1">
-                Comparison reads left to right: previous value → proposed value.
-              </div>
-              <div className="grid grid-cols-12 bg-gray-100 text-xs font-semibold px-3 py-2 text-left">
-                <div className="col-span-4">Field</div>
-                <div className="col-span-4">Before (current)</div>
-                <div className="col-span-4">After (proposed)</div>
-              </div>
-              {(item.diffs ?? []).length === 0 ? (
-                <div className="px-3 py-3 text-sm text-gray-600 text-left">
-                  {(item.requested_changes ?? []).length === 0
-                    ? "No field changes are present on this submission."
-                    : "No differences found between the gan record and the submitted values (they may already match)."}
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {(item.diffs ?? []).map((d) => {
-                    const failedChecks = (item.guardrail_checks ?? []).filter((c) => {
-                      if (c.passed) return false;
-                      const k = c.key.toLowerCase();
-                      const f = d.field.toLowerCase();
-                      if (k.includes(f)) return true;
-                      // directional/derived mapping
-                      if (f === "monthly_price_nis" && k.includes("price_change")) return true;
-                      if (f === "operating_hours" && k.includes("operating_hours_change")) return true;
-                      if (f === "staff_child_ratio" && k.includes("staff_ratio_change")) return true;
-                      if ((f === "min_age_months" || f === "max_age_months") && k.includes("age_logic")) return true;
-                      if ((f === "price_notes" || f === "suggested_type") && k.includes("min_length")) return true;
-                      return false;
-                    });
-                    const hasFailure = failedChecks.length > 0;
-                    const hoverText = failedChecks
-                      .map(
-                        (c) =>
-                          `Check: ${c.label} | Actual: ${c.actual} | Allowed: ${c.threshold} | Exceeded by: ${c.exceededBy}`
-                      )
-                      .join("\n");
-                    return (
-                      <div
-                        key={`${item.id}-${d.field}`}
-                        className={`grid grid-cols-12 gap-2 px-3 py-2 text-sm text-left ${
-                          hasFailure ? "bg-rose-50" : "bg-white"
-                        }`}
-                        title={hasFailure ? hoverText : undefined}
-                      >
-                        <div className={`col-span-4 font-medium ${hasFailure ? "text-rose-800" : ""}`}>
-                          {d.label}
-                        </div>
-                        <div className={`col-span-4 break-words ${hasFailure ? "text-rose-700" : "text-gray-600"}`}>
-                          {d.before}
-                        </div>
-                        <div
-                          className={`col-span-4 break-words font-medium ${
-                            hasFailure ? "text-rose-700" : "text-emerald-700"
-                          }`}
-                        >
-                          {d.after}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {(item.guardrail_checks ?? []).length > 0 ? (
-              <details className="rounded-lg border overflow-hidden">
-                <summary className="bg-gray-100 text-xs font-semibold px-3 py-2 cursor-pointer">
-                  Threshold checks ({(item.guardrail_checks ?? []).filter((c) => !c.passed).length} failed)
-                </summary>
-                <div className="grid grid-cols-14 bg-gray-50 text-[11px] font-semibold px-3 py-2">
-                  <div className="col-span-3">Check</div>
-                  <div className="col-span-2">Direction</div>
-                  <div className="col-span-2">Base</div>
-                  <div className="col-span-2">Multiplier</div>
-                  <div className="col-span-2">Effective</div>
-                  <div className="col-span-2">Actual / Exceeded</div>
-                  <div className="col-span-1">Result</div>
-                </div>
-                <div className="divide-y">
+            {failed.length > 0 && (
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#B45309" }}>בדיקות חריגה ({failed.length} נכשלו)</summary>
+                <div style={{ marginTop: 6 }}>
                   {(item.guardrail_checks ?? []).map((c) => (
-                    <div
-                      key={`${item.id}-check-${c.key}`}
-                      className={`grid grid-cols-14 gap-2 px-3 py-2 text-sm ${
-                        c.passed ? "bg-white" : "bg-rose-50"
-                      }`}
-                      title={`Actual: ${c.actual} | Allowed: ${c.threshold} | Exceeded by: ${c.exceededBy}`}
-                    >
-                      <div className="col-span-3 font-medium">{c.label}</div>
-                      <div className={`col-span-2 ${c.direction === "worse" ? "text-rose-700 font-medium" : c.direction === "better" ? "text-emerald-700 font-medium" : "text-gray-700"}`}>
-                        {c.direction}
-                      </div>
-                      <div className="col-span-2 text-gray-700">{c.baseThreshold}</div>
-                      <div className="col-span-2 text-gray-700">{c.multiplier}</div>
-                      <div className="col-span-2 font-medium">{c.threshold}</div>
-                      <div className="col-span-2">
-                        <div className="font-medium">{c.actual}</div>
-                        <div className={`text-xs ${c.passed ? "text-gray-500" : "text-rose-700 font-medium"}`}>
-                          exceeded: {c.exceededBy}
-                        </div>
-                      </div>
-                      <div className={`col-span-1 font-semibold ${c.passed ? "text-emerald-700" : "text-rose-700"}`}>
-                        {c.passed ? "OK" : "FAIL"}
-                      </div>
+                    <div key={`${item.id}-chk-${c.key}`} className="flex items-center justify-between gap-2"
+                      style={{ padding: "6px 8px", borderRadius: 8, background: c.passed ? "transparent" : "#FFF1F2", fontSize: 13 }} dir="ltr">
+                      <span>{c.label}</span>
+                      <span style={{ color: c.passed ? "#047857" : "#BE123C", fontWeight: 700 }}>
+                        {c.passed ? "OK" : `FAIL · ${c.actual} > ${c.threshold}`}
+                      </span>
                     </div>
                   ))}
                 </div>
               </details>
-            ) : null}
-
-            {(item.requested_changes ?? []).length > 0 ? (
-              (item.diffs ?? []).length > 0 ? (
-                <details className="rounded-lg border overflow-hidden">
-                  <summary className="bg-gray-100 text-xs font-semibold px-3 py-2 cursor-pointer">
-                    All values in this submission ({item.requested_changes?.length ?? 0})
-                  </summary>
-                  <div className="divide-y">
-                    {(item.requested_changes ?? []).map((c) => (
-                      <div
-                        key={`${item.id}-requested-${c.field}`}
-                        className="grid grid-cols-12 gap-2 px-3 py-2 text-sm"
-                      >
-                        <div className="col-span-4 font-medium text-gray-800">{c.label}</div>
-                        <div className="col-span-8 break-words text-gray-900">{c.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              ) : (
-                <div className="rounded-lg border overflow-hidden">
-                  <div className="bg-gray-100 text-xs font-semibold px-3 py-2">All values in this submission</div>
-                  <div className="divide-y">
-                    {(item.requested_changes ?? []).map((c) => (
-                      <div
-                        key={`${item.id}-requested-${c.field}`}
-                        className="grid grid-cols-12 gap-2 px-3 py-2 text-sm"
-                      >
-                        <div className="col-span-4 font-medium text-gray-800">{c.label}</div>
-                        <div className="col-span-8 break-words text-gray-900">{c.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            ) : null}
-
-            {item.metadata && Object.keys(item.metadata).length > 0 ? (
-              <details className="text-sm">
-                <summary className="cursor-pointer font-semibold">Raw metadata (debug)</summary>
-                <pre className="mt-2 max-h-52 overflow-auto rounded bg-gray-50 p-2 text-xs">
-{JSON.stringify(item.metadata, null, 2)}
-                </pre>
-              </details>
-            ) : null}
-
-            {status === "pending" ? (
-              <div className="flex flex-col gap-2">
-                <textarea
-                  placeholder="Reason (optional)"
-                  value={reasonById[item.id] ?? ""}
-                  onChange={(e) =>
-                    setReasonById((prev) => ({ ...prev, [item.id]: e.target.value }))
-                  }
-                  className="w-full rounded border p-2 text-sm"
-                  rows={2}
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"
-                    disabled={busyId === item.id}
-                    onClick={() => decide(item.id, "approved")}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="px-3 py-1.5 rounded bg-rose-600 text-white text-sm disabled:opacity-60"
-                    disabled={busyId === item.id}
-                    onClick={() => decide(item.id, "rejected")}
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-600">
-                Reviewed: {formatDate(item.reviewed_at)}{item.moderation_reason ? ` - ${item.moderation_reason}` : ""}
-              </div>
             )}
-          </section>
-        ))}
-      </div>
-    </main>
+
+            {item.metadata && Object.keys(item.metadata).length > 0 && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#6B7689" }}>נתונים גולמיים</summary>
+                <pre dir="ltr" style={{ marginTop: 6, maxHeight: 200, overflow: "auto", background: "#F4F6FB", borderRadius: 8, padding: 8, fontSize: 11.5 }}>{JSON.stringify(item.metadata, null, 2)}</pre>
+              </details>
+            )}
+            {state !== "pending" && item.moderation_reason && (
+              <div style={{ marginTop: 8, fontSize: 13, color: "#6B7689" }}>סיבה: {item.moderation_reason}</div>
+            )}
+          </InboxCard>
+        );
+      })}
+      {toast.node}
+    </InboxShell>
   );
 }
-

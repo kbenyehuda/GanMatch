@@ -1,17 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSession } from "@/lib/useSession";
-import { supabase } from "@/lib/supabase";
+import { useCallback } from "react";
 import { isInGivatayim } from "@/lib/place-location";
 import { OwnerLabels, type OwnerContextView } from "@/components/admin/OwnerLabels";
+import {
+  Banner, DecisionBar, EmptyState, FocusBanner, InboxBase, InboxCard, InboxShell, InboxStyles, InboxTabs,
+  QuietLink, ReasonField, SkippedToggle, relTime, useInboxQueue,
+} from "@/components/admin/inbox";
 
-type QueueStatus = "pending" | "approved" | "rejected";
-
-const HIDDEN_KEY = "gmt_admin_hidden_location_requests";
-
-type QueueItem = {
-  id: string;
+type QueueItem = InboxBase & {
   place_id: string;
   user_id: string | null;
   requested_lat: number;
@@ -21,291 +18,156 @@ type QueueItem = {
   previous_lat: number | null;
   previous_lon: number | null;
   previous_address: string | null;
-  status: QueueStatus;
-  moderation_reason: string | null;
-  created_at: string;
-  reviewed_at: string | null;
   places?: { name?: string | null; address?: string | null; place_category?: string | null } | null;
   user_email?: string | null;
   owner?: OwnerContextView | null;
-  auto_applied?: boolean;
-  reverted_at?: string | null;
-  admin_seen_at?: string | null;
 };
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("he-IL");
+function metersBetween(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (bLat - aLat) * rad, dLon = (bLon - aLon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
+const fmtMeters = (m: number) => (m < 1000 ? `${Math.round(m)} מטר` : `${(m / 1000).toFixed(1)} ק״מ`);
 
-function formatAge(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "-";
-  const diffMs = Date.now() - then;
-  if (diffMs < 60_000) return "just now";
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function mapsLink(lat: number, lon: number): string {
-  return `https://www.google.com/maps?q=${lat},${lon}`;
-}
-
-export default function AdminPlaceLocationRequestsPage() {
-  const { user, loading } = useSession();
-  const [status, setStatus] = useState<QueueStatus>("pending");
-  const [items, setItems] = useState<QueueItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [reasonById, setReasonById] = useState<Record<string, string>>({});
-  const [reloading, setReloading] = useState(false);
-  // ?id=<request> (the link in the admin email) shows just that request.
-  const [focusId, setFocusId] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("id"));
-  // "דילוג": hide a request from this browser's queue without deciding on it.
-  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(window.localStorage.getItem(HIDDEN_KEY) ?? "[]")); } catch { return new Set(); }
-  });
-  const [showHidden, setShowHidden] = useState(false);
-  const toggleHidden = useCallback((id: string) => {
-    setHiddenIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      try { window.localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(next))); } catch {}
-      return next;
-    });
-  }, []);
-  const showAll = useCallback(() => {
-    setFocusId(null);
-    setStatus("pending");
-    window.history.replaceState(null, "", window.location.pathname);
-  }, []);
-
-  const loadQueue = useCallback(async () => {
-    if (!supabase || !user) return;
-    setReloading(true);
-    setError(null);
-    try {
-      const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
-      if (!token) throw new Error("Missing access token");
-      const res = await fetch(`/api/admin/place-location-requests?status=${focusId ? "all" : status}&limit=200`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Failed to load queue");
-      setItems(Array.isArray(data?.items) ? data.items : []);
-    } catch (e: any) {
-      setError(typeof e?.message === "string" ? e.message : "Failed to load queue");
-      setItems([]);
-    } finally {
-      setReloading(false);
-    }
-  }, [status, user, focusId]);
-
-  useEffect(() => {
-    if (!user) return;
-    loadQueue();
-  }, [user, loadQueue]);
-
-  const decide = useCallback(
-    async (itemId: string, action: "approve" | "reject" | "revert" | "seen") => {
-      if (!supabase || !user) return;
-      setBusyId(itemId);
-      setError(null);
-      try {
-        const token = await supabase.auth.getSession().then((r) => r.data.session?.access_token ?? null);
-        if (!token) throw new Error("Missing access token");
-        const reason = (reasonById[itemId] ?? "").trim();
-        const res = await fetch("/api/admin/place-location-requests/decision", {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ id: itemId, action, moderation_reason: reason || null }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Decision failed");
-        setItems((prev) => prev.filter((i) => i.id !== itemId));
-        if (focusId === itemId) showAll();
-      } catch (e: any) {
-        setError(typeof e?.message === "string" ? e.message : "Decision failed");
-      } finally {
-        setBusyId(null);
-      }
-    },
-    [reasonById, user, focusId, showAll]
+/** Old pin (gray) and new pin (blue) joined by a line, as a Mapbox static image. */
+function PinMoveMap({ item, dim }: { item: QueueItem; dim: boolean }) {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  const hasOld = item.previous_lat != null && item.previous_lon != null;
+  if (!token) return null;
+  const nw = `${item.requested_lon},${item.requested_lat}`;
+  const overlays: string[] = [];
+  if (hasOld) {
+    const line = {
+      type: "Feature", properties: { stroke: "#64748b", "stroke-width": 3, "stroke-opacity": 0.8 },
+      geometry: { type: "LineString", coordinates: [[item.previous_lon, item.previous_lat], [item.requested_lon, item.requested_lat]] },
+    };
+    overlays.push(`geojson(${encodeURIComponent(JSON.stringify(line))})`);
+    overlays.push(`pin-s+9ca3af(${item.previous_lon},${item.previous_lat})`);
+  }
+  overlays.push(`pin-l+2563eb(${nw})`);
+  const view = hasOld ? "auto" : `${nw},16`;
+  const src = `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays.join(",")}/${view}/640x280@2x?padding=50&access_token=${token}`;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt="מפה: המיקום הישן והחדש" loading="lazy"
+      style={{ width: "100%", height: 140, objectFit: "cover", borderRadius: 12, border: "1px solid #E5E9F0", filter: dim ? "grayscale(.6)" : "none", display: "block" }} />
   );
+}
 
-  const title = useMemo(() => {
-    if (status === "pending") return "ממתינות";
-    if (status === "approved") return "אושרו";
-    return "נדחו";
-  }, [status]);
+const nameOf = (i: QueueItem) => i.places?.name || "המקום";
 
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (!user) return <div className="p-6">Sign in to access admin tools.</div>;
+// Pin-move requests: someone says the pin of a place is in the wrong spot.
+export default function AdminPlaceLocationRequestsPage() {
+  const q = useInboxQueue<QueueItem>({
+    listUrl: "/api/admin/place-location-requests",
+    decisionUrl: "/api/admin/place-location-requests/decision",
+    skipKey: "location_requests",
+    seenKey: "location",
+    nameOf,
+  });
+  const { decide, busyId } = q;
+  const reasonFor = useCallback((id: string) => q.reasonById[id] ?? "", [q.reasonById]);
+
+  if (q.loading) return <div className="p-6">טוען...</div>;
+  if (!q.user) return <div className="p-6">יש להתחבר כדי לגשת לכלי הניהול.</div>;
 
   return (
-    <main className="mx-auto max-w-5xl p-4 md:p-6 space-y-4" dir="rtl">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold font-hebrew">Place Location Requests</h1>
-        <a href="/" className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50" title="חזרה לאתר">
-          חזרה לאתר
-        </a>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          className={`px-3 py-1.5 rounded border text-sm ${status === "pending" ? "bg-black text-white" : "bg-white"}`}
-          onClick={() => setStatus("pending")}
-        >
-          ממתינות
-        </button>
-        <button
-          className={`px-3 py-1.5 rounded border text-sm ${status === "approved" ? "bg-black text-white" : "bg-white"}`}
-          onClick={() => setStatus("approved")}
-        >
-          אושרו
-        </button>
-        <button
-          className={`px-3 py-1.5 rounded border text-sm ${status === "rejected" ? "bg-black text-white" : "bg-white"}`}
-          onClick={() => setStatus("rejected")}
-        >
-          נדחו
-        </button>
-        <button className="px-3 py-1.5 rounded border text-sm bg-white" onClick={loadQueue} disabled={reloading}>
-          {reloading ? "מרענן..." : "רענון"}
-        </button>
-        <span className="text-sm text-gray-600">{title}: {items.length}</span>
-      </div>
+    <InboxShell title="בקשות שינוי מיקום">
+      <InboxStyles />
+      <InboxTabs tab={q.tab} onChange={q.setTab} counts={q.counts} onRefresh={q.reload} reloading={q.reloading} />
+      {q.error && <div style={{ background: "#FEE4E2", color: "#B42318", borderRadius: 12, padding: "10px 12px", fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{q.error}</div>}
+      {q.focusId && <FocusBanner onShowAll={q.showAll} />}
+      {!q.focusId && q.tab !== "approved" && q.tab !== "declined" && (
+        <SkippedToggle count={q.skippedCount} show={q.showHidden} onToggle={() => q.setShowHidden((v) => !v)} />
+      )}
 
-      {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+      {q.visible.length === 0 && !q.reloading && <EmptyState tab={q.tab} />}
 
-      <div className="space-y-4">
-        {focusId && (
-          <div className="flex items-center justify-between gap-2 rounded-lg border bg-blue-50 px-3 py-2 text-sm font-hebrew">
-            <span>מוצגת בקשה אחת מהמייל</span>
-            <button className="px-3 py-1.5 rounded border bg-white text-sm" onClick={showAll}>לכל הבקשות הממתינות</button>
-          </div>
-        )}
-        {!focusId && status === "pending" && hiddenIds.size > 0 && (
-          <button className="text-sm text-gray-600 underline font-hebrew" onClick={() => setShowHidden((v) => !v)}>
-            {showHidden ? "הסתרת המדולגות" : `הצגת מדולגות (${items.filter((i) => hiddenIds.has(i.id)).length})`}
-          </button>
-        )}
-        {items
-          .filter((item) => (focusId ? item.id === focusId : status !== "pending" || showHidden || !hiddenIds.has(item.id)))
-          .map((item) => (
-          <section key={item.id} className="rounded-xl border bg-white p-4 space-y-3 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
-              <div className="space-y-1">
-                <div className="font-semibold text-base font-hebrew">
-                  {item.places?.name || "Place"} ({item.places?.place_category || "-"})
-                </div>
-                <div className="text-gray-600">
-                  Submitted {formatAge(item.created_at)} ({formatDate(item.created_at)})
-                </div>
-              </div>
-              <div className="text-xs text-gray-600">
-                <div>User: {item.user_email || item.user_id || "-"}</div>
-              </div>
-            </div>
+      {q.visible.map(({ item, state }) => {
+        const moved = item.previous_lat != null && item.previous_lon != null
+          ? metersBetween(item.previous_lat, item.previous_lon, item.requested_lat, item.requested_lon) : null;
+        const ownerLive = !!item.auto_applied && !item.reverted_at;
+        const stamp = state === "pending" ? relTime(item.created_at) : relTime(item.reverted_at ?? item.reviewed_at ?? item.created_at);
+        const outside = !isInGivatayim(item.requested_lat, item.requested_lon);
+        const banner = (
+          <div className="flex flex-col gap-2">
             {item.auto_applied && (
-              <div className="rounded px-2 py-1 text-sm font-bold font-hebrew" style={{ background: item.reverted_at ? "#FEE4E2" : "#DCF3E6", color: item.reverted_at ? "#B42318" : "#1D7F4F" }}>
-                {item.reverted_at ? `אושר אוטומטית – בעל/ת המקום · בוטל ${formatDate(item.reverted_at)}` : "אושר אוטומטית – בעל/ת המקום (כבר באתר)"}
-              </div>
+              <Banner tone={item.reverted_at ? "red" : "green"}>
+                {item.reverted_at ? "אושר אוטומטית (בעל/ת המקום) · בוטל" : "אושר אוטומטית – בעל/ת המקום. כבר באתר"}
+              </Banner>
             )}
-            {!isInGivatayim(item.requested_lat, item.requested_lon) && (
-              <div className="rounded px-2 py-1 text-sm font-bold font-hebrew bg-rose-50 text-rose-700">מחוץ לגבעתיים</div>
-            )}
+            {outside && <Banner tone="red">מחוץ לגבעתיים</Banner>}
             <OwnerLabels owner={item.owner} />
-
-            {item.note && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 font-hebrew">
-                <span className="font-semibold">Note: </span>{item.note}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm" dir="ltr">
-              <div className="rounded-lg border bg-gray-50 p-3">
-                <div className="text-xs font-semibold text-gray-500 mb-1">Before (current)</div>
-                {item.previous_lat != null && item.previous_lon != null ? (
-                  <a href={mapsLink(item.previous_lat, item.previous_lon)} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
-                    {item.previous_lat.toFixed(5)}, {item.previous_lon.toFixed(5)}
-                  </a>
+          </div>
+        );
+        return (
+          <InboxCard key={item.id} state={state} name={nameOf(item)} chip={item.places?.place_category}
+            meta={<>{relTime(item.created_at)} · {item.user_email || item.user_id || "—"}</>}
+            stamp={state === "pending" ? null : stamp}
+            banner={item.auto_applied || outside || item.owner ? banner : null}
+            footer={
+              state === "pending" ? (
+                ownerLive ? (
+                  <DecisionBar busy={busyId === item.id} approveLabel="ראיתי, להשאיר" declineLabel="ביטול ההזזה"
+                    onApprove={() => decide(item, "seen")} onDecline={() => decide(item, "revert")} />
                 ) : (
-                  <span className="text-gray-500">no location on file</span>
-                )}
-                <div className="text-gray-700 mt-1 font-hebrew" dir="rtl">{item.previous_address || "—"}</div>
-              </div>
-              <div className="rounded-lg border bg-emerald-50 p-3">
-                <div className="text-xs font-semibold text-gray-500 mb-1">After (proposed)</div>
-                <a href={mapsLink(item.requested_lat, item.requested_lon)} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline font-medium">
-                  {item.requested_lat.toFixed(5)}, {item.requested_lon.toFixed(5)}
-                </a>
-                <div className="text-gray-700 mt-1 font-hebrew" dir="rtl">{item.requested_address || "—"}</div>
-              </div>
-            </div>
-
-            {item.status === "pending" ? (
-              <div className="flex flex-col gap-2">
-                <textarea
-                  placeholder="סיבה (לא חובה)"
-                  value={reasonById[item.id] ?? ""}
-                  onChange={(e) => setReasonById((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                  className="w-full rounded border p-2 text-sm"
-                  rows={2}
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"
-                    disabled={busyId === item.id}
-                    onClick={() => decide(item.id, "approve")}
-                  >
-                    אישור
-                  </button>
-                  <button
-                    className="px-3 py-1.5 rounded bg-rose-600 text-white text-sm disabled:opacity-60"
-                    disabled={busyId === item.id}
-                    onClick={() => decide(item.id, "reject")}
-                  >
-                    דחייה
-                  </button>
-                  <button
-                    className="px-3 py-1.5 rounded border text-sm bg-white"
-                    onClick={() => toggleHidden(item.id)}
-                  >
-                    {hiddenIds.has(item.id) ? "החזרה לתור" : "דילוג (הסתרה)"}
-                  </button>
-                </div>
-              </div>
-            ) : item.auto_applied && !item.reverted_at ? (
-              <div className="flex items-center gap-2">
-                {!item.admin_seen_at && (
-                  <button className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"
-                    disabled={busyId === item.id} onClick={() => decide(item.id, "seen")}>
-                    ראיתי, להשאיר
-                  </button>
-                )}
-                <button className="px-3 py-1.5 rounded bg-rose-600 text-white text-sm disabled:opacity-60"
-                  disabled={busyId === item.id} onClick={() => decide(item.id, "revert")}>
-                  ביטול ההזזה (החזרה למיקום הקודם)
-                </button>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-600">
-                Reviewed: {formatDate(item.reviewed_at)}{item.moderation_reason ? ` - ${item.moderation_reason}` : ""}
+                  <DecisionBar busy={busyId === item.id} onApprove={() => decide(item, "approve")} onDecline={() => decide(item, "reject")}
+                    extra={
+                      <div className="flex items-center justify-between">
+                        <ReasonField value={reasonFor(item.id)} onChange={(v) => q.setReasonById((p) => ({ ...p, [item.id]: v }))} />
+                        <button onClick={() => q.toggleHidden(item.id)} style={{ background: "none", border: 0, cursor: "pointer", color: "#6B7689", fontSize: 12.5, fontWeight: 600, padding: "8px 0 0" }}>
+                          {q.hiddenIds.has(item.id) ? "החזרה לתור" : "דילוג"}
+                        </button>
+                      </div>
+                    } />
+                )
+              ) : state === "approved" ? (
+                item.auto_applied ? null : <QuietLink disabled={busyId === item.id} onClick={() => decide(item, "reopen")}>ביטול אישור (החזרה להמתנה)</QuietLink>
+              ) : (
+                item.auto_applied ? null : <QuietLink disabled={busyId === item.id} onClick={() => decide(item, "reopen")}>שחזור לממתין</QuietLink>
+              )
+            }>
+            {item.note && (
+              <div style={{ background: "#FFF7E6", border: "1px solid #F5D9A0", borderRadius: 10, padding: "8px 11px", fontSize: 14, color: "#5C3D00", marginBottom: 10 }}>
+                <strong>הערה: </strong>{item.note}
               </div>
             )}
-          </section>
-        ))}
-        {items.length === 0 && !reloading && (
-          <div className="text-sm text-gray-500 font-hebrew">No {title.toLowerCase()} requests.</div>
-        )}
+            <PinMoveMap item={item} dim={state === "declined"} />
+            <div className="flex flex-wrap items-center gap-2" style={{ margin: "10px 0 4px" }}>
+              {moved != null && (
+                <span style={{ background: moved > 300 ? "#FFF4E0" : "#E8F7EE", color: moved > 300 ? "#7A4A00" : "#166534", borderRadius: 99, padding: "4px 12px", fontSize: 13, fontWeight: 800 }}>
+                  הוזז ב-{fmtMeters(moved)}
+                </span>
+              )}
+              <a href={`https://www.google.com/maps?q=${item.requested_lat},${item.requested_lon}`} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 13, fontWeight: 700, color: "#1F5BB5" }}>פתיחה ב-Google Maps ↗</a>
+            </div>
+            <AddrRow label="עכשיו" value={item.previous_address || (item.previous_lat == null ? "אין מיקום במערכת" : "—")} state={state} role="old" />
+            <AddrRow label="מבוקש" value={item.requested_address || `${item.requested_lat.toFixed(5)}, ${item.requested_lon.toFixed(5)}`} state={state} role="new" />
+            {state !== "pending" && item.moderation_reason && (
+              <div style={{ marginTop: 8, fontSize: 13, color: "#6B7689" }}>סיבה: {item.moderation_reason}</div>
+            )}
+          </InboxCard>
+        );
+      })}
+      {q.toastNode}
+    </InboxShell>
+  );
+}
+
+function AddrRow({ label, value, state, role }: { label: string; value: string; state: "pending" | "approved" | "declined"; role: "old" | "new" }) {
+  const struck = (role === "old" && state === "approved") || (role === "new" && state === "declined");
+  const highlight = role === "new" && state === "pending";
+  return (
+    <div className="flex items-center gap-2" style={{ padding: "7px 0", borderTop: "1px solid #EEF1F6" }}>
+      <div style={{ flex: "0 0 22%", fontSize: 13, fontWeight: 700, color: "#374151" }}>{label}</div>
+      <div style={{ flex: 1, fontSize: 14, color: struck ? (state === "declined" ? "#FB7185" : "#9CA3AF") : role === "old" ? "#6B7689" : "#047857",
+        textDecoration: struck ? "line-through" : "none", fontWeight: role === "new" ? 800 : 500,
+        ...(highlight ? { background: "#DBEAFE", color: "#1E40AF", borderRadius: 8, padding: "2px 8px", display: "inline-block" } : null) }}>
+        {value}
       </div>
-    </main>
+    </div>
   );
 }

@@ -13,6 +13,13 @@ interface GeoSuggestion {
   lat: number;
 }
 
+function metersBetween(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
 export interface RequestLocationChangeModalProps {
   place: Place;
   initialLocation?: { lon: number; lat: number } | null;
@@ -85,6 +92,8 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = resolvedLocation !== null && !submitting;
+  const movedMeters = resolvedLocation && place.lat != null && place.lon != null
+    ? Math.round(metersBetween({ lat: place.lat, lon: place.lon }, resolvedLocation)) : null;
   // A pin outside Giv'atayim is almost always a mistake (same street name elsewhere): ask once
   const [outsideAsked, setOutsideAsked] = useState(false);
   useEffect(() => { setOutsideAsked(false); }, [resolvedLocation]);
@@ -158,35 +167,62 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
             </div>
           </div>
         )}
-        <p className="font-hebrew text-sm mb-4" style={{ color: "#4A5568", lineHeight: 1.6 }}>
-          המיקום של <strong>{place.name}</strong> לא מדויק? סמנו את המיקום הנכון על המפה או חפשו כתובת. הבקשה תישלח לאישור מנהל לפני שהמיקום יתעדכן בפועל.
+        <p className="font-hebrew mb-4" style={{ color: "#4A5568", fontSize: 14, lineHeight: 1.6 }}>
+          המיקום של <strong>{place.name}</strong> לא מדויק? תקנו אותו בשני צעדים. מנהל יאשר לפני שהסיכה תזוז.
         </p>
 
-        {place.address && (
-          <div className="mb-4 rounded-xl p-3" style={{ background: "#F6F9FE", border: "1px solid #E5E9F0" }}>
-            <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 3 }}>מיקום נוכחי</span>
-            <span className="font-hebrew" style={{ fontSize: 13, color: "#0F1A2E" }}>{place.address}</span>
+        {/* Step 1: where it is now */}
+        <div className="flex items-stretch gap-3 mb-1">
+          <div className="flex flex-col items-center" style={{ width: 28 }}>
+            <div className="flex items-center justify-center font-bold" style={{ width: 28, height: 28, borderRadius: "50%", background: "#E5E9F0", color: "#4A5568", fontSize: 13 }}>1</div>
+            <div style={{ flex: 1, width: 2, background: "#E5E9F0", marginTop: 4 }} />
           </div>
-        )}
+          <div className="flex-1 pb-4">
+            <span className="font-hebrew block" style={{ color: "#8A95A8", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>איפה הסיכה עכשיו</span>
+            <div className="flex items-center gap-2 rounded-xl p-3" style={{ background: "#F5F6FA", border: "1px dashed #C5CDD8" }}>
+              <MapPin style={{ width: 16, height: 16, color: "#8A95A8", flexShrink: 0 }} />
+              <span className="font-hebrew" style={{ fontSize: 14, color: "#4A5568" }}>{place.address || "המיקום הנוכחי על המפה"}</span>
+            </div>
+          </div>
+        </div>
 
-        <div className="mb-4">
-          <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8" }}>
-            מיקום חדש <span style={{ color: "#C53030" }}>*</span>
+        {/* Step 2: the new location */}
+        <div className="flex items-stretch gap-3 mb-4">
+          <div className="flex flex-col items-center" style={{ width: 28 }}>
+            <div className="flex items-center justify-center font-bold" style={{ width: 28, height: 28, borderRadius: "50%", background: resolvedLocation ? "#16A34A" : "#0A2B6B", color: "#fff", fontSize: 13 }}>{resolvedLocation ? "✓" : "2"}</div>
+          </div>
+          <div className="flex-1 min-w-0">
+          <label className="font-hebrew block" style={{ color: "#0A2B6B", fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            איפה הסיכה צריכה להיות <span style={{ color: "#C53030" }}>*</span>
           </label>
 
           {resolvedLocation ? (
+            <>
             <div className="flex items-start gap-2 rounded-xl p-3" style={{ background: "#F0F7FF", border: "1px solid #C3DCF8" }}>
               <MapPin style={{ width: 15, height: 15, color: "#1F5BB5", flexShrink: 0, marginTop: 2 }} />
               <p className="font-hebrew text-sm flex-1 leading-snug" style={{ color: "#0A2B6B" }}>
                 {locationLabel || `${resolvedLocation.lat.toFixed(5)}, ${resolvedLocation.lon.toFixed(5)}`}
               </p>
               <button type="button" onClick={clearLocation}
-                className="font-hebrew font-semibold shrink-0 text-xs" style={{ color: "#8A95A8", background: "none", border: "none", cursor: "pointer" }}>
+                className="font-hebrew font-semibold shrink-0 text-xs" style={{ color: "#1F5BB5", background: "none", border: "none", cursor: "pointer", minHeight: 32 }}>
                 שנה
               </button>
             </div>
+            {movedMeters !== null && (
+              <div className="font-hebrew inline-flex items-center gap-1.5 mt-2" style={{ background: movedMeters > 300 ? "#FFF4E0" : "#E8F7EE", color: movedMeters > 300 ? "#7A4A00" : "#166534", borderRadius: 999, padding: "5px 12px", fontSize: 12.5, fontWeight: 700 }}>
+                הסיכה תזוז {movedMeters < 1000 ? `${movedMeters} מטר` : `${(movedMeters / 1000).toFixed(1)} ק״מ`}
+              </div>
+            )}
+            </>
           ) : (
             <div className="relative">
+              <button type="button" onClick={onPickPin}
+                className="w-full flex items-center justify-center gap-2 font-hebrew font-bold mb-2"
+                style={{ minHeight: 52, borderRadius: 14, border: "none", cursor: "pointer", background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", fontSize: 15 }}>
+                <MapPin style={{ width: 18, height: 18 }} />
+                סמנו על המפה
+              </button>
+              <div className="font-hebrew text-center mb-2" style={{ fontSize: 12, color: "#8A95A8" }}>או חפשו כתובת</div>
               <div className="relative">
                 <Search style={{ width: 15, height: 15, color: "#8A95A8", position: "absolute", top: "50%", transform: "translateY(-50%)", insetInlineStart: 13, pointerEvents: "none" }} />
                 <input
@@ -216,15 +252,12 @@ export function RequestLocationChangeModal({ place, initialLocation, onClose, on
                 </div>
               )}
 
-              <button type="button" onClick={onPickPin}
-                className="flex items-center gap-1.5 font-hebrew font-semibold mt-2"
-                style={{ fontSize: 12, color: "#1F5BB5", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}>
-                <MapPin style={{ width: 13, height: 13 }} />
-                סמן על המפה במקום
-              </button>
+
             </div>
           )}
         </div>
+
+          </div>
 
         <div className="mb-4">
           <label className="font-hebrew font-bold text-xs mb-1.5 block" style={{ color: "#8A95A8" }}>

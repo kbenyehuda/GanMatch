@@ -72,22 +72,87 @@ function Field({ label, children, k, span = false }: { label: string; children: 
   if (k && isLocked(k)) return null;
   return (
     <div className={span ? "col-span-2" : undefined} data-field={k}>
-      <label className="font-hebrew block mb-1" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 600 }}>{label}</label>
+      <label className="font-hebrew block mb-1.5" style={{ fontSize: 13, color: "#4A5568", fontWeight: 700 }}>{label}</label>
       {children}
     </div>
   );
 }
 
-const selectStyle: React.CSSProperties = { width: "100%", background: "#fff", border: "1px solid #E5E9F0", borderRadius: 10, padding: "9px 10px", fontSize: 13, outline: "none" };
+const selectStyle: React.CSSProperties = { width: "100%", background: "#fff", border: "1px solid #E5E9F0", borderRadius: 12, padding: "12px 12px", fontSize: 15, outline: "none", minHeight: 46 };
 const inputStyle: React.CSSProperties = { ...selectStyle };
 
+/** Yes / No / Unknown as three big tappable segments (replaces a dropdown). */
 function TriSelect({ value, onChange }: { value: TriState; onChange: (v: TriState) => void }) {
+  const opts: { v: TriState; label: string; on: React.CSSProperties }[] = [
+    { v: "yes", label: "כן", on: { background: "#16A34A", color: "#fff", borderColor: "#16A34A" } },
+    { v: "no", label: "לא", on: { background: "#DC2626", color: "#fff", borderColor: "#DC2626" } },
+    { v: "", label: "לא ידוע", on: { background: "#E8F0FB", color: "#0A2B6B", borderColor: "#C3DCF8" } },
+  ];
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value as TriState)} className="font-hebrew" style={selectStyle}>
-      <option value="">לא ידוע</option>
-      <option value="yes">כן</option>
-      <option value="no">לא</option>
-    </select>
+    <div className="flex" role="radiogroup" style={{ gap: 6 }}>
+      {opts.map((o) => {
+        const active = value === o.v;
+        return (
+          <button key={o.v || "unknown"} type="button" role="radio" aria-checked={active} onClick={() => onChange(o.v)}
+            className="font-hebrew"
+            style={{ flex: o.v === "" ? 1.4 : 1, minHeight: 44, borderRadius: 12, border: "1.5px solid #E5E9F0", background: "#fff", color: "#4A5568", fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all .15s", ...(active ? o.on : null) }}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** One-of-many choice as wrapping chips (replaces a dropdown with a handful of options). */
+function ChipSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="flex flex-wrap" role="radiogroup" style={{ gap: 8 }}>
+      {options.map((o) => {
+        const active = value === o.value;
+        return (
+          <button key={o.value || "unknown"} type="button" role="radio" aria-checked={active} onClick={() => onChange(o.value)}
+            className="font-hebrew"
+            style={{ minHeight: 40, padding: "0 14px", borderRadius: 999, fontSize: 14, fontWeight: active ? 800 : 600, cursor: "pointer", transition: "all .15s",
+              border: active ? "1.5px solid #0A2B6B" : "1.5px solid #E5E9F0", background: active ? "#0A2B6B" : "#fff", color: active ? "#fff" : "#4A5568" }}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Many-of-many toggle chips (languages, approach). */
+function ChipMulti({ options, selected, onToggle }: { options: { value: string; label: string }[]; selected: string[]; onToggle: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap" style={{ gap: 8 }}>
+      {options.map((o) => {
+        const active = selected.includes(o.value);
+        return (
+          <button key={o.value} type="button" aria-pressed={active} onClick={() => onToggle(o.value)}
+            className="font-hebrew"
+            style={{ minHeight: 40, padding: "0 14px", borderRadius: 999, fontSize: 14, fontWeight: active ? 800 : 600, cursor: "pointer", transition: "all .15s",
+              border: active ? "1.5px solid #1F5BB5" : "1.5px solid #E5E9F0", background: active ? "#E8F0FB" : "#fff", color: active ? "#0A2B6B" : "#4A5568" }}>
+            {active ? "✓ " : ""}{o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A titled card that groups related fields; hidden when every field in it is already known (locked). */
+function Section({ title, emoji, keys, children }: { title: string; emoji: string; keys: string[]; children: React.ReactNode }) {
+  const isLocked = useContext(LockedContext);
+  if (keys.every((k) => isLocked(k))) return null;
+  return (
+    <section style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 18, padding: "14px 14px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(10,43,107,.04)" }}>
+      <h4 className="font-hebrew flex items-center gap-2" style={{ fontSize: 14, fontWeight: 800, color: "#0A2B6B", marginBottom: 12 }}>
+        <span aria-hidden style={{ fontSize: 16 }}>{emoji}</span>{title}
+      </h4>
+      <div className="flex flex-col" style={{ gap: 14 }}>{children}</div>
+    </section>
   );
 }
 
@@ -160,6 +225,48 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const buildBody = () => {
+    const priceNum = monthlyPrice.trim() ? Number(monthlyPrice.replace(/[^\d.]/g, "")) : null;
+    const ratioNum = staffChildRatio.trim() ? Number(staffChildRatio.replace(",", ".")) : null;
+    return {
+      place_id: place.id,
+      gan_category: ganCategory || null,
+      maon_symbol_code: maonSymbolCode.trim() || null,
+      min_age_months: yearsStrToMonths(minAgeYears),
+      max_age_months: yearsStrToMonths(maxAgeYears),
+      meal_type: mealType || null,
+      friday_schedule: fridaySchedule || null,
+      has_outdoor_space: triToBool(hasOutdoor),
+      vacancy_status: vacancyStatus || null,
+      monthly_price_nis: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
+      has_mamad: triToBool(hasMamad),
+      has_cctv: triToBool(hasCctv),
+      cctv_streamed_online: hasCctv === "yes" ? triToBool(cctvOnline) : null,
+      kosher: kosher || null,
+      kosher_certifier: kosherCertifier.trim() || null,
+      staff_child_ratio: ratioNum != null && Number.isFinite(ratioNum) ? ratioNum : null,
+      first_aid_trained: triToBool(firstAid),
+      vegan_friendly: triToBool(vegan),
+      vegetarian_friendly: triToBool(vegetarian),
+      meat_served: triToBool(meat),
+      allergy_friendly: triToBool(allergy),
+      languages_spoken: languages,
+      chugim_types: chugim.split(/[,;]/).map((x) => x.trim()).filter(Boolean),
+      hours: hours.trim() || null,
+      approach,
+      is_home_gan: triToBool(homeGan),
+      small_group: triToBool(smallGroup),
+      stable_staff: triToBool(stableStaff),
+      has_chugim_in_gan: triToBool(chugimInGan),
+      has_holiday_camp: triToBool(holidayCamp),
+      flexible_hours: triToBool(flexibleHours),
+    };
+  };
+  // Snapshot of the form when it opened, to count how many fields the user actually changed.
+  const [initialBody] = useState(() => buildBody() as Record<string, unknown>);
+  const currentBody = buildBody() as Record<string, unknown>;
+  const changedCount = Object.keys(currentBody).filter((k) => k !== "place_id" && JSON.stringify(currentBody[k]) !== JSON.stringify(initialBody[k])).length;
+
   const toggleLang = (lang: SpokenLanguage) => {
     setLanguages((prev) => (prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]));
   };
@@ -173,41 +280,7 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
     setSaving(true);
     setError(null);
     try {
-      const priceNum = monthlyPrice.trim() ? Number(monthlyPrice.replace(/[^\d.]/g, "")) : null;
-      const ratioNum = staffChildRatio.trim() ? Number(staffChildRatio.replace(",", ".")) : null;
-      const body = {
-        place_id: place.id,
-        gan_category: ganCategory || null,
-        maon_symbol_code: maonSymbolCode.trim() || null,
-        min_age_months: yearsStrToMonths(minAgeYears),
-        max_age_months: yearsStrToMonths(maxAgeYears),
-        meal_type: mealType || null,
-        friday_schedule: fridaySchedule || null,
-        has_outdoor_space: triToBool(hasOutdoor),
-        vacancy_status: vacancyStatus || null,
-        monthly_price_nis: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
-        has_mamad: triToBool(hasMamad),
-        has_cctv: triToBool(hasCctv),
-        cctv_streamed_online: hasCctv === "yes" ? triToBool(cctvOnline) : null,
-        kosher: kosher || null,
-        kosher_certifier: kosherCertifier.trim() || null,
-        staff_child_ratio: ratioNum != null && Number.isFinite(ratioNum) ? ratioNum : null,
-        first_aid_trained: triToBool(firstAid),
-        vegan_friendly: triToBool(vegan),
-        vegetarian_friendly: triToBool(vegetarian),
-        meat_served: triToBool(meat),
-        allergy_friendly: triToBool(allergy),
-        languages_spoken: languages,
-        chugim_types: chugim.split(/[,;]/).map((s) => s.trim()).filter(Boolean),
-        hours: hours.trim() || null,
-        approach,
-        is_home_gan: triToBool(homeGan),
-        small_group: triToBool(smallGroup),
-        stable_staff: triToBool(stableStaff),
-        has_chugim_in_gan: triToBool(chugimInGan),
-        has_holiday_camp: triToBool(holidayCamp),
-        flexible_hours: triToBool(flexibleHours),
-      };
+      const body = buildBody();
       const res = await fetch("/api/places/kids-attributes", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
@@ -239,7 +312,10 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
           <div style={{ width: 42, height: 5, borderRadius: 99, background: "#E5E9F0" }} />
         </div>
         <div className="flex items-center justify-between px-5 pb-3 shrink-0">
-          <h3 className="font-hebrew" style={{ fontSize: 18, fontWeight: 800 }}>מילוי פרטי הגן</h3>
+          <div>
+            <h3 className="font-hebrew" style={{ fontSize: 18, fontWeight: 800 }}>מילוי פרטי הגן</h3>
+            <div className="font-hebrew" style={{ fontSize: 12.5, color: "#8A95A8", marginTop: 1 }}>{place.name}</div>
+          </div>
           <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%", background: "#E8F0FB", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
           </button>
@@ -254,96 +330,89 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
               : "כל עדכון נבדק על ידינו לפני שהוא מופיע באתר, כדי שהמידע יישאר אמין."}
           </p>
           <LockedContext.Provider value={isLocked}>
-          <div className="grid grid-cols-2 gap-3">
-            <Field span label="סוג גן" k="gan_category">
-              <select value={ganCategory} onChange={(e) => setGanCategory(e.target.value)} className="font-hebrew" style={selectStyle}>
-                {GAN_CATEGORY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            {ganCategory === "MAON_SYMBOL" && (
-              <Field span label="סמל מעון" k="maon_symbol_code">
-                <input value={maonSymbolCode} onChange={(e) => setMaonSymbolCode(e.target.value)} inputMode="numeric" placeholder="לדוגמה: 73874" className="font-hebrew" style={inputStyle} />
+            <Section emoji="🏫" title="על הגן" keys={["gan_category", "maon_symbol_code", "is_home_gan", "small_group", "approach"]}>
+              <Field label="סוג גן" k="gan_category">
+                <ChipSelect value={ganCategory} onChange={setGanCategory} options={GAN_CATEGORY_OPTS} />
               </Field>
-            )}
-            <Field label="גיל מינימום (בשנים)" k="min_age_months">
-              <input value={minAgeYears} onChange={(e) => setMinAgeYears(e.target.value)} inputMode="decimal" placeholder="0.5" className="font-hebrew" style={inputStyle} />
-            </Field>
-            <Field label="גיל מקסימום (בשנים)" k="max_age_months">
-              <input value={maxAgeYears} onChange={(e) => setMaxAgeYears(e.target.value)} inputMode="decimal" placeholder="3" className="font-hebrew" style={inputStyle} />
-            </Field>
-            <Field span label="מחיר חודשי (₪)" k="monthly_price_nis">
-              <input value={monthlyPrice} onChange={(e) => setMonthlyPrice(e.target.value)} inputMode="numeric" placeholder="4200" className="font-hebrew" style={inputStyle} />
-            </Field>
-            <Field span label="מקום פנוי" k="vacancy_status">
-              <select value={vacancyStatus} onChange={(e) => setVacancyStatus(e.target.value)} className="font-hebrew" style={selectStyle}>
-                {VACANCY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            <Field span label="שעות פעילות" k="hours">
-              <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="07:30–16:00, א'-ה'" className="font-hebrew" style={inputStyle} />
-            </Field>
-            <Field label="ימי שישי" k="friday_schedule">
-              <select value={fridaySchedule} onChange={(e) => setFridaySchedule(e.target.value)} className="font-hebrew" style={selectStyle}>
-                {FRIDAY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            <Field label="סוג אוכל" k="meal_type">
-              <select value={mealType} onChange={(e) => setMealType(e.target.value)} className="font-hebrew" style={selectStyle}>
-                {MEAL_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            <Field label="טבעוני" k="vegan_friendly"><TriSelect value={vegan} onChange={setVegan} /></Field>
-            <Field label="צמחוני" k="vegetarian_friendly"><TriSelect value={vegetarian} onChange={setVegetarian} /></Field>
-            <Field label="מגיש בשר" k="meat_served"><TriSelect value={meat} onChange={setMeat} /></Field>
-            <Field label="ידידותי לאלרגיות" k="allergy_friendly"><TriSelect value={allergy} onChange={setAllergy} /></Field>
-            <Field label="כשרות" k="kosher">
-              <select value={kosher} onChange={(e) => setKosher(e.target.value as KosherStatus | "")} className="font-hebrew" style={selectStyle}>
-                {KOSHER_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            <Field label="גוף כשרות (אופציונלי)" k="kosher_certifier">
-              <input value={kosherCertifier} onChange={(e) => setKosherCertifier(e.target.value)} placeholder="רבנות, בד״ץ..." className="font-hebrew" style={inputStyle} />
-            </Field>
-            <Field label="חצר חיצונית" k="has_outdoor_space"><TriSelect value={hasOutdoor} onChange={setHasOutdoor} /></Field>
-            <Field label='ממ"ד / מיקלט' k="has_mamad"><TriSelect value={hasMamad} onChange={setHasMamad} /></Field>
-            <Field label="מצלמות" k="has_cctv"><TriSelect value={hasCctv} onChange={setHasCctv} /></Field>
-            {hasCctv === "yes" && (
-              <Field label="ניתן לצפייה מרחוק" k="cctv_streamed_online"><TriSelect value={cctvOnline} onChange={setCctvOnline} /></Field>
-            )}
-            <Field label="עזרה ראשונה" k="first_aid_trained"><TriSelect value={firstAid} onChange={setFirstAid} /></Field>
-            <Field label="יחס צוות-ילד" k="staff_child_ratio">
-              <input value={staffChildRatio} onChange={(e) => setStaffChildRatio(e.target.value)} inputMode="decimal" placeholder="0.33 = 1:3" className="font-hebrew" style={inputStyle} />
-            </Field>
-            <Field span label="שפות (בחרו את כולן)" k="languages_spoken">
-              <div className="flex flex-wrap gap-2">
-                {LANG_OPTS.map(o => (
-                  <label key={o.value} className="flex items-center gap-1.5 font-hebrew" style={{ fontSize: 13, cursor: "pointer" }}>
-                    <input type="checkbox" checked={languages.includes(o.value)} onChange={() => toggleLang(o.value)} style={{ accentColor: "#0A2B6B" }} />
-                    {o.label}
-                  </label>
-                ))}
+              {ganCategory === "MAON_SYMBOL" && (
+                <Field label="סמל מעון" k="maon_symbol_code">
+                  <input value={maonSymbolCode} onChange={(e) => setMaonSymbolCode(e.target.value)} inputMode="numeric" placeholder="לדוגמה: 73874" className="font-hebrew" style={inputStyle} />
+                </Field>
+              )}
+              <Field label="גן ביתי" k="is_home_gan"><TriSelect value={homeGan} onChange={setHomeGan} /></Field>
+              <Field label="קבוצה קטנה / יחס אישי" k="small_group"><TriSelect value={smallGroup} onChange={setSmallGroup} /></Field>
+              <Field label="גישה (בחרו את כל מה שמתאים)" k="approach">
+                <ChipMulti options={(Object.keys(GAN_APPROACH_LABELS) as GanApproach[]).map((v) => ({ value: v, label: GAN_APPROACH_LABELS[v] }))} selected={approach} onToggle={(v) => toggleApproach(v as GanApproach)} />
+              </Field>
+            </Section>
+
+            <Section emoji="💰" title="גילאים, מחיר ומקום פנוי" keys={["min_age_months", "max_age_months", "monthly_price_nis", "vacancy_status"]}>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="מגיל (בשנים)" k="min_age_months">
+                  <input value={minAgeYears} onChange={(e) => setMinAgeYears(e.target.value)} inputMode="decimal" placeholder="0.5" className="font-hebrew" style={inputStyle} />
+                </Field>
+                <Field label="עד גיל (בשנים)" k="max_age_months">
+                  <input value={maxAgeYears} onChange={(e) => setMaxAgeYears(e.target.value)} inputMode="decimal" placeholder="3" className="font-hebrew" style={inputStyle} />
+                </Field>
               </div>
-            </Field>
-            <Field span label="גישה (בחרו את כל מה שמתאים)" k="approach">
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(GAN_APPROACH_LABELS) as GanApproach[]).map(v => (
-                  <label key={v} className="flex items-center gap-1.5 font-hebrew" style={{ fontSize: 13, cursor: "pointer" }}>
-                    <input type="checkbox" checked={approach.includes(v)} onChange={() => toggleApproach(v)} style={{ accentColor: "#0A2B6B" }} />
-                    {GAN_APPROACH_LABELS[v]}
-                  </label>
-                ))}
-              </div>
-            </Field>
-            <Field label="גן ביתי" k="is_home_gan"><TriSelect value={homeGan} onChange={setHomeGan} /></Field>
-            <Field label="קבוצה קטנה / יחס אישי" k="small_group"><TriSelect value={smallGroup} onChange={setSmallGroup} /></Field>
-            <Field label="צוות יציב" k="stable_staff"><TriSelect value={stableStaff} onChange={setStableStaff} /></Field>
-            <Field label="חוגים בגן" k="has_chugim_in_gan"><TriSelect value={chugimInGan} onChange={setChugimInGan} /></Field>
-            <Field label="קייטנה בחופשים" k="has_holiday_camp"><TriSelect value={holidayCamp} onChange={setHolidayCamp} /></Field>
-            <Field label="גמישות בשעות" k="flexible_hours"><TriSelect value={flexibleHours} onChange={setFlexibleHours} /></Field>
-            <Field span label="חוגים (מופרדים בפסיק)" k="chugim_types">
-              <input value={chugim} onChange={(e) => setChugim(e.target.value)} placeholder="מוזיקה, אמנות, ספורט..." className="font-hebrew" style={inputStyle} />
-            </Field>
-          </div>
+              <Field label="מחיר חודשי (₪)" k="monthly_price_nis">
+                <input value={monthlyPrice} onChange={(e) => setMonthlyPrice(e.target.value)} inputMode="numeric" placeholder="4200" className="font-hebrew" style={inputStyle} />
+              </Field>
+              <Field label="מקום פנוי" k="vacancy_status">
+                <ChipSelect value={vacancyStatus} onChange={setVacancyStatus} options={VACANCY_OPTS} />
+              </Field>
+            </Section>
+
+            <Section emoji="🕘" title="שעות וימי שישי" keys={["hours", "friday_schedule", "flexible_hours", "has_holiday_camp"]}>
+              <Field label="שעות פעילות" k="hours">
+                <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="07:30–16:00, א'-ה'" className="font-hebrew" style={inputStyle} />
+              </Field>
+              <Field label="ימי שישי" k="friday_schedule">
+                <ChipSelect value={fridaySchedule} onChange={setFridaySchedule} options={FRIDAY_OPTS} />
+              </Field>
+              <Field label="גמישות בשעות" k="flexible_hours"><TriSelect value={flexibleHours} onChange={setFlexibleHours} /></Field>
+              <Field label="קייטנה בחופשים" k="has_holiday_camp"><TriSelect value={holidayCamp} onChange={setHolidayCamp} /></Field>
+            </Section>
+
+            <Section emoji="🍎" title="אוכל וכשרות" keys={["meal_type", "kosher", "kosher_certifier", "vegan_friendly", "vegetarian_friendly", "meat_served", "allergy_friendly"]}>
+              <Field label="סוג אוכל" k="meal_type">
+                <ChipSelect value={mealType} onChange={setMealType} options={MEAL_OPTS} />
+              </Field>
+              <Field label="כשרות" k="kosher">
+                <ChipSelect value={kosher} onChange={(v) => setKosher(v as KosherStatus | "")} options={KOSHER_OPTS} />
+              </Field>
+              <Field label="גוף כשרות (אופציונלי)" k="kosher_certifier">
+                <input value={kosherCertifier} onChange={(e) => setKosherCertifier(e.target.value)} placeholder="רבנות, בד״ץ..." className="font-hebrew" style={inputStyle} />
+              </Field>
+              <Field label="טבעוני" k="vegan_friendly"><TriSelect value={vegan} onChange={setVegan} /></Field>
+              <Field label="צמחוני" k="vegetarian_friendly"><TriSelect value={vegetarian} onChange={setVegetarian} /></Field>
+              <Field label="מגיש בשר" k="meat_served"><TriSelect value={meat} onChange={setMeat} /></Field>
+              <Field label="ידידותי לאלרגיות" k="allergy_friendly"><TriSelect value={allergy} onChange={setAllergy} /></Field>
+            </Section>
+
+            <Section emoji="🛡️" title="בטיחות וצוות" keys={["has_outdoor_space", "has_mamad", "has_cctv", "cctv_streamed_online", "first_aid_trained", "staff_child_ratio", "stable_staff"]}>
+              <Field label="חצר חיצונית" k="has_outdoor_space"><TriSelect value={hasOutdoor} onChange={setHasOutdoor} /></Field>
+              <Field label='ממ"ד / מיקלט' k="has_mamad"><TriSelect value={hasMamad} onChange={setHasMamad} /></Field>
+              <Field label="מצלמות" k="has_cctv"><TriSelect value={hasCctv} onChange={setHasCctv} /></Field>
+              {hasCctv === "yes" && (
+                <Field label="ניתן לצפייה מרחוק" k="cctv_streamed_online"><TriSelect value={cctvOnline} onChange={setCctvOnline} /></Field>
+              )}
+              <Field label="עזרה ראשונה" k="first_aid_trained"><TriSelect value={firstAid} onChange={setFirstAid} /></Field>
+              <Field label="צוות יציב" k="stable_staff"><TriSelect value={stableStaff} onChange={setStableStaff} /></Field>
+              <Field label="יחס צוות-ילד" k="staff_child_ratio">
+                <input value={staffChildRatio} onChange={(e) => setStaffChildRatio(e.target.value)} inputMode="decimal" placeholder="0.33 = 1:3" className="font-hebrew" style={inputStyle} />
+              </Field>
+            </Section>
+
+            <Section emoji="🎨" title="שפות וחוגים" keys={["languages_spoken", "has_chugim_in_gan", "chugim_types"]}>
+              <Field label="שפות (בחרו את כולן)" k="languages_spoken">
+                <ChipMulti options={LANG_OPTS} selected={languages} onToggle={(v) => toggleLang(v as SpokenLanguage)} />
+              </Field>
+              <Field label="חוגים בגן" k="has_chugim_in_gan"><TriSelect value={chugimInGan} onChange={setChugimInGan} /></Field>
+              <Field label="חוגים (מופרדים בפסיק)" k="chugim_types">
+                <input value={chugim} onChange={(e) => setChugim(e.target.value)} placeholder="מוזיקה, אמנות, ספורט..." className="font-hebrew" style={inputStyle} />
+              </Field>
+            </Section>
           </LockedContext.Provider>
 
           {lockedKeys.length > 0 && (
@@ -372,10 +441,10 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
             className="font-hebrew font-bold" style={{ flex: "0 0 30%", background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, padding: 14, fontSize: 14, color: "#4A5568", cursor: "pointer" }}>
             ביטול
           </button>
-          <button type="button" onClick={submit} disabled={saving}
+          <button type="button" onClick={submit} disabled={saving || changedCount === 0}
             className="flex-1 flex items-center justify-center gap-2 font-hebrew font-bold"
-            style={{ background: "#0A2B6B", color: "#fff", borderRadius: 16, padding: 14, fontSize: 14, border: "none", cursor: saving ? "not-allowed" : "pointer" }}>
-            {saving ? <Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> : "שמירה"}
+            style={{ background: changedCount === 0 ? "#C5CDD8" : "#0A2B6B", color: "#fff", borderRadius: 16, padding: 14, fontSize: 15, border: "none", cursor: saving || changedCount === 0 ? "not-allowed" : "pointer", transition: "background .15s" }}>
+            {saving ? <Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> : changedCount === 0 ? "עדיין לא שיניתם כלום" : `שליחה · ${changedCount} ${changedCount === 1 ? "שינוי" : "שינויים"}`}
           </button>
         </div>
       </div>

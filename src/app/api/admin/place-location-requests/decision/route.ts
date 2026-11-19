@@ -7,6 +7,7 @@ import { applyPlaceLocation } from "@/lib/server/place-owners";
 
 // POST /api/admin/place-location-requests/decision
 // body: { id, action: "approve" | "reject" | "revert" | "seen", moderation_reason? }
+// "reopen" puts a decided (not owner-auto-applied) request back to pending; an approved one first moves the pin back.
 // "revert" puts an owner's auto-applied pin move back; "seen" keeps it and takes it off the pending queue.
 export async function POST(req: Request) {
   const url = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
@@ -47,8 +48,8 @@ export async function POST(req: Request) {
   const moderationReason =
     typeof body?.moderation_reason === "string" ? body.moderation_reason.trim() || null : null;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  if (!["approve", "reject", "revert", "seen"].includes(action)) {
-    return NextResponse.json({ error: "action must be approve, reject, revert or seen" }, { status: 400 });
+  if (!["approve", "reject", "revert", "seen", "reopen"].includes(action)) {
+    return NextResponse.json({ error: "action must be approve, reject, revert, seen or reopen" }, { status: 400 });
   }
 
   const admin = createClient(url, serviceKey, {
@@ -80,6 +81,23 @@ export async function POST(req: Request) {
         : { admin_seen_at: stamp })
       .eq("id", id);
     if (markErr) return NextResponse.json({ error: markErr.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+  if (action === "reopen") {
+    if (existing.auto_applied || existing.status === "pending") {
+      return NextResponse.json({ error: "Only an approved or declined request can be reopened" }, { status: 409 });
+    }
+    if (existing.status === "approved") {
+      if (existing.previous_lat == null || existing.previous_lon == null) {
+        return NextResponse.json({ error: "No previous location on file to restore" }, { status: 409 });
+      }
+      const err = await applyPlaceLocation(admin, existing.place_id, existing.previous_lat, existing.previous_lon, existing.previous_address);
+      if (err) return NextResponse.json({ error: err }, { status: 500 });
+    }
+    const { error: reopenErr } = await admin.from("place_location_requests")
+      .update({ status: "pending", moderation_reason: null, reviewed_at: null, reviewed_by: null })
+      .eq("id", id);
+    if (reopenErr) return NextResponse.json({ error: reopenErr.message }, { status: 500 });
     return NextResponse.json({ success: true });
   }
   if (existing.status !== "pending") {

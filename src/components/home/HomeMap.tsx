@@ -1552,6 +1552,29 @@ function ProfileScreen({
   const initial = displayName[0]?.toUpperCase() ?? "א";
   const [showDelete, setShowDelete] = useState(false);
   const [recCount, setRecCount] = useState<number | null>(null);
+  // Admin: how many requests are waiting / arrived since this queue was last opened
+  const [inboxCounts, setInboxCounts] = useState<Record<"location" | "detail" | "triage", { pending: number; unseen: number }> | null>(null);
+  useEffect(() => {
+    if (!isAdmin || !supabase) { setInboxCounts(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await supabase!.auth.getSession().then((r) => r.data.session?.access_token ?? null);
+        if (!token) return;
+        const qs = new URLSearchParams();
+        for (const k of ["location", "detail", "triage"]) {
+          let seen: string | null = null;
+          try { seen = window.localStorage.getItem("gmt_admin_seen_" + k); } catch {}
+          if (seen) qs.set(k, seen);
+        }
+        const res = await fetch(`/api/admin/inbox-counts?${qs.toString()}`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok) setInboxCounts({ location: data.location, detail: data.detail, triage: data.triage });
+      } catch { /* badges are a nicety */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isAdmin]);
+  const unseenTotal = inboxCounts ? inboxCounts.location.unseen + inboxCounts.detail.unseen + inboxCounts.triage.unseen : 0;
 
   useEffect(() => {
     if (!user?.id || !supabase) return;
@@ -1618,12 +1641,17 @@ function ProfileScreen({
           <>
             <div className="font-hebrew flex items-center justify-between" style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E", margin: "18px 0 10px" }}>
               ניהול
+              {unseenTotal > 0 && (
+                <span style={{ background: "#DC2626", color: "#fff", borderRadius: 99, padding: "2px 10px", fontSize: 12, fontWeight: 800 }}>
+                  {unseenTotal} חדשות
+                </span>
+              )}
             </div>
             <ProfileListCard icon={<Send style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' WhatsApp" sub="אישור המלצות שחולצו מוואטסאפ" onClick={() => (window.location.href = "/admin/whatsapp")} />
             <ProfileListCard icon={<BarChart3 style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="מי נכנס ומה לחצו" sub="כניסות, לחיצות, ומאיזה קישור הגיעו" onClick={() => (window.location.href = "/admin/analytics")} />
-            <ProfileListCard icon={<Shield style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' גנים" sub="עריכות והמלצות ממתינות" onClick={() => (window.location.href = "/admin/triage")} />
-            <ProfileListCard icon={<MapPin style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות שינוי מיקום" sub="אישור עדכוני מיקום ממשתמשים" onClick={() => (window.location.href = "/admin/place-location-requests")} />
-            <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות עדכון פרטים" sub="אישור פרטים שהורים מילאו בגנים" onClick={() => (window.location.href = "/admin/place-detail-requests")} />
+            <ProfileListCard icon={<Shield style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="טריאז' גנים" badge={inboxCounts?.triage.unseen} waiting={inboxCounts?.triage.pending} sub="עריכות והמלצות ממתינות" onClick={() => (window.location.href = "/admin/triage")} />
+            <ProfileListCard icon={<MapPin style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות שינוי מיקום" badge={inboxCounts?.location.unseen} waiting={inboxCounts?.location.pending} sub="אישור עדכוני מיקום ממשתמשים" onClick={() => (window.location.href = "/admin/place-location-requests")} />
+            <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות עדכון פרטים" badge={inboxCounts?.detail.unseen} waiting={inboxCounts?.detail.pending} sub="אישור פרטים שהורים מילאו בגנים" onClick={() => (window.location.href = "/admin/place-detail-requests")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="המלצות ממתינות" sub="המלצות שהבדיקה עצרה או בדירוג 1–2" onClick={() => (window.location.href = "/admin/held-reviews")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="מקומות חדשים ממתינים" sub="מקומות שגולשים הוסיפו והבדיקה עצרה" onClick={() => (window.location.href = "/admin/held-places")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="הסכמות להופיע באתר" sub="בייביסיטרים ומטפלות שמוסתרים עד שיסכימו" onClick={() => (window.location.href = "/admin/consents")} />
@@ -1675,7 +1703,7 @@ function ProfileScreen({
   );
 }
 
-function ProfileListCard({ icon, iconBg, title, sub, onClick }: { icon: React.ReactNode; iconBg: string; title: string; sub?: string; onClick?: () => void }) {
+function ProfileListCard({ icon, iconBg, title, sub, onClick, badge, waiting }: { icon: React.ReactNode; iconBg: string; title: string; sub?: string; onClick?: () => void; badge?: number; waiting?: number }) {
   return (
     <button type="button" onClick={onClick}
       className="w-full text-start flex items-center gap-3"
@@ -1684,7 +1712,14 @@ function ProfileListCard({ icon, iconBg, title, sub, onClick }: { icon: React.Re
       <div className="flex-1">
         <h6 className="font-hebrew font-bold" style={{ fontSize: 14, color: "#0F1A2E", margin: "0 0 2px" }}>{title}</h6>
         {sub && <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8" }}>{sub}</div>}
+        {!!waiting && waiting > 0 && <div className="font-hebrew" style={{ fontSize: 12, color: "#B45309", fontWeight: 700, marginTop: 1 }}>{waiting} ממתינות לאישור</div>}
       </div>
+      {!!badge && badge > 0 && (
+        <span aria-label={`${badge} חדשות`} className="font-hebrew shrink-0"
+          style={{ minWidth: 24, height: 24, padding: "0 7px", borderRadius: 99, background: "#DC2626", color: "#fff", fontSize: 13, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {badge}
+        </span>
+      )}
       <ChevronRight style={{ width: 18, height: 18, color: "#8A95A8" }} />
     </button>
   );
