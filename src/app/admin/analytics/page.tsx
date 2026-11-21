@@ -49,6 +49,11 @@ type Summary = {
   people: Person[];
   recent: Recent[];
   users: Record<string, { name: string | null; email: string | null }>;
+  categories: {
+    people: number; by_cat: Record<string, number>; one: number; several: number;
+    combos: { cats: string[]; people: number }[];
+    by_day: { day: string; kids: number; doctor: number; cosmetics: number }[];
+  } | null;
   likes: { hearts: number; followed: number; people: number; people_followed: number; places: { place_id: string; name: string | null; hearts: number; followed: number }[] } | null;
 };
 
@@ -414,6 +419,44 @@ export default function AdminAnalyticsPage() {
               trend={<Trend cur={intentRate} prev={prevIntentRate} unit="pts" />} />
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
+            <Section title="Which categories do people look at?" hint="People who picked a category or opened a place in it (all time). One person can count in several categories.">
+              {data.categories && data.categories.people > 0 ? (
+                <>
+                  <div className="space-y-1">
+                    {(["kids", "doctor", "cosmetics"] as const).map((c) => (
+                      <div key={c} className="flex items-center gap-2 text-sm">
+                        <span className="w-24 shrink-0">{categoryLabel(c)}</span>
+                        <Bar value={data.categories!.by_cat[c]} max={data.categories!.people} />
+                        <span className="w-28 shrink-0 text-right text-xs text-gray-600">{data.categories!.by_cat[c]} people · {pct(data.categories!.by_cat[c], data.categories!.people)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500">Percent = share of the {data.categories.people} people who looked at any category.</p>
+                  <h3 className="pt-2 text-sm font-bold text-[#0A2B6B]">One category or several?</h3>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                    <div className="rounded border p-2"><div>Only one category</div><div className="text-2xl font-bold text-[#0A2B6B]">{data.categories.one}</div>{pct(data.categories.one, data.categories.people)}%</div>
+                    <div className="rounded border p-2"><div>Two or three</div><div className="text-2xl font-bold text-[#0A2B6B]">{data.categories.several}</div>{pct(data.categories.several, data.categories.people)}%</div>
+                  </div>
+                  <ul className="text-sm">
+                    {data.categories.combos.map((cb) => (
+                      <li key={cb.cats.join(",")} className="flex justify-between border-t py-1">
+                        <span>{cb.cats.map((c) => categoryLabel(c)).join(" + ")}{cb.cats.length === 1 ? " only" : ""}</span>
+                        <span className="text-gray-600">{cb.people}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <h3 className="pt-2 text-sm font-bold text-[#0A2B6B]">By day (people)</h3>
+                  <div className="space-y-1">
+                    {data.categories.by_day.slice(-14).map((d) => (
+                      <div key={d.day} className="flex items-center gap-2 text-xs">
+                        <span className="w-24 shrink-0 text-gray-600">{dayLabel(d.day)}</span>
+                        <span className="text-gray-700">Kids {d.kids} · Doctors {d.doctor} · Cosmetics {d.cosmetics}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : <div className="text-sm text-gray-500">No category activity yet.</div>}
+            </Section>
             <Section title="New features" hint="Counted since the tracking fix on 21 Nov, so earlier days show 0">
               <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
                 <div className="rounded border p-2"><div>🔔 Spot alert taps</div><div className="text-2xl font-bold text-[#0A2B6B]">{ev("spot_alert_click").count}</div>{ev("spot_alert_click").people} people</div>

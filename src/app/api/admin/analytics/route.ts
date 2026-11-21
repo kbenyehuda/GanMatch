@@ -68,5 +68,68 @@ export async function GET(req: Request) {
     };
   }
 
-  return NextResponse.json({ ...data, prev_pulse: prev.data?.pulse ?? null, users, days, category, likes });
+  // Which of the 3 main categories people looked at (picked it, or opened/previewed a place in it).
+  // Counted from telemetry events; one person = signed-in user, else browser. Counts only, no names.
+  const MAIN = ["kids", "doctor", "cosmetics"] as const;
+  let categories: {
+    people: number; by_cat: Record<string, number>; one: number; several: number;
+    combos: { cats: string[]; people: number }[];
+    by_day: { day: string; kids: number; doctor: number; cosmetics: number }[];
+  } | null = null;
+  try {
+    type Row = { visitor_id: string | null; user_id: string | null; event_name: string; entity_id: string | null; metadata: { category?: string } | null; created_at: string };
+    const rows: Row[] = [];
+    for (let from = 0; from < 60000; from += 1000) {
+      let q = auth.admin.from("telemetry_events")
+        .select("visitor_id,user_id,event_name,entity_id,metadata,created_at")
+        .in("event_name", ["category_selected", "place_opened", "place_preview"])
+        .order("created_at", { ascending: true })
+        .range(from, from + 999);
+      if (days !== 0) q = q.gte("created_at", since.toISOString());
+      const { data: chunk, error } = await q;
+      if (error) throw new Error(error.message);
+      rows.push(...((chunk ?? []) as Row[]));
+      if ((chunk ?? []).length < 1000) break;
+    }
+    const placeIds = Array.from(new Set(rows.filter((r) => r.event_name !== "category_selected" && r.entity_id && UUID_RE.test(r.entity_id)).map((r) => r.entity_id as string)));
+    const placeCat = new Map<string, string>();
+    for (let i = 0; i < placeIds.length; i += 200) {
+      const { data: pl } = await auth.admin.from("places").select("id,category").in("id", placeIds.slice(i, i + 200));
+      for (const p of (pl ?? []) as { id: string; category: string | null }[]) if (p.category) placeCat.set(p.id, p.category);
+    }
+    const perPerson = new Map<string, Set<string>>();
+    const perDay = new Map<string, Record<string, Set<string>>>();
+    for (const r of rows) {
+      const person = r.user_id ?? (r.visitor_id ? `v:${r.visitor_id}` : null);
+      if (!person) continue;
+      const cat = r.event_name === "category_selected" ? r.metadata?.category : r.entity_id ? placeCat.get(r.entity_id) : undefined;
+      if (!cat || !(MAIN as readonly string[]).includes(cat)) continue;
+      if (category && cat !== category) continue;
+      const set = perPerson.get(person) ?? new Set<string>();
+      set.add(cat);
+      perPerson.set(person, set);
+      const day = new Date(r.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+      const d = perDay.get(day) ?? { kids: new Set<string>(), doctor: new Set<string>(), cosmetics: new Set<string>() };
+      d[cat].add(person);
+      perDay.set(day, d);
+    }
+    const by_cat: Record<string, number> = { kids: 0, doctor: 0, cosmetics: 0 };
+    const comboCount = new Map<string, number>();
+    let one = 0;
+    let several = 0;
+    for (const set of Array.from(perPerson.values())) {
+      for (const c of Array.from(set)) by_cat[c] += 1;
+      if (set.size === 1) one += 1; else several += 1;
+      const key = MAIN.filter((c) => set.has(c)).join(",");
+      comboCount.set(key, (comboCount.get(key) ?? 0) + 1);
+    }
+    categories = {
+      people: perPerson.size, by_cat, one, several,
+      combos: Array.from(comboCount.entries()).map(([k, n]) => ({ cats: k.split(","), people: n })).sort((a, b) => b.people - a.people),
+      by_day: Array.from(perDay.entries()).sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, d]) => ({ day, kids: d.kids.size, doctor: d.doctor.size, cosmetics: d.cosmetics.size })),
+    };
+  } catch { categories = null; }
+
+  return NextResponse.json({ ...data, prev_pulse: prev.data?.pulse ?? null, users, days, category, likes, categories });
 }
