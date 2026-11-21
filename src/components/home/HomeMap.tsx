@@ -1400,6 +1400,8 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
         active={activeTab}
         onChange={(tab) => {
           if (tab === "add") { startAddFlow(); return; }
+          // An open place page covers the tabs on phones: close it so the tab you tapped is what you see
+          if (detailPlace) setDetailPlace(null);
           setActiveTab(tab);
         }}
       />
@@ -1734,8 +1736,10 @@ function PointsExplainer({ pts }: { pts: { points: number; pending: number; valu
   return (
     <div className="font-hebrew" style={{ marginTop: 18, background: "#fff", borderRadius: 16, padding: 14, border: "1px solid #F3E3B5" }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E" }}>⭐ נקודות על כל תרומה</div>
-      <div style={{ fontSize: 13, color: "#4A5568", marginTop: 6, lineHeight: 1.6 }}>
-        המלצה על מקום: {v.recommendation} · הוספת מקום חדש: {v.newPlace} · השלמת פרט חסר: {v.detailEdit}
+      <div style={{ fontSize: 13, color: "#4A5568", marginTop: 6, lineHeight: 1.7 }}>
+        <div>המלצה על מקום: <strong>{v.recommendation}</strong></div>
+        <div>הוספת מקום חדש: <strong>{v.newPlace}</strong></div>
+        <div>השלמת פרט חסר: <strong>{v.detailEdit}</strong></div>
       </div>
       {!!pts?.pending && (
         <div style={{ fontSize: 13, color: "#B7791F", fontWeight: 700, marginTop: 6 }}>
