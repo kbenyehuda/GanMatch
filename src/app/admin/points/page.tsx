@@ -49,7 +49,7 @@ export default function AdminPointsPage() {
       </div>
       <p className="text-sm text-gray-600">
         המלצה 5, מקום חדש 5, עדכון פרטים שאושר 3. עד 20 נקודות ביום לאדם. נקודות נספרות רק אחרי אישור.
-        "בדרך" = מחכה לאישור.
+        &quot;בדרך&quot; = מחכה לאישור.
       </p>
       <div className="flex items-center gap-3">
         <button className="px-3 py-1.5 rounded border text-sm bg-white" onClick={load} disabled={busy}>{busy ? "מרענן..." : "רענון"}</button>
