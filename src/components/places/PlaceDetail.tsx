@@ -19,6 +19,7 @@ import { placeTypeLabel } from "@/lib/place-type";
 import { isApproximateLocation } from "@/lib/place-location";
 import { CONTACT_EMAIL, WHATSAPP_REVIEWER_NAME, reportReviewMailto, reportPlaceMailto } from "@/lib/contact";
 import { EditKidsAttributesModal } from "./EditKidsAttributesModal";
+import { getKeyFacts } from "@/lib/key-facts";
 import { OwnerModal } from "./OwnerModal";
 import { AttributeIconsLegendModal } from "./AttributeIconsLegendModal";
 import { formatMealTypeHe } from "@/lib/gan-display";
@@ -865,16 +866,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, ale
               <KidsAttributeChips attrs={attrs} parentTags={detailParentTags(reviews, place)} />
               {(() => {
                 // The facts a parent needs most. The bar shows how many we know; each missing one is a chip.
-                const KEY_FACTS: { key: string; label: string; known: boolean }[] = [
-                  { key: "monthly_price_nis", label: "מחיר", known: attrs.monthly_price_nis != null },
-                  { key: "vacancy_status", label: "מקום פנוי", known: attrs.vacancy_status != null && attrs.vacancy_status !== "UNKNOWN" },
-                  { key: "min_age_months", label: "טווח גילאים", known: attrs.min_age_months != null },
-                  { key: "hours", label: "שעות פעילות", known: !!place.hours },
-                  { key: "meal_type", label: "סוג אוכל", known: attrs.meal_type != null && attrs.meal_type !== "UNKNOWN" && attrs.meal_type !== "" },
-                  { key: "friday_schedule", label: "ימי שישי", known: attrs.friday_schedule != null && attrs.friday_schedule !== "UNKNOWN" },
-                  { key: "has_outdoor_space", label: "חצר", known: attrs.has_outdoor_space != null },
-                  { key: "has_mamad", label: 'ממ"ד', known: attrs.has_mamad != null },
-                ];
+                const KEY_FACTS = getKeyFacts(place);
                 const missing = KEY_FACTS.filter((f) => !f.known);
                 const completePct = Math.round(((KEY_FACTS.length - missing.length) / KEY_FACTS.length) * 100);
                 // Shown to guests too: they didn't know they could help, or that it needs a Google login

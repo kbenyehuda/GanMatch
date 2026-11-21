@@ -6,6 +6,8 @@ import type { Place, KidsAttributes, SpokenLanguage, KosherStatus } from "@/type
 import { useSession } from "@/lib/useSession";
 import { GAN_APPROACH_LABELS, type GanApproach } from "@/lib/place-facts";
 import { KIDS_FIELD_LABELS, currentKidsValue, formatKidsValue } from "@/lib/kids-attributes";
+import { getKeyFacts } from "@/lib/key-facts";
+import { track } from "@/lib/analytics";
 
 const GAN_CATEGORY_OPTS: { value: string; label: string }[] = [
   { value: "", label: "לא ידוע" },
@@ -67,8 +69,13 @@ function yearsStrToMonths(s: string): number | null {
 // greyed out under "מה שכבר ידוע" until the user says the value is wrong (user, 2026-10-30).
 const LockedContext = createContext<(key: string) => boolean>(() => false);
 
+// Mini mode: only the listed fields are shown (one fact, tapped from a "+ מחיר" chip); null = the full form.
+const MiniContext = createContext<string[] | null>(null);
+
 function Field({ label, children, k, span = false }: { label: string; children: React.ReactNode; k?: string; span?: boolean }) {
   const isLocked = useContext(LockedContext);
+  const mini = useContext(MiniContext);
+  if (mini && (!k || !mini.includes(k))) return null;
   if (k && isLocked(k)) return null;
   return (
     <div className={span ? "col-span-2" : undefined} data-field={k}>
@@ -145,6 +152,9 @@ function ChipMulti({ options, selected, onToggle }: { options: { value: string; 
 /** A titled card that groups related fields; hidden when every field in it is already known (locked). */
 function Section({ title, emoji, keys, children }: { title: string; emoji: string; keys: string[]; children: React.ReactNode }) {
   const isLocked = useContext(LockedContext);
+  const mini = useContext(MiniContext);
+  // Mini mode: no card, no heading, just the one field
+  if (mini) return <>{children}</>;
   if (keys.every((k) => isLocked(k))) return null;
   return (
     <section style={{ background: "#fff", border: "1px solid #E5E9F0", borderRadius: 18, padding: "14px 14px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(10,43,107,.04)" }}>
@@ -170,12 +180,21 @@ export interface EditKidsAttributesModalProps {
 export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, isOwner = false, focusField }: EditKidsAttributesModalProps) {
   const { session } = useSession();
   const bodyRef = useRef<HTMLDivElement>(null);
+  // "mini" = just the one fact that was tapped, "full" = the whole form, "offer" = "רוצים להוסיף?" after a save.
+  // A generic open (no focusField) is the full form, as before.
+  const [mode, setMode] = useState<"mini" | "full" | "offer">(focusField ? "mini" : "full");
+  const [activeField, setActiveField] = useState<string | undefined>(focusField);
+  // Key facts saved from this form (so a pending edit, which does not change the place yet, is not offered again)
+  const [savedFacts, setSavedFacts] = useState<Set<string>>(new Set());
   useEffect(() => {
-    if (!focusField) return;
-    const el = bodyRef.current?.querySelector<HTMLElement>(`[data-field="${focusField}"]`);
+    if (!activeField || mode === "offer") return;
+    const el = bodyRef.current?.querySelector<HTMLElement>(`[data-field="${activeField}"]`);
     el?.scrollIntoView({ block: "center" });
     el?.querySelector<HTMLElement>("input,select")?.focus({ preventScroll: true });
-  }, [focusField]);
+  }, [activeField, mode]);
+  const miniKeys = mode === "mini" && activeField
+    ? (getKeyFacts(place).find((f) => f.key === activeField)?.bodyKeys ?? [activeField])
+    : null;
   const a = (place.attributes ?? {}) as KidsAttributes;
 
   const [ganCategory, setGanCategory] = useState(a.gan_category ?? "");
@@ -218,7 +237,11 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
       return v != null && !(Array.isArray(v) && v.length === 0);
     });
   }, [isOwner, place.attributes, place.hours, place.kosher]);
-  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  // The fact that was tapped is always editable, even when it counts as "known" (e.g. a vacancy marked unknown)
+  const [unlocked, setUnlocked] = useState<Set<string>>(() => {
+    const first = focusField ? (getKeyFacts(place).find((f) => f.key === focusField)?.bodyKeys ?? [focusField]) : [];
+    return new Set(first);
+  });
   const isLocked = (key: string) => knownKeys.includes(key) && !unlocked.has(key);
   const lockedKeys = knownKeys.filter(isLocked);
 
@@ -263,7 +286,7 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
     };
   };
   // Snapshot of the form when it opened, to count how many fields the user actually changed.
-  const [initialBody] = useState(() => buildBody() as Record<string, unknown>);
+  const [initialBody, setInitialBody] = useState(() => buildBody() as Record<string, unknown>);
   const currentBody = buildBody() as Record<string, unknown>;
   const changedCount = Object.keys(currentBody).filter((k) => k !== "place_id" && JSON.stringify(currentBody[k]) !== JSON.stringify(initialBody[k])).length;
 
@@ -280,7 +303,13 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
     setSaving(true);
     setError(null);
     try {
-      const body = buildBody();
+      const full = buildBody() as Record<string, unknown>;
+      // Only what changed since the form opened (or since the last save): the server compares with the place,
+      // which does not change for a pending edit, so resending an earlier saved field would file it twice.
+      const body: Record<string, unknown> = { place_id: place.id };
+      for (const k of Object.keys(full)) {
+        if (k !== "place_id" && JSON.stringify(full[k]) !== JSON.stringify(initialBody[k])) body[k] = full[k];
+      }
       const res = await fetch("/api/places/kids-attributes", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
@@ -296,12 +325,35 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
         // Nothing changes on the place until an admin approves the request.
         onShowToast?.("תודה! נבדוק את העדכון ונפרסם אותו בקרוב 🙏 ⭐ +3 נקודות אחרי האישור");
       }
-      onClose();
+      // What was learned, for the "רוצים להוסיף?" offer (an empty answer teaches nothing)
+      const learned = (k: string) => { const v = full[k]; return k in body && v != null && v !== "" && !(Array.isArray(v) && v.length === 0); };
+      const doneNow = new Set(savedFacts);
+      for (const f of getKeyFacts(place)) if (f.bodyKeys.some(learned)) doneNow.add(f.key);
+      setSavedFacts(doneNow);
+      setInitialBody(full);
+      const offers = getKeyFacts(place).filter((f) => !f.known && !doneNow.has(f.key));
+      if (mode === "mini" && offers.length > 0) {
+        track("add_more_offer_shown", { remaining: offers.length }, place.id);
+        setMode("offer");
+      } else {
+        onClose();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה בשמירה");
     } finally {
       setSaving(false);
     }
+  };
+
+  // Facts still missing (not known on the place, not just saved here): offered after a save from the mini form
+  const offerFacts = getKeyFacts(place).filter((f) => !f.known && !savedFacts.has(f.key));
+  const openMini = (key: string) => {
+    track("add_more_offer_click", { field: key }, place.id);
+    const bodyKeys = getKeyFacts(place).find((f) => f.key === key)?.bodyKeys ?? [key];
+    setUnlocked((prev) => new Set([...Array.from(prev), ...bodyKeys]));
+    setError(null);
+    setActiveField(key);
+    setMode("mini");
   };
 
   return (
@@ -320,7 +372,33 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
             <X style={{ width: 14, height: 14, color: "#0A2B6B" }} />
           </button>
         </div>
-        <div ref={bodyRef} className="flex-1 overflow-y-auto" style={{ padding: "0 20px 12px" }}>
+        <div ref={bodyRef} className="flex-1 overflow-y-auto" style={{ padding: mode === "offer" ? "0 20px calc(96px + env(safe-area-inset-bottom, 0px))" : "0 20px 12px" }}>
+          {mode === "offer" ? (
+            <div className="flex flex-col items-center text-center" style={{ padding: "18px 4px 8px" }}>
+              <span aria-hidden style={{ fontSize: 34 }}>🙏</span>
+              <h4 className="font-hebrew" style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", marginTop: 6 }}>תודה! רוצים להוסיף?</h4>
+              <p className="font-hebrew" style={{ fontSize: 13, color: "#4A5568", marginTop: 4, lineHeight: 1.5 }}>
+                עוד כמה פרטים שהורים מחפשים כאן. כל אחד לוקח כמה שניות.
+              </p>
+              <div className="flex flex-wrap justify-center" style={{ gap: 8, marginTop: 14 }}>
+                {offerFacts.slice(0, 5).map((f) => (
+                  <button key={f.key} type="button" onClick={() => openMini(f.key)} className="font-hebrew"
+                    style={{ minHeight: 40, padding: "0 16px", borderRadius: 999, fontSize: 14, fontWeight: 700, cursor: "pointer", background: "#fff", color: "#1F5BB5", border: "1.5px dashed #9EC5FF" }}>
+                    + {f.label}
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={onClose} className="font-hebrew"
+                style={{ marginTop: 18, background: "none", border: 0, color: "#6B7A99", fontSize: 14, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 6 }}>
+                לא, תודה
+              </button>
+            </div>
+          ) : (<>
+          {mode === "mini" ? (
+            <p className="font-hebrew" style={{ fontSize: 12, color: "#4A5568", marginBottom: 12, lineHeight: 1.5, background: "#FBF1D8", borderRadius: 10, padding: "8px 10px" }}>
+              {isOwner ? "השינויים יופיעו באתר מיד." : "נבדוק ונפרסם בקרוב."}
+            </p>
+          ) : (<>
           <p className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", marginBottom: 6, lineHeight: 1.5 }}>
             כל שדה אופציונלי — מלאו מה שאתם יודעים, זה עוזר לכל ההורים שמחפשים גן.
           </p>
@@ -329,7 +407,10 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
               ? "אתם בעלי המקום, אז השינויים יופיעו באתר מיד."
               : "כל עדכון נבדק על ידינו לפני שהוא מופיע באתר, כדי שהמידע יישאר אמין."}
           </p>
+          </>)}
+          <MiniContext.Provider value={miniKeys}>
           <LockedContext.Provider value={isLocked}>
+          <div style={mode === "mini" ? { background: "#fff", border: "1px solid #E5E9F0", borderRadius: 18, padding: 14 } : undefined}>
             <Section emoji="🏫" title="על הגן" keys={["gan_category", "maon_symbol_code", "is_home_gan", "small_group", "approach"]}>
               <Field label="סוג גן" k="gan_category">
                 <ChipSelect value={ganCategory} onChange={setGanCategory} options={GAN_CATEGORY_OPTS} />
@@ -413,9 +494,19 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
                 <input value={chugim} onChange={(e) => setChugim(e.target.value)} placeholder="מוזיקה, אמנות, ספורט..." className="font-hebrew" style={inputStyle} />
               </Field>
             </Section>
+          </div>
           </LockedContext.Provider>
+          </MiniContext.Provider>
 
-          {lockedKeys.length > 0 && (
+          {mode === "mini" && (
+            <button type="button" onClick={() => { track("add_more_expand", { field: activeField }, place.id); setMode("full"); }}
+              className="font-hebrew w-full"
+              style={{ marginTop: 12, background: "none", border: 0, color: "#1F5BB5", fontSize: 14, fontWeight: 700, cursor: "pointer", padding: 8 }}>
+              הוספת פרטים נוספים ↓
+            </button>
+          )}
+
+          {mode === "full" && lockedKeys.length > 0 && (
             <div style={{ marginTop: 16, background: "#F0F3F8", borderRadius: 14, padding: "12px 14px" }}>
               <div className="font-hebrew" style={{ fontSize: 13, fontWeight: 700, color: "#8A95A8", marginBottom: 6 }}>מה שכבר ידוע</div>
               {lockedKeys.map((key) => (
@@ -435,7 +526,9 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
               {error}
             </div>
           )}
+          </>)}
         </div>
+        {mode !== "offer" && (
         <div className="shrink-0 flex gap-2.5" style={{ padding: "14px 18px calc(86px + env(safe-area-inset-bottom, 0px))", background: "linear-gradient(180deg,transparent,#F6F9FE 30%)" }}>
           <button type="button" onClick={onClose} disabled={saving}
             className="font-hebrew font-bold" style={{ flex: "0 0 30%", background: "#fff", border: "1px solid #E5E9F0", borderRadius: 16, padding: 14, fontSize: 14, color: "#4A5568", cursor: "pointer" }}>
@@ -447,6 +540,7 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
             {saving ? <Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> : changedCount === 0 ? "עדיין לא שיניתם כלום" : `שליחה · ${changedCount} ${changedCount === 1 ? "שינוי" : "שינויים"}`}
           </button>
         </div>
+        )}
       </div>
     </div>
   );
