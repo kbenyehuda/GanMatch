@@ -5,7 +5,7 @@ import { useSession } from "@/lib/useSession";
 import { supabase } from "@/lib/supabase";
 import { ANALYTICS_EVENT_LABELS } from "@/lib/analytics-events";
 import { isBrowserExcluded, includeThisBrowser } from "@/lib/analytics";
-import NewInfoOverview from "./NewInfoOverview";
+import NewInfoOverview, { type Lang } from "./NewInfoOverview";
 
 // Admin-only page, in English by the admin's choice (2026-11-02). Layout: pulse KPIs → demand + funnel →
 // content inflow + moderation → who/when detail. Admins' own visits aren't counted.
@@ -49,20 +49,15 @@ type Summary = {
   people: Person[];
   recent: Recent[];
   users: Record<string, { name: string | null; email: string | null }>;
+  likes: { hearts: number; followed: number; people: number; people_followed: number; places: { place_id: string; name: string | null; hearts: number; followed: number }[] } | null;
 };
 
-const RANGES = [
-  { days: 1, label: "24 hours" },
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 0, label: "All time" },
+type Tab = "pulse" | "demand" | "community" | "details";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "pulse", label: "Pulse" }, { id: "demand", label: "Demand" }, { id: "community", label: "Community" }, { id: "details", label: "Details" },
 ];
-const VERTICALS = [
-  { id: "", label: "All" },
-  { id: "kids", label: "Kids" },
-  { id: "doctor", label: "Doctors" },
-  { id: "cosmetics", label: "Cosmetics" },
-];
+const LANG_KEY = "analytics-lang";
+
 
 const TZ = "Asia/Jerusalem";
 const when = (iso: string) =>
@@ -139,8 +134,22 @@ function Kpi({ label, value, sub, trend }: { label: string; value: string; sub?:
 
 export default function AdminAnalyticsPage() {
   const { user, loading } = useSession();
-  const [days, setDays] = useState(30);
-  const [vertical, setVertical] = useState("");
+  const [tab, setTab] = useState<Tab>("pulse");
+  const [lang, setLang] = useState<Lang>("en");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [showAllFilters, setShowAllFilters] = useState(false);
+  const [showAllPlaces, setShowAllPlaces] = useState(false);
+  const [showAllLikes, setShowAllLikes] = useState(false);
+  useEffect(() => {
+    try { if (localStorage.getItem(LANG_KEY) === "he") setLang("he"); } catch { /* ignore */ }
+  }, []);
+  const chooseLang = (l: Lang) => {
+    setLang(l);
+    try { localStorage.setItem(LANG_KEY, l); } catch { /* ignore */ }
+  };
+  // Fixed for now: the site is new and small, so everything is "all time" and not split by category (decided 2026-11-21).
+  const days = 0;
+  const vertical = "";
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
@@ -242,76 +251,120 @@ export default function AdminAnalyticsPage() {
   })();
   const allOpen = recentGroups.length > 0 && recentGroups.every((g) => openPeople.has(g.person));
   const q = data?.queue;
+  const ev = (name: string) => data?.events.find((e) => e.event === name) ?? { event: name, count: 0, people: 0 };
+
+  const waiting = q ? q.held_reviews + q.detail_requests + q.location_requests : 0;
 
   return (
     <main className="mx-auto max-w-6xl p-4 md:p-6 space-y-4 min-h-screen" dir="ltr">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Analytics</h1>
-        <a href="/" className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50">Back to site</a>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap gap-1">
-          {RANGES.map((r) => (
-            <button key={r.days} onClick={() => setDays(r.days)}
-              className={`px-3 py-1.5 rounded border text-sm ${days === r.days ? "bg-[#0A2B6B] text-white" : "bg-white"}`}>
-              {r.label}
-            </button>
+      <div className="sticky top-0 z-20 -mx-4 md:-mx-6 border-b bg-white/95 px-4 md:px-6 py-2 backdrop-blur space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-bold">Analytics</h1>
+          <div className="flex items-center gap-2">
+            <button className="px-2.5 py-1 rounded border border-[#1F5BB5] text-[#1F5BB5] text-sm bg-white" onClick={() => setShareOpen(true)}>+ Share link</button>
+            <span className="inline-flex overflow-hidden rounded border bg-white text-sm">
+              {(["en", "he"] as const).map((l) => (
+                <button key={l} type="button" onClick={() => chooseLang(l)} className={`px-2.5 py-1 ${lang === l ? "bg-[#0A2B6B] text-white" : "text-gray-700"}`}>{l === "en" ? "EN" : "עב"}</button>
+              ))}
+            </span>
+            <button className="px-2.5 py-1 rounded border text-sm bg-white" onClick={load} disabled={reloading}>{reloading ? "..." : "Refresh"}</button>
+            <a href="/" className="px-2.5 py-1 rounded border text-sm bg-white hover:bg-gray-50">Site</a>
+          </div>
+        </div>
+        <div className="flex">
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => { setTab(t.id); window.scrollTo(0, 0); }}
+              className={`flex-1 border-b-[3px] py-2 text-sm font-semibold ${tab === t.id ? "border-[#0A2B6B] text-[#0A2B6B]" : "border-transparent text-gray-500"}`}>{t.label}</button>
           ))}
         </div>
-        <span className="mx-1 h-6 w-px bg-gray-200" />
-        <div className="flex flex-wrap gap-1">
-          {VERTICALS.map((v) => (
-            <button key={v.id} onClick={() => setVertical(v.id)}
-              className={`px-3 py-1.5 rounded border text-sm ${vertical === v.id ? "bg-[#1F5BB5] text-white" : "bg-white"}`}>
-              {v.label}
-            </button>
-          ))}
-        </div>
-        <button className="ml-auto px-3 py-1.5 rounded border text-sm bg-white" onClick={load} disabled={reloading}>
-          {reloading ? "Refreshing..." : "Refresh"}
-        </button>
       </div>
       <p className="text-xs text-gray-500">
         {excluded ? (
           <>
-            This browser is not counted (you used it as admin); while you&apos;re signed in here as admin every tab is you. Test as a guest in a private window, or sign out and{" "}
+            This browser is not counted (you used it as admin). Test as a guest in a private window, or sign out and{" "}
             <button className="text-[#1F5BB5] underline" onClick={() => { includeThisBrowser(); setExcluded(false); }}>count this browser again</button>.
           </>
         ) : (
           <>This browser is counted until you sign in here as admin. Test as a guest in a private window.</>
         )}
-        {" "}Times are Israel time. The vertical buttons narrow place-related numbers; visits and searches are site-wide.
+        {" "}Times are Israel time. Numbers below the &quot;Today&quot; cards cover all time since launch.
       </p>
       {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
-      <NewInfoOverview />
+      {shareOpen ? (
+        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setShareOpen(false)}>
+          <div className="w-full max-w-lg rounded-t-2xl bg-white p-4 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between"><span className="font-bold text-[#0A2B6B]">Tagged link</span><button className="text-sm text-gray-500" onClick={() => setShareOpen(false)}>Close</button></div>
+          <Section title="Create a tagged link" hint="Give each group or post its own link; 'Where they came from' shows how many came from each. The tag is removed from the address after they arrive, so re-shares aren't credited to it.">
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="block text-sm">
+                <span className="font-semibold">Tag</span>
+                <input value={tag} onChange={(e) => { setTag(e.target.value); setCopied(false); }}
+                  placeholder="e.g. borochov-parents" className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+              </label>
+              <label className="block text-sm">
+                <span className="font-semibold">Where the link goes (optional)</span>
+                <input value={target} onChange={(e) => { setTarget(e.target.value); setCopied(false); }}
+                  placeholder="Empty = home page; or paste a place link" className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+                {badTarget ? <span className="text-xs text-rose-700">That isn&apos;t a place link (it should look like /place/...). The link will go to the home page.</span> : null}
+              </label>
+            </div>
+            {link ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="rounded bg-gray-50 border px-2 py-1 text-xs break-all">{link}</code>
+                <button className="px-3 py-1.5 rounded bg-[#1F5BB5] text-white text-sm"
+                  onClick={() => navigator.clipboard?.writeText(link).then(() => setCopied(true)).catch(() => {})}>
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            ) : null}
+          </Section>
+
+          </div>
+        </div>
+      ) : null}
 
       {data && p ? (
         <>
-          {/* Tier 1: pulse */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Kpi label="Active people (last 7 days)" value={num(p.wau)}
-              sub={`${num(p.dau)} in the last 24 hours`} trend={<Trend cur={p.wau} prev={pp?.wau} />} />
-            <Kpi label="Organic recommendations" value={`${organicShare}%`}
-              sub={`${num(p.reviews_organic)} from users · ${num(p.reviews_seeded)} seeded from WhatsApp · ${num(p.organic_in_range)} new from users in range`} />
-            <Kpi label="High-intent visits" value={`${intentRate}%`}
-              sub={`${num(p.intent_sessions)} of ${num(p.sessions)} visits called, messaged, navigated, saved or shared`}
-              trend={<Trend cur={intentRate} prev={prevIntentRate} unit="pts" />} />
-            <Kpi label="Places with 3+ recommendations" value={`${num(p.places_3plus)} / ${num(p.places_total)}`}
-              sub={`${pct(p.places_3plus, p.places_total)}% of listed places`} />
-          </div>
+          {tab === "pulse" ? (
+            <>
+              {waiting > 0 ? (
+                <button onClick={() => setTab("community")} className="w-full rounded-xl border-2 border-amber-400 bg-amber-50 p-3 text-left font-semibold text-amber-900">
+                  🔔 {waiting} {waiting === 1 ? "item" : "items"} waiting for you
+                  <span className="block text-xs font-normal">{q!.held_reviews} held reviews · {q!.detail_requests} detail corrections · {q!.location_requests} location fixes. Tap to see them.</span>
+                </button>
+              ) : null}
+              <NewInfoOverview part="pulse" lang={lang} onLang={chooseLang} />
+              <div className="grid lg:grid-cols-2 gap-4">
+            <Section title="Where they came from" hint="The link tag (?src=), or the site they came from">
+              <table className="w-full text-sm">
+                <thead><tr className="text-gray-500 text-xs"><th className="text-left font-normal">Source</th><th className="font-normal">Visits</th><th className="font-normal">People</th></tr></thead>
+                <tbody>
+                  {data.sources.map((s) => (
+                    <tr key={s.src} className="border-t"><td className="py-1" dir="auto">{srcLabel(s.src)}</td><td className="text-center">{s.visits}</td><td className="text-center">{s.people}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
 
+              </div>
+            </>
+          ) : null}
+
+          {tab === "demand" ? (
+            <>
+              <div className="grid lg:grid-cols-2 gap-4">
           {/* Tier 2: demand + funnel */}
-          <div className="grid lg:grid-cols-2 gap-4">
             <Section title="What people are looking for" hint="Filter options switched on, by share of visits that used them">
               <div className="space-y-1">
-                {data.filters.map((x) => (
+                {data.filters.slice(0, showAllFilters ? 99 : 5).map((x) => (
                   <div key={x.label} className="flex items-center gap-2 text-sm">
                     <span className="w-44 shrink-0 truncate" dir="auto" title={x.label}>{x.label}</span>
                     <Bar value={x.sessions} max={maxFilter} />
                     <span className="w-24 shrink-0 text-right text-xs text-gray-600">{pct(x.sessions, data.totals.visits)}% of visits</span>
                   </div>
                 ))}
+                {data.filters.length > 5 && <button className="text-xs text-[#1F5BB5] underline" onClick={() => setShowAllFilters(!showAllFilters)}>{showAllFilters ? "Show fewer" : `Show all ${data.filters.length}`}</button>}
                 {data.filters.length === 0 && <div className="text-sm text-gray-500">No filters used yet.</div>}
               </div>
               <h3 className="pt-3 text-sm font-bold text-[#0A2B6B]">Searches with no results</h3>
@@ -329,6 +382,7 @@ export default function AdminAnalyticsPage() {
               </table>
               {data.zero_searches.length === 0 && <div className="text-sm text-gray-500">None so far.</div>}
             </Section>
+
 
             <Section title="Intent funnel" hint="Share of visits that reached each step">
               <div className="space-y-3 pt-1">
@@ -352,41 +406,82 @@ export default function AdminAnalyticsPage() {
                 })}
               </div>
             </Section>
-          </div>
 
-          {/* Tier 3: content inflow + moderation */}
-          <div className="grid lg:grid-cols-2 gap-4">
-            <Section title="New recommendations" hint="Per day in the selected range; dark = from users, light = seeded from WhatsApp">
-              <div className="space-y-1">
-                {reviewDays.map((d) => (
-                  <div key={d.day} className="flex items-center gap-2 text-sm">
-                    <span className="w-24 shrink-0 text-gray-600">{dayLabel(d.day)}</span>
-                    <div className="h-2.5 flex-1 rounded bg-gray-100 overflow-hidden flex">
-                      <div className="h-full bg-[#0A2B6B]" style={{ width: `${maxReviewDay ? (d.organic / maxReviewDay) * 100 : 0}%` }} />
-                      <div className="h-full bg-[#9DB8E3]" style={{ width: `${maxReviewDay ? (d.seeded / maxReviewDay) * 100 : 0}%` }} />
-                    </div>
-                    <span className="w-44 shrink-0 text-right text-xs text-gray-600 truncate" title={d.byCat}>{d.total} · {d.byCat}</span>
-                  </div>
-                ))}
-                {reviewDays.length === 0 && <div className="text-sm text-gray-500">No new recommendations in this range.</div>}
               </div>
-              {mix && mixTotal ? (
-                <>
-                  <h3 className="pt-3 text-sm font-bold text-[#0A2B6B]">Where all recommendations come from</h3>
-                  <div className="flex h-4 rounded overflow-hidden">
-                    <div className="bg-[#9DB8E3]" style={{ width: `${pct(mix.seeded, mixTotal)}%` }} />
-                    <div className="bg-[#1F5BB5]" style={{ width: `${pct(mix.anonymous, mixTotal)}%` }} />
-                    <div className="bg-[#0A2B6B]" style={{ width: `${pct(mix.named, mixTotal)}%` }} />
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 text-xs text-gray-600">
-                    <span><span className="inline-block h-2 w-2 rounded-sm bg-[#9DB8E3]" /> Seeded / paraphrased from WhatsApp: {num(mix.seeded)}</span>
-                    <span><span className="inline-block h-2 w-2 rounded-sm bg-[#1F5BB5]" /> Signed-in user, anonymous: {num(mix.anonymous)}</span>
-                    <span><span className="inline-block h-2 w-2 rounded-sm bg-[#0A2B6B]" /> Signed-in user, with a name: {num(mix.named)}</span>
-                  </div>
-                </>
-              ) : null}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Kpi label="High-intent visits" value={`${intentRate}%`}
+              sub={`${num(p.intent_sessions)} of ${num(p.sessions)} visits called, messaged, navigated, saved or shared`}
+              trend={<Trend cur={intentRate} prev={prevIntentRate} unit="pts" />} />
+              </div>
+              <div className="grid lg:grid-cols-2 gap-4">
+            <Section title="New features" hint="Counted since the tracking fix on 21 Nov, so earlier days show 0">
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                <div className="rounded border p-2"><div>🔔 Spot alert taps</div><div className="text-2xl font-bold text-[#0A2B6B]">{ev("spot_alert_click").count}</div>{ev("spot_alert_click").people} people</div>
+                <div className="rounded border p-2"><div>In-app browser sheet shown</div><div className="text-2xl font-bold text-[#0A2B6B]">{ev("inapp_sheet_shown").count}</div>{ev("inapp_sheet_open_chrome").count} open Chrome · {ev("inapp_sheet_copy").count} copy · {ev("inapp_sheet_try_anyway").count} try anyway</div>
+                <div className="rounded border p-2"><div>&quot;Add more details&quot; offer</div><div className="text-2xl font-bold text-[#0A2B6B]">{ev("add_more_offer_shown").count} → {ev("add_more_offer_click").count}</div>shown → tapped · {ev("add_more_expand").count} expanded to the full form</div>
+                <div className="rounded border p-2"><div>Signed in</div><div className="text-2xl font-bold text-[#0A2B6B]">{ev("signed_in").people}</div>people in this range</div>
+              </div>
             </Section>
 
+            <Section title="Liked and followed places" hint="Signed-in people only, right now (not limited by the date range). ❤️ = saved to favorites; 🔔 = email alerts switched on. Guests' ❤️ stay on their own phone, so only their tap count is shown.">
+              {data.likes ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                    <div className="rounded border p-2"><div>❤️ Saved places</div><div className="text-2xl font-bold text-[#0A2B6B]">{data.likes.hearts}</div>by {data.likes.people} people</div>
+                    <div className="rounded border p-2"><div>🔔 Followed (email alerts)</div><div className="text-2xl font-bold text-[#0A2B6B]">{data.likes.followed}</div>by {data.likes.people_followed} people</div>
+                  </div>
+                  <p className="text-xs text-gray-500">Save taps in this range (all visitors): {ev("save").count} from {ev("save").people} people.</p>
+                  {data.likes.places.length ? (
+                    <table className="w-full text-sm">
+                      <thead><tr className="text-gray-500 text-xs"><th className="text-left font-normal">Place</th><th className="font-normal">❤️</th><th className="font-normal">🔔</th></tr></thead>
+                      <tbody>
+                        {data.likes.places.slice(0, showAllLikes ? 50 : 5).map((pl) => (
+                          <tr key={pl.place_id} className="border-t">
+                            <td className="py-1"><a href={`/place/${pl.place_id}`} target="_blank" rel="noreferrer" className="text-[#1F5BB5] hover:underline" dir="auto">{pl.name || "Place"}</a></td>
+                            <td className="text-center">{pl.hearts}</td><td className="text-center">{pl.followed}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : <div className="text-sm text-gray-500">Nothing saved yet.</div>}
+                  {data.likes.places.length > 5 ? <button className="text-xs text-[#1F5BB5] underline" onClick={() => setShowAllLikes(!showAllLikes)}>{showAllLikes ? "Show fewer" : `Show all ${data.likes.places.length}`}</button> : null}
+                </>
+              ) : <div className="text-sm text-gray-500">Could not load.</div>}
+            </Section>
+              </div>
+              <NewInfoOverview part="demand" lang={lang} onLang={chooseLang} />
+              <div className="grid lg:grid-cols-2 gap-4">
+            <Section title="Most opened places" hint="Clicks = call, WhatsApp, website, navigate, share and save">
+              <table className="w-full text-sm">
+                <thead><tr className="text-gray-500 text-xs"><th className="text-left font-normal">Place</th><th className="font-normal">Opens</th><th className="font-normal">People</th><th className="font-normal">Clicks</th></tr></thead>
+                <tbody>
+                  {data.places.slice(0, showAllPlaces ? 30 : 5).map((pl) => (
+                    <tr key={pl.place_id} className="border-t">
+                      <td className="py-1">
+                        <a href={`/place/${pl.place_id}`} target="_blank" rel="noreferrer" className="text-[#1F5BB5] hover:underline" dir="auto">{pl.name || "Place"}</a>
+                        {pl.category ? <span className="text-xs text-gray-500"> · {categoryLabel(pl.category)}</span> : null}
+                      </td>
+                      <td className="text-center">{pl.opens}</td><td className="text-center">{pl.people}</td><td className="text-center">{pl.clicks}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {data.places.length > 5 ? <button className="text-xs text-[#1F5BB5] underline" onClick={() => setShowAllPlaces(!showAllPlaces)}>{showAllPlaces ? "Show fewer" : `Show all ${Math.min(30, data.places.length)}`}</button> : null}
+            </Section>
+
+              </div>
+            </>
+          ) : null}
+
+          {tab === "community" ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Kpi label="Organic recommendations" value={`${organicShare}%`}
+              sub={`${num(p.reviews_organic)} from users · ${num(p.reviews_seeded)} seeded from WhatsApp · ${num(p.organic_in_range)} new from users in range`} />
+                <Kpi label="Places with 3+ recommendations" value={`${num(p.places_3plus)} / ${num(p.places_total)}`}
+              sub={`${pct(p.places_3plus, p.places_total)}% of listed places`} />
+              </div>
+              <div className="grid lg:grid-cols-2 gap-4">
             {q ? (
               <Section title="Moderation queue" hint="Waiting for you now (not limited by the date range), plus email clicks in the range">
                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -424,46 +519,48 @@ export default function AdminAnalyticsPage() {
                 ) : null}
               </Section>
             ) : null}
-          </div>
 
-          {/* Tier 4: who / when / where from */}
-          <Section title="Create a tagged link" hint="Give each group or post its own link; 'Where they came from' shows how many came from each. The tag is removed from the address after they arrive, so re-shares aren't credited to it.">
-            <div className="grid gap-2 md:grid-cols-2">
-              <label className="block text-sm">
-                <span className="font-semibold">Tag</span>
-                <input value={tag} onChange={(e) => { setTag(e.target.value); setCopied(false); }}
-                  placeholder="e.g. borochov-parents" className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
-              </label>
-              <label className="block text-sm">
-                <span className="font-semibold">Where the link goes (optional)</span>
-                <input value={target} onChange={(e) => { setTarget(e.target.value); setCopied(false); }}
-                  placeholder="Empty = home page; or paste a place link" className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
-                {badTarget ? <span className="text-xs text-rose-700">That isn&apos;t a place link (it should look like /place/...). The link will go to the home page.</span> : null}
-              </label>
-            </div>
-            {link ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="rounded bg-gray-50 border px-2 py-1 text-xs break-all">{link}</code>
-                <button className="px-3 py-1.5 rounded bg-[#1F5BB5] text-white text-sm"
-                  onClick={() => navigator.clipboard?.writeText(link).then(() => setCopied(true)).catch(() => {})}>
-                  {copied ? "Copied" : "Copy"}
-                </button>
+          {/* Tier 3: content inflow + moderation */}
+            <Section title="New recommendations" hint="Per day in the selected range; dark = from users, light = seeded from WhatsApp">
+              <div className="space-y-1">
+                {reviewDays.map((d) => (
+                  <div key={d.day} className="flex items-center gap-2 text-sm">
+                    <span className="w-24 shrink-0 text-gray-600">{dayLabel(d.day)}</span>
+                    <div className="h-2.5 flex-1 rounded bg-gray-100 overflow-hidden flex">
+                      <div className="h-full bg-[#0A2B6B]" style={{ width: `${maxReviewDay ? (d.organic / maxReviewDay) * 100 : 0}%` }} />
+                      <div className="h-full bg-[#9DB8E3]" style={{ width: `${maxReviewDay ? (d.seeded / maxReviewDay) * 100 : 0}%` }} />
+                    </div>
+                    <span className="w-44 shrink-0 text-right text-xs text-gray-600 truncate" title={d.byCat}>{d.total} · {d.byCat}</span>
+                  </div>
+                ))}
+                {reviewDays.length === 0 && <div className="text-sm text-gray-500">No new recommendations in this range.</div>}
               </div>
-            ) : null}
-          </Section>
-
-          <div className="grid lg:grid-cols-2 gap-4">
-            <Section title="Where they came from" hint="The link tag (?src=), or the site they came from">
-              <table className="w-full text-sm">
-                <thead><tr className="text-gray-500 text-xs"><th className="text-left font-normal">Source</th><th className="font-normal">Visits</th><th className="font-normal">People</th></tr></thead>
-                <tbody>
-                  {data.sources.map((s) => (
-                    <tr key={s.src} className="border-t"><td className="py-1" dir="auto">{srcLabel(s.src)}</td><td className="text-center">{s.visits}</td><td className="text-center">{s.people}</td></tr>
-                  ))}
-                </tbody>
-              </table>
+              {mix && mixTotal ? (
+                <>
+                  <h3 className="pt-3 text-sm font-bold text-[#0A2B6B]">Where all recommendations come from</h3>
+                  <div className="flex h-4 rounded overflow-hidden">
+                    <div className="bg-[#9DB8E3]" style={{ width: `${pct(mix.seeded, mixTotal)}%` }} />
+                    <div className="bg-[#1F5BB5]" style={{ width: `${pct(mix.anonymous, mixTotal)}%` }} />
+                    <div className="bg-[#0A2B6B]" style={{ width: `${pct(mix.named, mixTotal)}%` }} />
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 text-xs text-gray-600">
+                    <span><span className="inline-block h-2 w-2 rounded-sm bg-[#9DB8E3]" /> Seeded / paraphrased from WhatsApp: {num(mix.seeded)}</span>
+                    <span><span className="inline-block h-2 w-2 rounded-sm bg-[#1F5BB5]" /> Signed-in user, anonymous: {num(mix.anonymous)}</span>
+                    <span><span className="inline-block h-2 w-2 rounded-sm bg-[#0A2B6B]" /> Signed-in user, with a name: {num(mix.named)}</span>
+                  </div>
+                </>
+              ) : null}
             </Section>
 
+
+              </div>
+              <NewInfoOverview part="community" lang={lang} onLang={chooseLang} />
+            </>
+          ) : null}
+
+          {tab === "details" ? (
+            <>
+              <div className="grid lg:grid-cols-2 gap-4">
             <Section title="By day" hint="Different people each day">
               <div className="space-y-1">
                 {data.by_day.map((d) => (
@@ -486,23 +583,6 @@ export default function AdminAnalyticsPage() {
               <div className="flex justify-between text-[10px] text-gray-500"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
             </Section>
 
-            <Section title="Most opened places" hint="Clicks = call, WhatsApp, website, navigate, share and save">
-              <table className="w-full text-sm">
-                <thead><tr className="text-gray-500 text-xs"><th className="text-left font-normal">Place</th><th className="font-normal">Opens</th><th className="font-normal">People</th><th className="font-normal">Clicks</th></tr></thead>
-                <tbody>
-                  {data.places.slice(0, 30).map((pl) => (
-                    <tr key={pl.place_id} className="border-t">
-                      <td className="py-1">
-                        <a href={`/place/${pl.place_id}`} target="_blank" rel="noreferrer" className="text-[#1F5BB5] hover:underline" dir="auto">{pl.name || "Place"}</a>
-                        {pl.category ? <span className="text-xs text-gray-500"> · {categoryLabel(pl.category)}</span> : null}
-                      </td>
-                      <td className="text-center">{pl.opens}</td><td className="text-center">{pl.people}</td><td className="text-center">{pl.clicks}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Section>
-
             <Section title="What they did">
               <table className="w-full text-sm">
                 <thead><tr className="text-gray-500 text-xs"><th className="text-left font-normal">Action</th><th className="font-normal">Times</th><th className="font-normal">People</th></tr></thead>
@@ -520,8 +600,8 @@ export default function AdminAnalyticsPage() {
                 {data.searches.length === 0 && <span className="text-sm text-gray-500">No searches.</span>}
               </div>
             </Section>
-          </div>
 
+              </div>
           <Section title="People" hint="Click a row to open that person's actions below">
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[640px]">
@@ -594,6 +674,9 @@ export default function AdminAnalyticsPage() {
             </div>
             {data.recent.length >= 200 ? <p className="text-xs text-gray-500">Showing the latest 200 actions.</p> : null}
           </Section>
+
+            </>
+          ) : null}
         </>
       ) : null}
     </main>

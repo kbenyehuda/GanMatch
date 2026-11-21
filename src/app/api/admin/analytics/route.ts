@@ -36,5 +36,37 @@ export async function GET(req: Request) {
 
   const users = await lookupUsers(auth.admin, Array.from(ids));
 
-  return NextResponse.json({ ...data, prev_pulse: prev.data?.pulse ?? null, users, days, category });
+  // Hearts (saved places) and follows (email alerts on) of signed-in people. Counts and place names only.
+  // Not limited to the date range: it is the current state. Guests' hearts live in their own browser.
+  let likes: { hearts: number; followed: number; people: number; people_followed: number; places: { place_id: string; name: string | null; hearts: number; followed: number }[] } | null = null;
+  const fol = await auth.admin.from("place_follows").select("user_id,place_id,email_alerts").limit(20000);
+  if (!fol.error) {
+    const rows = (fol.data ?? []) as { user_id: string; place_id: string; email_alerts: boolean | null }[];
+    const placeIds = Array.from(new Set(rows.map((r) => r.place_id)));
+    const names = new Map<string, { name: string | null; category: string | null }>();
+    for (let i = 0; i < placeIds.length; i += 200) {
+      const { data: pl } = await auth.admin.from("places").select("id,name,category").in("id", placeIds.slice(i, i + 200));
+      for (const p of (pl ?? []) as { id: string; name: string | null; category: string | null }[]) names.set(p.id, { name: p.name, category: p.category });
+    }
+    const kept = rows.filter((r) => !category || names.get(r.place_id)?.category === category);
+    const per = new Map<string, { hearts: number; followed: number }>();
+    for (const r of kept) {
+      const c = per.get(r.place_id) ?? { hearts: 0, followed: 0 };
+      c.hearts += 1;
+      if (r.email_alerts) c.followed += 1;
+      per.set(r.place_id, c);
+    }
+    likes = {
+      hearts: kept.length,
+      followed: kept.filter((r) => r.email_alerts).length,
+      people: new Set(kept.map((r) => r.user_id)).size,
+      people_followed: new Set(kept.filter((r) => r.email_alerts).map((r) => r.user_id)).size,
+      places: Array.from(per.entries())
+        .map(([place_id, c]) => ({ place_id, name: names.get(place_id)?.name ?? null, ...c }))
+        .sort((a, b) => b.hearts + b.followed - (a.hearts + a.followed))
+        .slice(0, 50),
+    };
+  }
+
+  return NextResponse.json({ ...data, prev_pulse: prev.data?.pulse ?? null, users, days, category, likes });
 }

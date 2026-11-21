@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 // English by default with an English / עברית switch (decision 2026-11-18). Hebrew is right-to-left; the charts
 // keep time running left to right.
 
-type Lang = "en" | "he";
+export type Lang = "en" | "he";
 const LangCtx = createContext<Lang>("en");
 
 const HE: Record<string, string> = {
@@ -361,23 +361,13 @@ function Big({ label, today, yesterday, hint }: { label: string; today: number; 
   );
 }
 
-const LANG_KEY = "analytics-lang";
+export type OverviewPart = "pulse" | "demand" | "community";
 
-export default function NewInfoOverview() {
+export default function NewInfoOverview({ part, lang, onLang }: { part: OverviewPart; lang: Lang; onLang: (l: Lang) => void }) {
   const { user } = useSession();
-  const [lang, setLang] = useState<Lang>("en");
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Remember the language on this device (best effort: storage can be blocked)
-  useEffect(() => {
-    try { if (localStorage.getItem(LANG_KEY) === "he") setLang("he"); } catch { /* ignore */ }
-  }, []);
-  const chooseLang = (l: Lang) => {
-    setLang(l);
-    try { localStorage.setItem(LANG_KEY, l); } catch { /* ignore */ }
-  };
 
   const load = useCallback(async () => {
     if (!supabase || !user) return;
@@ -407,28 +397,24 @@ export default function NewInfoOverview() {
   return (
     <LangCtx.Provider value={lang}>
       <section dir={lang === "he" ? "rtl" : "ltr"} className="space-y-3 rounded-2xl border-2 border-[#0A2B6B]/15 bg-[#F6F9FF] p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-bold text-[#0A2B6B]">{t("Today at a glance")}</h2>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-            <span>{t("Israel time · \"today\" = since midnight")}</span>
-            <span className="inline-flex overflow-hidden rounded border bg-white text-sm" dir="ltr">
-              {(["en", "he"] as const).map((l) => (
-                <button key={l} type="button" onClick={() => chooseLang(l)}
-                  className={`px-2.5 py-1 ${lang === l ? "bg-[#0A2B6B] text-white" : "text-gray-700"}`}>
-                  {l === "en" ? "English" : "עברית"}
-                </button>
-              ))}
-            </span>
-            <button className="px-2.5 py-1 rounded border bg-white text-sm text-gray-700" onClick={load} disabled={loading}>
-              {loading ? t("Refreshing...") : t("Refresh")}
-            </button>
+        {part === "pulse" ? (
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-bold text-[#0A2B6B]">{t("Today at a glance")}</h2>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+              <span>{t("Israel time · \"today\" = since midnight")}</span>
+              <button className="px-2.5 py-1 rounded border bg-white text-sm text-gray-700" onClick={load} disabled={loading}>
+                {loading ? t("Refreshing...") : t("Refresh")}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
         {error ? <div className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700">{error}</div> : null}
         {!data && !error ? <div className="text-sm text-gray-500">{t("Loading...")}</div> : null}
 
         {data ? (
           <>
+            {part === "pulse" ? (
+              <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Big label="Visitors (people)" today={data.today.people} yesterday={data.yesterday.people}
                 hint="Different people who opened the site" />
@@ -440,6 +426,42 @@ export default function NewInfoOverview() {
                 hint="Recommendations + places + edits + pin moves + owner claims" />
             </div>
 
+              <div className="grid lg:grid-cols-1 gap-4">
+              <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
+                <h3 className="font-bold text-[#0A2B6B]">{t("Where today's visitors came from")}</h3>
+                <p className="text-xs text-gray-500">{t("People per source, from the link they used. \"Direct\" = no tag.")}</p>
+                {data.today.sources.length === 0 ? <div className="text-sm text-gray-500">{t("No visitors yet today.")}</div> : (
+                  <div className="space-y-1">
+                    {data.today.sources.map((s) => {
+                      const max = Math.max(1, ...data.today.sources.map((x) => x.people));
+                      return (
+                        <div key={s.src} className="flex items-center gap-2 text-sm">
+                          <span className="w-28 shrink-0 truncate" dir="auto">{srcLabel(s.src)}</span>
+                          <div className="h-2.5 flex-1 rounded bg-gray-100 overflow-hidden">
+                            <div className="h-full rounded bg-[#1F5BB5]" style={{ width: `${Math.max(3, (s.people / max) * 100)}%` }} />
+                          </div>
+                          <span className="w-20 shrink-0 text-end text-xs text-gray-600">{s.people} {t("people")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <h4 className="pt-2 text-sm font-bold text-[#0A2B6B]">{t("Yesterday")}</h4>
+                <div className="text-sm text-gray-700">
+                  {data.yesterday.sources.length === 0 ? t("No visitors.") : data.yesterday.sources.map((s) => `${srcLabel(s.src)} ${s.people}`).join(" · ")}
+                </div>
+              </div>
+            </div>
+            <Direction trend={data.trend ?? []} returning={data.returning} />
+            <TrendCharts trend={data.trend ?? []} />
+            <ReturningChart trend={data.trend ?? []} />
+              </>
+            ) : null}
+            {part === "demand" ? <>
+            <UsefulActions data={data} />
+            </> : null}
+            {part === "community" ? (
+              <>
             <div className="grid lg:grid-cols-2 gap-4">
               <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
                 <h3 className="font-bold text-[#0A2B6B]">{t("New information people added")}</h3>
@@ -491,38 +513,10 @@ export default function NewInfoOverview() {
                 )}
               </div>
 
-              <div className="rounded-xl border bg-white p-4 shadow-sm space-y-2">
-                <h3 className="font-bold text-[#0A2B6B]">{t("Where today's visitors came from")}</h3>
-                <p className="text-xs text-gray-500">{t("People per source, from the link they used. \"Direct\" = no tag.")}</p>
-                {data.today.sources.length === 0 ? <div className="text-sm text-gray-500">{t("No visitors yet today.")}</div> : (
-                  <div className="space-y-1">
-                    {data.today.sources.map((s) => {
-                      const max = Math.max(1, ...data.today.sources.map((x) => x.people));
-                      return (
-                        <div key={s.src} className="flex items-center gap-2 text-sm">
-                          <span className="w-28 shrink-0 truncate" dir="auto">{srcLabel(s.src)}</span>
-                          <div className="h-2.5 flex-1 rounded bg-gray-100 overflow-hidden">
-                            <div className="h-full rounded bg-[#1F5BB5]" style={{ width: `${Math.max(3, (s.people / max) * 100)}%` }} />
-                          </div>
-                          <span className="w-20 shrink-0 text-end text-xs text-gray-600">{s.people} {t("people")}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <h4 className="pt-2 text-sm font-bold text-[#0A2B6B]">{t("Yesterday")}</h4>
-                <div className="text-sm text-gray-700">
-                  {data.yesterday.sources.length === 0 ? t("No visitors.") : data.yesterday.sources.map((s) => `${srcLabel(s.src)} ${s.people}`).join(" · ")}
-                </div>
               </div>
-            </div>
-            <UsefulActions data={data} />
-            <Direction trend={data.trend ?? []} returning={data.returning} />
-            <TrendCharts trend={data.trend ?? []} />
-            <div className="grid lg:grid-cols-2 gap-4">
-              <ReturningChart trend={data.trend ?? []} />
-              <CoverageCard c={data.coverage} />
-            </div>
+            <CoverageCard c={data.coverage} />
+              </>
+            ) : null}
           </>
         ) : null}
       </section>
