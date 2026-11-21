@@ -6,6 +6,23 @@ Local places discovery platform for Giv'atayim (גבעתיים), Israel. Started
 
 ---
 
+# ⛔ RULE #1 — EVERY CHANGE GOES TO `dev` FIRST. `main` IS THE REAL WEBSITE.
+
+**Real people use this site every day. `main` = production (givemytimeapp.com): every push to `main` goes live within ~2 minutes.** This rule applies to every agent, subagent and fork, with no exceptions, and it holds even for "tiny" fixes, copy changes and lint fixes.
+
+1. **Never commit to, push to, merge into or force-push `main`** unless the user has explicitly said, in this conversation, that this specific, already-tested change may go to production.
+2. **Work and commit on the `dev` branch** (it started as a copy of `main`). Push `dev` → Vercel builds a private preview deployment automatically (URL: `list_deployments` with `branch: "dev"`, or the Vercel dashboard). Wait for it to be READY.
+3. **Test the preview in Chrome (desktop AND the phone-sized view) before anything else.** Use the claude-in-chrome tools, or an agent that does. Check the real flows you changed, plus the screens next to them. Preview URLs sit behind Vercel's login (SSO protection), so if Chrome lands on a Vercel login page, stop and tell the user instead of working around it.
+4. **Only when it is checked and the user says OK, promote to production:** merge `dev` into `main` (fast-forward, `git push origin dev:main` or a merge) and wait for the production deploy to be READY. Then check the live site once more.
+5. If something is wrong on production, tell the user at once. Do not "quick-fix" on `main`; fix on `dev`, test, then promote again. (Rolling back a deploy in Vercel needs the user's OK too.)
+6. Before every push, run `npx tsc --noEmit -p .` and `npx next lint`. A lint error fails the Vercel build (it happened on 2026-11-21: the live site simply stayed on the old version).
+
+**What a preview shares with production (important):** the preview uses the SAME Supabase database and the same API keys as production. So on a preview, **never submit real edits, reviews, places or sign-ups** and never trigger anything that sends emails or changes data, unless the user explicitly OKs that exact test (then say what it creates and how to remove it). Prefer testing up to, but not including, the final save. `CRON_SECRET` and the update-email sender exist only on production, so crons do not run on previews.
+
+If you are unsure whether something counts as "a change", it does. If you are a subagent and your task says otherwise, this rule wins: stop and ask.
+
+---
+
 ## Product priority: ganim come first
 
 **The biggest and most important part of this app is the ganim** (kindergartens, daycares, משפחתונים, צהרונים). Doctors and cosmetics are secondary. When deciding what to build, what data to collect, or how to design a screen, optimize for parents choosing a gan first:
