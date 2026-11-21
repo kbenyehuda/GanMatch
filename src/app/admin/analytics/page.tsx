@@ -49,6 +49,7 @@ type Summary = {
   people: Person[];
   recent: Recent[];
   users: Record<string, { name: string | null; email: string | null }>;
+  held_user: number;
   categories: {
     people: number; by_cat: Record<string, number>; one: number; several: number;
     combos: { cats: string[]; people: number }[];
@@ -258,7 +259,10 @@ export default function AdminAnalyticsPage() {
   const q = data?.queue;
   const ev = (name: string) => data?.events.find((e) => e.event === name) ?? { event: name, count: 0, people: 0 };
 
-  const waiting = q ? q.held_reviews + q.detail_requests + q.location_requests : 0;
+  // Old held reviews (WhatsApp-seeded negatives) are kept out of the app on purpose, so they never count as
+  // "waiting". Only NEW held reviews written by real users count.
+  const heldUser = data?.held_user ?? 0;
+  const waiting = q ? heldUser + q.detail_requests + q.location_requests : 0;
 
   return (
     <main className="mx-auto max-w-6xl p-4 md:p-6 space-y-4 min-h-screen" dir="ltr">
@@ -336,7 +340,7 @@ export default function AdminAnalyticsPage() {
               {waiting > 0 ? (
                 <button onClick={() => setTab("community")} className="w-full rounded-xl border-2 border-amber-400 bg-amber-50 p-3 text-left font-semibold text-amber-900">
                   🔔 {waiting} {waiting === 1 ? "item" : "items"} waiting for you
-                  <span className="block text-xs font-normal">{q!.held_reviews} held reviews · {q!.detail_requests} detail corrections · {q!.location_requests} location fixes. Tap to see them.</span>
+                  <span className="block text-xs font-normal">{heldUser} new held reviews from users · {q!.detail_requests} detail corrections · {q!.location_requests} location fixes. Tap to see them.</span>
                 </button>
               ) : null}
               <NewInfoOverview part="pulse" lang={lang} onLang={chooseLang} />
@@ -526,11 +530,13 @@ export default function AdminAnalyticsPage() {
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
             {q ? (
-              <Section title="Moderation queue" hint="Waiting for you now (not limited by the date range), plus email clicks in the range">
+              <Section title="Moderation queue" hint="Waiting for you now, plus email clicks">
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <a href="/admin/held-reviews" className="rounded border p-2 hover:bg-gray-50">
-                    <div className="text-2xl font-bold text-[#0A2B6B]">{q.held_reviews}</div>Held recommendations
-                  </a>
+                  {heldUser > 0 ? (
+                    <a href="/admin/held-reviews" className="rounded border border-amber-400 bg-amber-50 p-2 hover:bg-amber-100">
+                      <div className="text-2xl font-bold text-[#0A2B6B]">{heldUser}</div>New held reviews from users
+                    </a>
+                  ) : null}
                   <a href="/admin/place-detail-requests" className="rounded border p-2 hover:bg-gray-50">
                     <div className="text-2xl font-bold text-[#0A2B6B]">{q.detail_requests}</div>Detail corrections
                   </a>
@@ -546,20 +552,10 @@ export default function AdminAnalyticsPage() {
                     <div className="text-2xl font-bold text-[#0A2B6B]">→</div>Owner requests (בקשות בעלות)
                   </a>
                 </div>
-                {q.held_latest.length ? (
-                  <>
-                    <h3 className="pt-2 text-sm font-bold text-[#0A2B6B]">Latest held</h3>
-                    <ul className="divide-y text-sm">
-                      {q.held_latest.map((h, i) => (
-                        <li key={`${h.place_id}-${i}`} className="py-1 flex flex-wrap gap-x-2">
-                          <span className="text-xs text-gray-500 w-24 shrink-0">{when(h.at)}</span>
-                          <a href={`/place/${h.place_id}`} target="_blank" rel="noreferrer" className="text-[#1F5BB5] hover:underline" dir="auto">{h.place}</a>
-                          {h.reasons?.length ? <span className="text-xs text-gray-500" dir="auto">· {h.reasons.join(", ")}</span> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
+                <p className="text-xs text-gray-500">
+                  {Math.max(0, q.held_reviews - heldUser)} older held reviews are kept out of the app on purpose (not waiting for you).{" "}
+                  <a href="/admin/held-reviews" className="text-[#1F5BB5] underline">See them</a>
+                </p>
               </Section>
             ) : null}
 

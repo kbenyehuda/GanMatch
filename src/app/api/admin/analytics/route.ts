@@ -131,5 +131,14 @@ export async function GET(req: Request) {
     };
   } catch { categories = null; }
 
-  return NextResponse.json({ ...data, prev_pulse: prev.data?.pulse ?? null, users, days, category, likes, categories });
+  // Held reviews written by real users in the app (not the WhatsApp-seeded ones, which are held back on purpose).
+  let held_user = 0;
+  {
+    const { count } = await auth.admin.from("place_reviews")
+      .select("id", { count: "exact", head: true })
+      .eq("check_status", "held").is("whatsapp_reviewer_name", null);
+    held_user = count ?? 0;
+  }
+
+  return NextResponse.json({ ...data, prev_pulse: prev.data?.pulse ?? null, users, days, category, likes, categories, held_user });
 }
