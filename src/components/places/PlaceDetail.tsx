@@ -26,6 +26,26 @@ import { GAN_APPROACH_LABELS, displayTags, normalizeTag, reviewTagCounts, type G
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** A small ⭐ that explains the points: on hover (title) on a computer, on tap on a phone. */
+function PointsHint() {
+  const [open, setOpen] = useState(false);
+  const text = "+3 נקודות על כל פרט שתוסיפו";
+  return (
+    <span className="relative inline-flex" style={{ flexShrink: 0 }}>
+      <button type="button" title={text} aria-label={text} onClick={() => setOpen((v) => !v)}
+        style={{ border: 0, background: "#FFF1CC", color: "#B7791F", borderRadius: 99, width: 22, height: 22, fontSize: 12, lineHeight: 1, cursor: "pointer", padding: 0 }}>
+        ⭐
+      </button>
+      {open && (
+        <span role="status" className="font-hebrew"
+          style={{ position: "absolute", top: 28, insetInlineEnd: 0, zIndex: 5, whiteSpace: "nowrap", background: "#0A2B6B", color: "#fff", fontSize: 12, fontWeight: 600, padding: "6px 10px", borderRadius: 10, boxShadow: "0 6px 16px rgba(10,43,107,.25)" }}>
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function lightenColor(hex: string, t = 0.35): string {
   const n = parseInt(hex.replace("#", ""), 16);
   const r = (n >> 16) & 255; const g = (n >> 8) & 255; const b = n & 255;
@@ -866,11 +886,11 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, ale
                   <>
                     {/* How complete the page is, and what is missing */}
                     <div style={{ marginTop: 10 }}>
-                      <div className="font-hebrew flex items-center justify-between" style={{ fontSize: 12, fontWeight: 700, color: completePct === 100 ? "#1D7F4F" : "#4A5568" }}>
+                      <div className="font-hebrew flex items-center justify-between gap-2" style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.45, color: completePct === 100 ? "#1D7F4F" : "#4A5568" }}>
                         <span>{completePct === 100 ? "כל מה שהורים שואלים כבר כאן ✓" : `הורים אחרים מחפשים כאן: ${missing.slice(0, 3).map((m) => m.label).join(", ")}`}</span>
-                        {missing.length > 0 && <span style={{ color: "#B7791F", fontWeight: 600 }}>⭐ +3 נקודות על כל פרט</span>}
+                        {missing.length > 0 && <PointsHint />}
                       </div>
-                      <div style={{ height: 6, borderRadius: 99, background: "#E5E9F0", marginTop: 5, overflow: "hidden" }}>
+                      <div style={{ height: 8, borderRadius: 99, background: "#E5E9F0", marginTop: 6, overflow: "hidden" }}>
                         <div style={{ width: `${completePct}%`, height: "100%", borderRadius: 99, background: completePct === 100 ? "#1D7F4F" : "linear-gradient(90deg,#E59A2C,#C8A24B)" }} />
                       </div>
                     </div>
