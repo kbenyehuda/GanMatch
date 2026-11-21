@@ -38,6 +38,14 @@ export const ANALYTICS_EVENT_LABELS: Record<string, string> = {
   app_installed: "Added the app to home screen",
   inapp_note_shown: "Saw \"open in browser\" (in-app browser)",
   open_in_browser_click: "Tapped \"open in Chrome\"",
+  spot_alert_click: "Tapped the spot alert (🔔)",
+  inapp_sheet_shown: "Saw the in-app sign-in sheet",
+  inapp_sheet_open_chrome: "In-app sheet: open in Chrome",
+  inapp_sheet_copy: "In-app sheet: copy link",
+  inapp_sheet_try_anyway: "In-app sheet: try anyway",
+  add_more_offer_shown: "Saw the \"add more details\" offer",
+  add_more_offer_click: "Tapped an \"add more details\" offer",
+  add_more_expand: "Expanded to the full edit form",
 };
 
 export const ANALYTICS_EVENTS = new Set(Object.keys(ANALYTICS_EVENT_LABELS));

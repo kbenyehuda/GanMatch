@@ -19,7 +19,9 @@ export function InAppSignInSheet() {
   useEffect(() => onInAppSignInBlocked(({ returnTo: r }) => {
     setReturnTo(r);
     setCopied(false);
-    setKind(phoneKind());
+    const k = phoneKind();
+    setKind(k);
+    track("inapp_sheet_shown", { kind: k }, null);
     setOpen(true);
   }), []);
 
