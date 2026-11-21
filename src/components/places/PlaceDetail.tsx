@@ -537,7 +537,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, ale
         onPlaceUpdated?.({ ...place, attributes: nextAttrs });
       }
       // A held review (flagged by the check, or 1–2 stars) doesn't appear in the list yet, so say why
-      onShowToast?.(data.held ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה 🙏");
+      onShowToast?.(data.held ? "ההמלצה נשמרה ותפורסם לאחר בדיקה. ⭐ +5 נקודות אחרי האישור" : "ההמלצה נשלחה! תודה 🙏 ⭐ +5 נקודות");
     } catch (e) { setSubmitError(e instanceof Error ? e.message : "שגיאה בשליחה"); }
     finally { setSubmitting(false); }
   }, [formRating, formText, formAnonymous, formName, formPrice, formVacancy, place, user, session, loadReviews, onShowToast, onPlaceUpdated]);
@@ -639,6 +639,22 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, ale
       {/* ── Scrollable body ───────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide-touch" style={{ paddingBottom: 120 }}>
         <div style={{ padding: 20 }}>
+
+          {/* Gan pages: the strongest reason to sign in. Guests sign in first; signed-in people save the place AND switch the email on. */}
+          {place.place_category === "kids" && onToggleAlerts && !(user && alertsOn) && (
+            <button type="button" data-track="spot_alert_click"
+              onClick={() => { track("spot_alert_click", { signed_in: !!user, name: place.name }, place.id); if (user) onToggleAlerts(); else signInWithGoogle(`/place/${place.id}`); }}
+              className="flex items-center gap-3 w-full font-hebrew mb-3"
+              style={{ padding: "11px 13px", borderRadius: 14, border: "1px solid #F3E3B5", background: "#FFF8E6", cursor: "pointer", textAlign: "start" }}>
+              <span aria-hidden style={{ fontSize: 20 }}>🔔</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#0A2B6B" }}>
+                עדכנו אותי כשמתפנה מקום
+                <span style={{ display: "block", fontSize: 11.5, fontWeight: 400, color: "#6B7A99" }}>
+                  {user ? "נשלח לכם מייל כשמשהו בדף משתנה, כולל מקום פנוי. אפשר לכבות בכל רגע." : "התחברות עם Google, ואז מייל כשמשהו בדף משתנה, כולל מקום פנוי."}
+                </span>
+              </span>
+            </button>
+          )}
 
           {/* Email updates for a saved place: signed-in only, off until they switch it on */}
           {isSaved && onToggleAlerts && user && (
@@ -828,10 +844,19 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, ale
               </div>
               <KidsAttributeChips attrs={attrs} parentTags={detailParentTags(reviews, place)} />
               {(() => {
-                const missing: { key: string; label: string }[] = [];
-                if (attrs.monthly_price_nis == null) missing.push({ key: "monthly_price_nis", label: "מחיר" });
-                if (attrs.vacancy_status == null || attrs.vacancy_status === "UNKNOWN") missing.push({ key: "vacancy_status", label: "מקום פנוי" });
-                if (attrs.min_age_months == null) missing.push({ key: "min_age_months", label: "טווח גילאים" });
+                // The facts a parent needs most. The bar shows how many we know; each missing one is a chip.
+                const KEY_FACTS: { key: string; label: string; known: boolean }[] = [
+                  { key: "monthly_price_nis", label: "מחיר", known: attrs.monthly_price_nis != null },
+                  { key: "vacancy_status", label: "מקום פנוי", known: attrs.vacancy_status != null && attrs.vacancy_status !== "UNKNOWN" },
+                  { key: "min_age_months", label: "טווח גילאים", known: attrs.min_age_months != null },
+                  { key: "hours", label: "שעות פעילות", known: !!place.hours },
+                  { key: "meal_type", label: "סוג אוכל", known: attrs.meal_type != null && attrs.meal_type !== "UNKNOWN" && attrs.meal_type !== "" },
+                  { key: "friday_schedule", label: "ימי שישי", known: attrs.friday_schedule != null && attrs.friday_schedule !== "UNKNOWN" },
+                  { key: "has_outdoor_space", label: "חצר", known: attrs.has_outdoor_space != null },
+                  { key: "has_mamad", label: 'ממ"ד', known: attrs.has_mamad != null },
+                ];
+                const missing = KEY_FACTS.filter((f) => !f.known);
+                const completePct = Math.round(((KEY_FACTS.length - missing.length) / KEY_FACTS.length) * 100);
                 // Shown to guests too: they didn't know they could help, or that it needs a Google login
                 const cta = user
                   ? (missing.length > 0 ? "עזרו לנו למלא ←" : "ערכו פרטים ←")
@@ -839,10 +864,20 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, ale
                 const open = (field?: string) => { if (user) { setAttrEditField(field); setShowAttrEdit(true); } else signInWithGoogle(`/place/${place.id}`); };
                 return (
                   <>
+                    {/* How complete the page is, and what is missing */}
+                    <div style={{ marginTop: 10 }}>
+                      <div className="font-hebrew flex items-center justify-between" style={{ fontSize: 12, fontWeight: 700, color: completePct === 100 ? "#1D7F4F" : "#4A5568" }}>
+                        <span>{completePct === 100 ? "כל מה שהורים שואלים כבר כאן ✓" : `הורים אחרים מחפשים כאן: ${missing.slice(0, 3).map((m) => m.label).join(", ")}`}</span>
+                        {missing.length > 0 && <span style={{ color: "#B7791F", fontWeight: 600 }}>⭐ +3 נקודות על כל פרט</span>}
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: "#E5E9F0", marginTop: 5, overflow: "hidden" }}>
+                        <div style={{ width: `${completePct}%`, height: "100%", borderRadius: 99, background: completePct === 100 ? "#1D7F4F" : "linear-gradient(90deg,#E59A2C,#C8A24B)" }} />
+                      </div>
+                    </div>
                     {/* Each missing fact is a tappable chip: it opens the same edit form (guests sign in first) */}
                     {missing.length > 0 && (
                       <div className="flex flex-wrap gap-1.5" style={{ marginTop: 8 }}>
-                        {missing.map((m) => (
+                        {missing.slice(0, 5).map((m) => (
                           <button key={m.key} type="button" data-track={user ? "edit_attrs_open" : "edit_attrs_signin"} onClick={() => open(m.key)}
                             className="font-hebrew"
                             style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 8, background: "#fff", color: "#1F5BB5", border: "1px dashed #9EC5FF", cursor: "pointer" }}>
@@ -926,7 +961,7 @@ export function PlaceDetail({ place, onClose, isSaved = false, onToggleSave, ale
 
             {submitSuccess && (
               <div className="font-hebrew text-sm text-center py-3 rounded-xl mb-3" style={{ background: "#DCF3E6", color: "#1D7F4F", fontWeight: 600 }}>
-                {submitHeld ? "ההמלצה נשמרה ותפורסם לאחר בדיקה" : "ההמלצה נשלחה! תודה רבה 🙏"}
+                {submitHeld ? "ההמלצה נשמרה ותפורסם לאחר בדיקה. ⭐ +5 נקודות אחרי האישור" : "ההמלצה נשלחה! תודה רבה 🙏 ⭐ +5 נקודות"}
               </div>
             )}
 

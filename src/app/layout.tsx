@@ -3,6 +3,7 @@ import { Inter, Heebo, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
+import { InAppSignInSheet } from "@/components/pwa/InAppSignInSheet";
 import { SITE_URL } from "@/lib/site-url";
 
 const inter = Inter({
@@ -59,6 +60,7 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         <AnalyticsTracker />
         {children}
+        <InAppSignInSheet />
       </body>
     </html>
   );

@@ -195,7 +195,7 @@ export function AddPlaceModal({ initialLocation, onClose, onSuccess, onPickPin }
         <span style={{ fontSize: 36 }}>🙏</span>
         <h2 className="font-hebrew font-bold mt-3" style={{ fontSize: 17, color: "#0A2B6B" }}>{savedHeld ? "תודה! המקום נשמר" : "תודה! ההמלצה נשמרה"}</h2>
         <p className="font-hebrew mt-2" style={{ fontSize: 14, color: "#4A5568", lineHeight: 1.7, maxWidth: 320 }}>
-          {savedHeld ? "נעבור עליו בקצרה והוא יופיע באתר. תודה שאתם עוזרים להשלים את המפה." : "נפנה אליה לבקש הסכמה, והיא תופיע באתר רק אחרי שתאשר."}
+          {savedHeld ? "נעבור עליו בקצרה והוא יופיע באתר. תודה שאתם עוזרים להשלים את המפה. ⭐ +5 נקודות אחרי האישור." : "נפנה אליה לבקש הסכמה, והיא תופיע באתר רק אחרי שתאשר."}
         </p>
         <button type="button" onClick={onClose} className="font-hebrew font-bold mt-5"
           style={{ padding: "11px 28px", borderRadius: 14, background: "linear-gradient(135deg, #0A2B6B, #1F5BB5)", color: "#fff", fontSize: 14, border: "none", cursor: "pointer" }}>

@@ -291,10 +291,10 @@ export function EditKidsAttributesModal({ place, onClose, onSaved, onShowToast, 
       if (data.applied && data.place) {
         // An approved owner's change is already live
         onSaved({ ...place, ...data.place });
-        onShowToast?.("השינויים נשמרו ומופיעים באתר");
+        onShowToast?.("השינויים נשמרו ומופיעים באתר ⭐ +3 נקודות");
       } else {
         // Nothing changes on the place until an admin approves the request.
-        onShowToast?.("תודה! נבדוק את העדכון ונפרסם אותו בקרוב 🙏");
+        onShowToast?.("תודה! נבדוק את העדכון ונפרסם אותו בקרוב 🙏 ⭐ +3 נקודות אחרי האישור");
       }
       onClose();
     } catch (e) {

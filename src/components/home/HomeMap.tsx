@@ -1355,6 +1355,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
               onClose={() => { setShowAddModal(false); setSuggestPin(null); }}
               onPickPin={handlePickPin}
               onSuccess={(place) => {
+                showToast("תודה! המקום נוסף ⭐ +5 נקודות");
                 addPlace(place);
                 setSuggestPin(null);
                 setShowAddModal(false);
@@ -1372,6 +1373,7 @@ export function HomeMap({ seedPlace = null }: HomeMapProps) {
                 onClose={() => { setShowAddModal(false); setSuggestPin(null); }}
                 onPickPin={handlePickPin}
                 onSuccess={(place) => {
+                  showToast("תודה! המקום נוסף ⭐ +5 נקודות");
                   addPlace(place);
                   setSuggestPin(null);
                   setShowAddModal(false);
@@ -1576,6 +1578,20 @@ function ProfileScreen({
   }, [isAdmin]);
   const unseenTotal = inboxCounts ? inboxCounts.location.unseen + inboxCounts.detail.unseen + inboxCounts.triage.unseen : 0;
 
+  // Points for contributions (counted on the server from approved work)
+  const [pts, setPts] = useState<{ points: number; pending: number; values: { recommendation: number; newPlace: number; detailEdit: number }; dailyCap: number } | null>(null);
+  useEffect(() => {
+    if (!user?.id || !supabase) return;
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        const token = data.session?.access_token;
+        if (!token) return null;
+        return fetch("/api/account/points", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }).then(r => r.json());
+      })
+      .then(d => { if (typeof d?.points === "number") setPts(d); })
+      .catch(() => {});
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user?.id || !supabase) return;
     supabase.auth.getSession()
@@ -1627,6 +1643,13 @@ function ProfileScreen({
             <div style={{ fontSize: 18, fontWeight: 800, color: "#0A2B6B", lineHeight: 1 }}>{savedIds.size}</div>
             <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 700, marginTop: 4 }}>שמור</div>
           </div>
+          {user && (<>
+            <div style={{ width: 1, background: "#E5E9F0", margin: "6px 0" }} />
+            <div className="flex-1 text-center">
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#B7791F", lineHeight: 1 }}>⭐ {pts?.points ?? "—"}</div>
+              <div className="font-hebrew" style={{ fontSize: 12, color: "#8A95A8", fontWeight: 700, marginTop: 4 }}>נקודות</div>
+            </div>
+          </>)}
         </div>
       </div>
 
@@ -1636,6 +1659,8 @@ function ProfileScreen({
           הרשימות שלך
         </div>
         <ProfileListCard icon={<Heart style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#D86B7D,#E8A5B0)" title="מועדפים" sub={`${savedIds.size} מקומות שמורים`} onClick={onGoSaved} />
+
+        {user && <PointsExplainer pts={pts} />}
 
         {isAdmin && (
           <>
@@ -1654,6 +1679,7 @@ function ProfileScreen({
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="בקשות עדכון פרטים" badge={inboxCounts?.detail.unseen} waiting={inboxCounts?.detail.pending} sub="אישור פרטים שהורים מילאו בגנים" onClick={() => (window.location.href = "/admin/place-detail-requests")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="המלצות ממתינות" sub="המלצות שהבדיקה עצרה או בדירוג 1–2" onClick={() => (window.location.href = "/admin/held-reviews")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="מקומות חדשים ממתינים" sub="מקומות שגולשים הוסיפו והבדיקה עצרה" onClick={() => (window.location.href = "/admin/held-places")} />
+            <ProfileListCard icon={<Star style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="נקודות" sub="מי צבר הכי הרבה (להגרלה בהמשך)" onClick={() => (window.location.href = "/admin/points")} />
             <ProfileListCard icon={<ClipboardCheck style={{ width: 18, height: 18 }} />} iconBg="linear-gradient(135deg,#0A2B6B,#1F5BB5)" title="הסכמות להופיע באתר" sub="בייביסיטרים ומטפלות שמוסתרים עד שיסכימו" onClick={() => (window.location.href = "/admin/consents")} />
           </>
         )}
@@ -1698,6 +1724,26 @@ function ProfileScreen({
           </button>
         )}
         {showDelete && <DeleteAccountModal onClose={() => setShowDelete(false)} onScheduled={announceAccountDeletion} />}
+      </div>
+    </div>
+  );
+}
+
+function PointsExplainer({ pts }: { pts: { points: number; pending: number; values: { recommendation: number; newPlace: number; detailEdit: number }; dailyCap: number } | null }) {
+  const v = pts?.values ?? { recommendation: 5, newPlace: 5, detailEdit: 3 };
+  return (
+    <div className="font-hebrew" style={{ marginTop: 18, background: "#fff", borderRadius: 16, padding: 14, border: "1px solid #F3E3B5" }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F1A2E" }}>⭐ נקודות על כל תרומה</div>
+      <div style={{ fontSize: 13, color: "#4A5568", marginTop: 6, lineHeight: 1.6 }}>
+        המלצה על מקום: {v.recommendation} · הוספת מקום חדש: {v.newPlace} · השלמת פרט חסר: {v.detailEdit}
+      </div>
+      {!!pts?.pending && (
+        <div style={{ fontSize: 13, color: "#B7791F", fontWeight: 700, marginTop: 6 }}>
+          עוד {pts.pending} נקודות בדרך, מחכות לאישור
+        </div>
+      )}
+      <div style={{ fontSize: 12.5, color: "#8A95A8", marginTop: 8, lineHeight: 1.5 }}>
+        הנקודות שלכם יהפכו בקרוב להטבה. נקודות נספרות אחרי שהתרומה אושרה, עד {pts?.dailyCap ?? 20} ביום.
       </div>
     </div>
   );

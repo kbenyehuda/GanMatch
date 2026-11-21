@@ -3,7 +3,7 @@
 import { supabase } from "@/lib/supabase";
 import { publicEnv } from "@/lib/env/public";
 import { track, SIGNING_IN_KEY } from "@/lib/analytics";
-import { isInstalled, phoneKind } from "@/lib/install-prompt";
+import { isInAppBrowser, isInstalled, phoneKind } from "@/lib/install-prompt";
 
 /**
  * Google sign-in.
@@ -135,14 +135,28 @@ function inHomeScreenApp(): boolean {
   }
 }
 
+const inAppListeners = new Set<(info: { returnTo?: string }) => void>();
+/** The "open in your real browser" sheet listens here. Returns an unsubscribe function. */
+export function onInAppSignInBlocked(fn: (info: { returnTo?: string }) => void): () => void {
+  inAppListeners.add(fn);
+  return () => { inAppListeners.delete(fn); };
+}
+
 /**
  * Sign in from any of our own buttons. Opens Google's window on our page; if Google
  * won't show it, falls back to the redirect. From the home-screen app it goes straight
  * to the redirect.
  * @param returnTo page to come back to after a redirect; defaults to the current page.
  */
-export async function signInWithGoogle(returnTo?: string): Promise<void> {
+export async function signInWithGoogle(returnTo?: string, opts?: { force?: boolean }): Promise<void> {
   if (!supabase || typeof window === "undefined") return;
+  // Inside Facebook / Instagram / WhatsApp's own browser Google often refuses to sign in:
+  // ask them to open the real browser first (they can still try here from the sheet).
+  if (!opts?.force && inAppListeners.size > 0 && isInAppBrowser()) {
+    track("sign_in_inapp_sheet", undefined, null);
+    inAppListeners.forEach((fn) => fn({ returnTo }));
+    return;
+  }
   const standalone = inHomeScreenApp();
   track("sign_in_click", standalone ? { standalone: true } : undefined, null);
 
@@ -169,6 +183,8 @@ export async function signInWithGoogle(returnTo?: string): Promise<void> {
 export async function renderGoogleButton(el: HTMLElement, opts?: { width?: number }): Promise<boolean> {
   // Home-screen app: no Google popup button, the caller shows our own redirect button instead
   if (inHomeScreenApp()) return false;
+  // In-app browsers: no Google button either; our own button opens the "use your real browser" sheet
+  if (isInAppBrowser()) return false;
   const gis = await loadGoogleSignIn();
   if (!gis) return false;
   await initGoogle(gis, () => void redirectSignIn());
